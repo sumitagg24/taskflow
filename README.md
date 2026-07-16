@@ -10,6 +10,7 @@ also serves the built React SPA.
 ## Table of Contents
 
 - [Overview](#overview)
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
@@ -40,6 +41,22 @@ and a rich task model. Beyond basic CRUD, it offers:
 
 The AI, email, and external calendar features are all **optional** — the app degrades
 gracefully (heuristic fallbacks) when no API keys are configured.
+
+---
+
+## Screenshots
+
+| Screen | Preview |
+|--------|---------|
+| Login | <img src="client/e2e/screenshots/01-login.png" width="400" /> |
+| Signup | <img src="client/e2e/screenshots/02-signup.png" width="400" /> |
+| Dashboard | <img src="client/e2e/screenshots/03-dashboard.png" width="400" /> |
+| Kanban | <img src="client/e2e/screenshots/04-kanban.png" width="400" /> |
+| Calendar | <img src="client/e2e/screenshots/05-calendar.png" width="400" /> |
+| Analytics | <img src="client/e2e/screenshots/06-analytics.png" width="400" /> |
+| Focus Timer | <img src="client/e2e/screenshots/07-focus-timer.png" width="400" /> |
+| AI Assistant | <img src="client/e2e/screenshots/08-ai-assistant.png" width="400" /> |
+| Settings | <img src="client/e2e/screenshots/09-settings.png" width="400" /> |
 
 ---
 

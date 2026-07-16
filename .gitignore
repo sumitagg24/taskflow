@@ -16,6 +16,8 @@ coverage/
 *.env
 .env.*.production
 .env.*.development
+server/.env
+client/.env
 
 # Test results / reports
 test-results/

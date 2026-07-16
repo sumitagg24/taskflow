@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Test coverage
+coverage/
+
+# Environment / secrets — never upload
+# NOTE: deliberately NOT ignoring ".env.example" (the safe template).
+.env
+.env.local
+.env.*.local
+*.env
+.env.*.production
+.env.*.development
+
+# Test results / reports
+test-results/
+playwright-report/
+blob-report/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

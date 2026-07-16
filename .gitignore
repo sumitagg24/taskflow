@@ -26,6 +26,9 @@ blob-report/
 logs/
 *.log
 
+# Local database data
+.mongo-data/
+
 # IDE
 .vscode/
 .idea/

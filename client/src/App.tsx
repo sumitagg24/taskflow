@@ -6,13 +6,9 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { getTasks, toTaskArray, deleteTask, restoreTask } from '@/api/tasks';
 import Sidebar from '@/components/layout/Sidebar';
 import Navbar from '@/components/layout/Navbar';
-import CommandPalette from '@/components/CommandPalette';
 import Dashboard, { PALETTE_USED_KEY } from '@/components/pages/Dashboard';
 import KanbanBoard from '@/components/KanbanBoard';
 import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
-import TaskForm from '@/components/TaskForm';
-import TaskDetailDrawer from '@/components/TaskDetailDrawer';
-import AIAssistant from '@/components/AIAssistant';
 import AuthPage from '@/components/pages/AuthPage';
 import ForgotPasswordPage from '@/components/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/components/pages/ResetPasswordPage';
@@ -23,6 +19,10 @@ import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
 import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard, LogoMark } from '@/components/ui';
 import { Plus, ListTodo } from 'lucide-react';
 
+const CommandPalette = lazy(() => import('@/components/CommandPalette'));
+const TaskForm = lazy(() => import('@/components/TaskForm'));
+const TaskDetailDrawer = lazy(() => import('@/components/TaskDetailDrawer'));
+const AIAssistant = lazy(() => import('@/components/AIAssistant'));
 const CalendarPage = lazy(() => import('@/components/pages/CalendarPage'));
 const SettingsPage = lazy(() => import('@/components/pages/SettingsPage'));
 const NotificationsPage = lazy(() => import('@/components/pages/NotificationsPage'));
@@ -413,19 +413,23 @@ function AppContent() {
           </main>
         </div>
 
-        <Modal
-          isOpen={showForm}
-          onClose={() => { setShowForm(false); setEditTask(null); }}
-          title={editTask ? 'Edit Task' : 'Create Task'}
-          subtitle={editTask ? 'Update task details' : 'Add a new task to your workspace'}
-          size="xl"
-        >
-          <TaskForm
-            existingTask={editTask}
-            onSuccess={handleFormSubmit}
-            onCancel={() => { setShowForm(false); setEditTask(null); }}
-          />
-        </Modal>
+        <Suspense fallback={null}>
+          <Modal
+            isOpen={showForm}
+            onClose={() => { setShowForm(false); setEditTask(null); }}
+            title={editTask ? 'Edit Task' : 'Create Task'}
+            subtitle={editTask ? 'Update task details' : 'Add a new task to your workspace'}
+            size="xl"
+          >
+            {showForm && (
+              <TaskForm
+                existingTask={editTask}
+                onSuccess={handleFormSubmit}
+                onCancel={() => { setShowForm(false); setEditTask(null); }}
+              />
+            )}
+          </Modal>
+        </Suspense>
 
         <DeleteConfirmModal
           isOpen={!!deleteTarget}
@@ -435,13 +439,17 @@ function AppContent() {
           loading={deleting}
         />
 
-        <TaskDetailDrawer
-          taskId={detailTaskId}
-          onClose={() => setDetailTaskId(null)}
-          onChanged={handleTaskChanged}
-          onEdit={(task) => { setDetailTaskId(null); handleEdit(task as TaskData); }}
-          onDelete={(task) => { setDetailTaskId(null); handleDeleteRequest(task as TaskData); }}
-        />
+        <Suspense fallback={null}>
+          {detailTaskId && (
+            <TaskDetailDrawer
+              taskId={detailTaskId}
+              onClose={() => setDetailTaskId(null)}
+              onChanged={handleTaskChanged}
+              onEdit={(task) => { setDetailTaskId(null); handleEdit(task as TaskData); }}
+              onDelete={(task) => { setDetailTaskId(null); handleDeleteRequest(task as TaskData); }}
+            />
+          )}
+        </Suspense>
 
         <button
           onClick={handleNewTask}
@@ -451,17 +459,21 @@ function AppContent() {
           <Plus size={22} strokeWidth={2.25} aria-hidden="true" />
         </button>
 
-        <AIAssistant isOpen={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
+        <Suspense fallback={null}>
+          <AIAssistant isOpen={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
+        </Suspense>
 
-        <CommandPalette
-          isOpen={paletteOpen}
-          onClose={() => setPaletteOpen(false)}
-          tasks={tasks}
-          onNavigate={handleNavigate}
-          onOpenTask={openTaskById}
-          onNewTask={handleNewTask}
-          onOpenAIAssistant={() => setShowAIAssistant(true)}
-        />
+        <Suspense fallback={null}>
+          <CommandPalette
+            isOpen={paletteOpen}
+            onClose={() => setPaletteOpen(false)}
+            tasks={tasks}
+            onNavigate={handleNavigate}
+            onOpenTask={openTaskById}
+            onNewTask={handleNewTask}
+            onOpenAIAssistant={() => setShowAIAssistant(true)}
+          />
+        </Suspense>
 
         <Toaster
           position="bottom-right"

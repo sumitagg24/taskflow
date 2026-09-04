@@ -34,6 +34,8 @@ export default defineConfig({
           'vendor-icons': ['lucide-react'],
           // Axios for API layer
           'vendor-axios': ['axios'],
+          // Realtime client loads with the notification shell, not first paint
+          'vendor-socket': ['socket.io-client'],
         },
       },
     },

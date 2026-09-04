@@ -310,6 +310,9 @@ function AppContent() {
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'}
             </span>
+            <p className="sr-only" role="status">
+              {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'} shown
+            </p>
           </div>
           <Filters filters={filters} onChange={setFilters} />
           {loading ? (
@@ -394,6 +397,12 @@ function AppContent() {
   return (
     <NotificationProvider>
       <div className="flex min-h-screen">
+        <a
+          href="#task-main"
+          className="sr-only-focusable absolute z-[60] m-2 rounded-lg bg-yellow-400 px-3 py-2 text-sm font-medium text-gray-950"
+        >
+          Skip to tasks
+        </a>
         <Sidebar activeSection={activeSection} onNavigate={handleNavigate} />
 
         <div className="flex flex-1 flex-col min-w-0">
@@ -406,7 +415,7 @@ function AppContent() {
             activeSection={activeSection}
           />
 
-          <main className="flex-1 overflow-auto" key={activeSection}>
+          <main id="task-main" className="flex-1 overflow-auto" key={activeSection}>
             <Suspense fallback={<PageLoader />}>
               {renderContent()}
             </Suspense>

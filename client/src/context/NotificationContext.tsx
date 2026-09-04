@@ -21,6 +21,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const socketRef = useRef<Socket | null>(null);
+  const failedToastShown = useRef(false);
   const { isAuthenticated, user } = useAuth();
   const userId = user?._id ?? null;
 
@@ -29,7 +30,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const { data } = await getNotifications({ unreadOnly: true, limit: 1 });
       setUnreadCount(data?.unreadCount ?? 0);
     } catch {
-      // silent — count refreshes on the next load / socket event
+      // Count is decoration: toast once per session instead of on every
+      // reconnect, then stay silent until the next load succeeds.
+      if (!failedToastShown.current) {
+        failedToastShown.current = true;
+        toast.error('Could not refresh notifications');
+      }
     }
   }, []);
 

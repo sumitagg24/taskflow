@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense, type ReactElement } from 'react';
+import { useState, useCallback, useEffect, useDeferredValue, lazy, Suspense, type ReactElement } from 'react';
 import { Toaster, toast } from 'sonner';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
@@ -79,6 +79,9 @@ function AppContent() {
   // populated task itself (comments, dependency titles) rather than reusing the
   // trimmed copy the list already holds.
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  // Board + palette render the (possibly large) task list: defer re-renders
+  // so typing in Filters (300ms debounce upstream) never blocks keystrokes.
+  const deferredTasks = useDeferredValue(tasks);
   // An email address (or username) we know still needs verifying, captured from
   // a refused sign-in so the user is not left with nowhere to go.
   const [pendingVerification, setPendingVerification] = useState<string | null>(null);
@@ -298,7 +301,7 @@ function AppContent() {
 
   const renderContent = () => {
     if (LIST_SECTIONS.includes(activeSection as (typeof LIST_SECTIONS)[number])) {
-      const scoped = activeSection === 'all' ? tasks : tasks.filter((t) => t.status === activeSection);
+      const scoped = activeSection === 'all' ? deferredTasks : deferredTasks.filter((t) => t.status === activeSection);
       const filtersActive = Object.values(filters).some((v) => v !== '');
 
       return (
@@ -476,7 +479,7 @@ function AppContent() {
           <CommandPalette
             isOpen={paletteOpen}
             onClose={() => setPaletteOpen(false)}
-            tasks={tasks}
+            tasks={deferredTasks}
             onNavigate={handleNavigate}
             onOpenTask={openTaskById}
             onNewTask={handleNewTask}

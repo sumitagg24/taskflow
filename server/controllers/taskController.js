@@ -24,6 +24,27 @@ const ALLOWED_SORT_FIELDS = new Set([
 const VALID_STATUSES = new Set(['backlog', 'pending', 'in-progress', 'completed', 'blocked', 'review', 'cancelled']);
 const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low', 'none']);
 
+const DEFAULT_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 200;
+
+// Offset pagination for list endpoints. `?paginate=false` keeps the legacy
+// bare-array shape for scripts that predate paging.
+const parsePagination = (query) => {
+  const paginate = query.paginate !== 'false';
+  let page = Number.parseInt(query.page, 10);
+  let limit = Number.parseInt(query.limit, 10);
+  if (!Number.isFinite(page) || page < 1) page = 1;
+  if (!Number.isFinite(limit) || limit < 1) limit = DEFAULT_PAGE_LIMIT;
+  if (limit > MAX_PAGE_LIMIT) limit = MAX_PAGE_LIMIT;
+  return { paginate, page, limit };
+};
+exports.parsePagination = parsePagination;
+
+// List rows never need the heaviest subdocuments: attachments, the embedded
+// activity log and time sessions. Comments stay (the board shows the count
+// badge); the detail endpoint still returns everything.
+const LIST_PROJECTION = '-attachments -activityLog -timeSessions';
+
 // A trashed task is restorable for this long; after that the nightly job purges
 // it. Surfaced to the client so the UI can promise the same window.
 const TRASH_RETENTION_DAYS = 30;
@@ -159,12 +180,26 @@ exports.getTasks = async (req, res, next) => {
     else if (sort === 'oldest') sortOption = { createdAt: 1 };
     else if (sort === 'updated') sortOption = { updatedAt: -1 };
 
-    const tasks = await Task.find(filter)
-      .sort(sortOption)
-      .populate('assignee', 'name email avatar')
-      .populate('comments.userId', 'name email avatar');
+    const { paginate, page, limit } = parsePagination(req.query);
 
-    res.json(tasks);
+    const baseQuery = () =>
+      Task.find(filter)
+        .sort(sortOption)
+        .select(LIST_PROJECTION)
+        .populate('assignee', 'name email avatar')
+        .lean();
+
+    if (!paginate) {
+      const tasks = await baseQuery();
+      return res.json(tasks);
+    }
+
+    const [tasks, total] = await Promise.all([
+      baseQuery().skip((page - 1) * limit).limit(limit),
+      Task.countDocuments(filter),
+    ]);
+
+    res.json({ data: tasks, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     next(error);
   }

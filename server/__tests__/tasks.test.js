@@ -7,6 +7,7 @@ const app = createApp();
 
 describe('Tasks Endpoints', () => {
   let token, userId;
+  const listOf = (body) => (Array.isArray(body) ? body : body.data);
 
   beforeEach(async () => {
     const setup = await createTestUser({ email: 'tasks@example.com' });
@@ -55,8 +56,8 @@ describe('Tasks Endpoints', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBe(0);
+      expect(Array.isArray(listOf(res.body))).toBe(true);
+      expect(listOf(res.body).length).toBe(0);
     });
 
     it('returns user tasks', async () => {
@@ -68,7 +69,7 @@ describe('Tasks Endpoints', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.length).toBe(2);
+      expect(listOf(res.body).length).toBe(2);
     });
 
     it('filters by status', async () => {
@@ -80,8 +81,8 @@ describe('Tasks Endpoints', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.length).toBe(1);
-      expect(res.body[0].title).toBe('Completed');
+      expect(listOf(res.body).length).toBe(1);
+      expect(listOf(res.body)[0].title).toBe('Completed');
     });
 
     it('searches by title', async () => {
@@ -93,8 +94,8 @@ describe('Tasks Endpoints', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.length).toBe(1);
-      expect(res.body[0].title).toMatch(/groceries/i);
+      expect(listOf(res.body).length).toBe(1);
+      expect(listOf(res.body)[0].title).toMatch(/groceries/i);
     });
   });
 
@@ -153,7 +154,7 @@ describe('Tasks Endpoints', () => {
       const list = await request(app)
         .get('/api/tasks')
         .set('Authorization', `Bearer ${token}`);
-      expect(list.body.map((t) => t._id)).not.toContain(String(task._id));
+      expect(listOf(list.body).map((t) => t._id)).not.toContain(String(task._id));
 
       const single = await request(app)
         .get(`/api/tasks/${task._id}`)
@@ -203,7 +204,7 @@ describe('Tasks Endpoints', () => {
       expect(res.body._id).toBe(String(task._id));
 
       const list = await request(app).get('/api/tasks').set('Authorization', `Bearer ${token}`);
-      expect(list.body.map((t) => t._id)).toContain(String(task._id));
+      expect(listOf(list.body).map((t) => t._id)).toContain(String(task._id));
     });
 
     it('refuses to restore a task that was never trashed', async () => {

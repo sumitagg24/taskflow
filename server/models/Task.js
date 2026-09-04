@@ -127,6 +127,11 @@ taskSchema.index({ userId: 1, deletedAt: 1, priority: 1 });
 taskSchema.index({ userId: 1, deletedAt: 1, dueDate: 1 });
 taskSchema.index({ userId: 1, deletedAt: 1, category: 1 });
 taskSchema.index({ userId: 1, deletedAt: 1, order: 1 });
+// Cover the remaining list sort paths (`updated`, `oldest`, `title`) so
+// sorted pages never fall back to an in-memory sort at scale.
+taskSchema.index({ userId: 1, deletedAt: 1, updatedAt: -1 });
+taskSchema.index({ userId: 1, deletedAt: 1, createdAt: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, title: 1 });
 taskSchema.index({ title: 'text', description: 'text' });
 
 module.exports = mongoose.model('Task', taskSchema);

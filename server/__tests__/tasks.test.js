@@ -121,6 +121,20 @@ describe('Tasks Endpoints', () => {
     });
   });
 
+  describe('tasks indexes', () => {
+    it('has covering indexes for list sorts', async () => {
+      const indexes = await Task.listIndexes();
+      const keys = indexes.map((idx) => Object.keys(idx.key).join(','));
+      expect(keys).toEqual(
+        expect.arrayContaining([
+          'userId,deletedAt,updatedAt',
+          'userId,deletedAt,createdAt',
+          'userId,deletedAt,title',
+        ])
+      );
+    });
+  });
+
   describe('GET /api/tasks/:id', () => {
     it('returns a single task', async () => {
       const task = await createTestTask(userId);

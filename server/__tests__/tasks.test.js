@@ -97,6 +97,28 @@ describe('Tasks Endpoints', () => {
       expect(listOf(res.body).length).toBe(1);
       expect(listOf(res.body)[0].title).toMatch(/groceries/i);
     });
+
+    it('finds tasks via text search', async () => {
+      await createTestTask(userId, { title: 'Quarterly planning session' });
+
+      const res = await request(app)
+        .get('/api/tasks?search=planning')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(listOf(res.body).length).toBe(1);
+    });
+
+    it('falls back to partial matching for short queries', async () => {
+      await createTestTask(userId, { title: 'Buy groceries' });
+
+      const res = await request(app)
+        .get('/api/tasks?search=gro')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(listOf(res.body).length).toBe(1);
+    });
   });
 
   describe('GET /api/tasks/:id', () => {

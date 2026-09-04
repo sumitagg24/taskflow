@@ -161,8 +161,16 @@ exports.getTasks = async (req, res, next) => {
       filter.dueDate = { ...filter.dueDate, $gte: d };
     }
 
-    if (search) {
-      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Full-text first (uses the title/description text index), regex fallback
+    // for partial/short queries that stemming would miss. `useText` is tracked
+    // so the count query below uses the same predicate that produced the rows.
+    let useText = false;
+    const rawSearch = typeof search === 'string' ? search.trim() : '';
+    if (rawSearch.length >= 2) {
+      filter.$text = { $search: rawSearch };
+      useText = true;
+    } else if (rawSearch) {
+      const escaped = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
         { title: { $regex: escaped, $options: 'i' } },
         { description: { $regex: escaped, $options: 'i' } },
@@ -190,14 +198,49 @@ exports.getTasks = async (req, res, next) => {
         .lean();
 
     if (!paginate) {
-      const tasks = await baseQuery();
+      let tasks = await baseQuery();
+      if (useText && tasks.length === 0) {
+        const { $text, ...rest } = filter;
+        const escaped = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        tasks = await Task.find({
+          ...rest,
+          $or: [
+            { title: { $regex: escaped, $options: 'i' } },
+            { description: { $regex: escaped, $options: 'i' } },
+          ],
+        })
+          .sort(sortOption)
+          .select(LIST_PROJECTION)
+          .populate('assignee', 'name email avatar')
+          .lean();
+      }
       return res.json(tasks);
     }
 
-    const [tasks, total] = await Promise.all([
-      baseQuery().skip((page - 1) * limit).limit(limit),
-      Task.countDocuments(filter),
+    const runPaged = (activeFilter) => Promise.all([
+      Task.find(activeFilter)
+        .sort(sortOption)
+        .select(LIST_PROJECTION)
+        .populate('assignee', 'name email avatar')
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Task.countDocuments(activeFilter),
     ]);
+
+    let [tasks, total] = await runPaged(filter);
+    if (useText && tasks.length === 0) {
+      const { $text, ...rest } = filter;
+      const escaped = rawSearch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const fallback = {
+        ...rest,
+        $or: [
+          { title: { $regex: escaped, $options: 'i' } },
+          { description: { $regex: escaped, $options: 'i' } },
+        ],
+      };
+      [tasks, total] = await runPaged(fallback);
+    }
 
     res.json({ data: tasks, page, limit, total, totalPages: Math.ceil(total / limit) });
   } catch (error) {

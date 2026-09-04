@@ -707,4 +707,29 @@ describe('Tasks Endpoints', () => {
       expect(res.body[0].title).toBe('Export test');
     });
   });
+
+  describe('GET /api/calendar/export', () => {
+    it('returns a valid ICS calendar', async () => {
+      await createTestTask(userId, { title: 'ICS task', dueDate: new Date() });
+
+      const res = await request(app)
+        .get('/api/calendar/export')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/text\/calendar/);
+      expect(res.text).toMatch(/BEGIN:VCALENDAR/);
+      expect(res.text).toMatch(/BEGIN:VEVENT/);
+    });
+
+    it('exports an empty-but-valid calendar when there are no tasks', async () => {
+      const res = await request(app)
+        .get('/api/calendar/export')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.text).toMatch(/BEGIN:VCALENDAR/);
+      expect(res.text).toMatch(/END:VCALENDAR/);
+    });
+  });
 });

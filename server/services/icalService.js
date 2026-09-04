@@ -1,4 +1,4 @@
-const ical = require('ical-generator');
+const { ICalCalendar } = require('ical-generator');
 
 /**
  * Strip characters illegal in RFC 5545 ICS property values.
@@ -17,47 +17,50 @@ function sanitize(text) {
  * @returns {String} - ICS content string
  */
 function generateCalendar(tasks, user) {
-  const cal = ical({
+  // ical-generator v11: `new ICalCalendar(...)`, event `id` (not `uid`),
+  // categories/attendees passed as data arrays (no `event.category()`).
+  const cal = new ICalCalendar({
     domain: 'taskflow.app',
     prodId: '//TaskFlow//TaskFlow Calendar//EN',
     method: 'PUBLISH',
     timezone: 'utc',
-    uniqueId: `taskflow-${Date.now()}@ical.taskflow.app`,
   });
 
   tasks.forEach((task) => {
-    const event = cal.createEvent({
-      uid: `task-${task._id}@ical.taskflow.app`,
+    const categories = [];
+    if (task.priority) categories.push({ name: String(task.priority) });
+    if (Array.isArray(task.tags)) {
+      task.tags.forEach((t) => { if (t) categories.push({ name: String(t) }); });
+    }
+
+    const eventData = {
+      id: `task-${task._id}`,
       summary: sanitize(task.title),
       description: sanitize(task.description),
-      start: task.dueDate ? new Date(task.dueDate) : null,
-      end: task.dueDate ? new Date(new Date(task.dueDate).getTime() + 3600000) : null, // +1 hour
-      location: task.category ? `Category: ${task.category}` : '',
+      location: task.category ? `Category: ${task.category}` : undefined,
       url: `https://taskflow.app/tasks/${task._id}`,
-      status: task.status === 'completed' ? 'CONFIRMED' : 'NEEDS-ACTION',
+      // v11 ICalEventStatus allows only CANCELLED/CONFIRMED/TENTATIVE.
+      status: task.status === 'completed' ? 'CONFIRMED' : 'TENTATIVE',
       created: task.createdAt,
       lastModified: task.updatedAt,
-    });
+    };
+    if (task.dueDate) {
+      eventData.start = new Date(task.dueDate);
+      eventData.end = new Date(new Date(task.dueDate).getTime() + 3600000); // +1 hour
+    }
+    if (categories.length > 0) eventData.categories = categories;
 
-    // Add attendees if task has assignees
-    if (task.assignee) {
-      event.attendee({
+    // Add attendee if task has an assignee with an email
+    if (task.assignee && task.assignee.email) {
+      eventData.attendees = [{
         name: task.assignee.name || task.assignee.email,
         email: task.assignee.email,
         role: 'REQ-PARTICIPANT',
         rsvp: true,
-      });
+      }];
     }
 
-    // Add category
-    if (task.priority) {
-      event.category(task.priority);
-    }
-
-    // Add tags as categories
-    if (task.tags && task.tags.length > 0) {
-      event.categories(task.tags);
-    }
+    cal.createEvent(eventData);
   });
 
   return cal.toString();

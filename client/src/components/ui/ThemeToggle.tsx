@@ -1,60 +1,52 @@
 import { useTheme } from '@/context/ThemeContext';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Monitor } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export function ThemeToggle() {
-  const { resolvedTheme, toggleTheme } = useTheme();
+const OPTIONS = [
+  { id: 'light' as const, icon: Sun, label: 'Light' },
+  { id: 'dark' as const, icon: Moon, label: 'Dark' },
+  { id: 'system' as const, icon: Monitor, label: 'System' },
+];
 
-  const isDark = resolvedTheme === 'dark';
+/**
+ * Three-state segmented toggle. The previous two-state switch could not express
+ * "follow my OS", which meant a user on auto dark mode had to flip it by hand
+ * twice a day.
+ */
+export function ThemeToggle({ className }: { className?: string }) {
+  const { theme, setTheme } = useTheme();
 
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={isDark}
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      onClick={toggleTheme}
+    <div
+      role="radiogroup"
+      aria-label="Color theme"
       className={cn(
-        'relative flex h-9 w-[4.5rem] items-center gap-1 rounded-full px-1 transition-all duration-300',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2',
-        isDark
-          ? 'bg-gray-800'
-          : 'bg-gray-100',
+        'inline-flex items-center gap-0.5 rounded-lg border border-gray-200 bg-card p-0.5 dark:border-gray-700',
+        className
       )}
     >
-      {/* Sliding background */}
-      <span
-        className={cn(
-          'absolute top-0.5 h-8 w-[3.25rem] rounded-full transition-all duration-300',
-          isDark
-            ? 'left-0.5 bg-[#1a1a23] shadow-inner'
-            : 'left-0.5 bg-white shadow-sm',
-        )}
-      />
-
-      {/* Sun icon */}
-      <span
-        className={cn(
-          'relative z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all duration-300',
-          !isDark
-            ? 'text-amber-500'
-            : 'text-gray-500',
-        )}
-      >
-        <Sun size={14} strokeWidth={2.5} />
-      </span>
-
-      {/* Moon icon */}
-      <span
-        className={cn(
-          'relative z-10 flex h-7 w-7 items-center justify-center rounded-full transition-all duration-300',
-          isDark
-            ? 'text-yellow-400'
-            : 'text-gray-400',
-        )}
-      >
-        <Moon size={14} strokeWidth={2.5} />
-      </span>
-    </button>
+      {OPTIONS.map(({ id, icon: Icon, label }) => {
+        const active = theme === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            aria-label={`${label} theme`}
+            title={`${label} theme`}
+            onClick={() => setTheme(id)}
+            className={cn(
+              'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+              active
+                ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-yellow-400'
+                : 'text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            )}
+          >
+            <Icon size={14} strokeWidth={2.25} aria-hidden="true" />
+          </button>
+        );
+      })}
+    </div>
   );
 }

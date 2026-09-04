@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, MailCheck, MailX } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import AuthShell from './auth/AuthShell';
+import { AuthLinkButton, AuthStatus } from './auth/primitives';
+
+const SHELL = {
+  headline: 'Confirming it is really you.',
+  points: [
+    'Verification keeps someone else from using your address',
+    'It only has to happen once per account',
+    'Links expire, but a new one is always a click away',
+  ],
+} as const;
 
 interface VerifyEmailPageProps {
   token: string;
@@ -15,97 +25,70 @@ export default function VerifyEmailPage({ token, onSuccess }: VerifyEmailPagePro
   const hasVerified = useRef(false);
 
   useEffect(() => {
-    const verify = async () => {
-      if (hasVerified.current) return;
-      hasVerified.current = true;
+    // The token is single-use, so StrictMode's double effect must not spend it twice.
+    if (hasVerified.current) return;
+    hasVerified.current = true;
 
-      if (!token) {
-        setStatus('error');
-        setMessage('Verification token is missing. Please check your email link or request a new verification email.');
-        return;
-      }
+    if (!token) {
+      setStatus('error');
+      setMessage(
+        'This link is missing its verification token. Open the link from your email again, or ask for a fresh one.'
+      );
+      return;
+    }
 
-      try {
-        await verifyEmail(token);
+    verifyEmail(token)
+      .then(() => {
         setStatus('success');
-        setMessage('Email verified successfully!');
-        setTimeout(() => {
-          onSuccess();
-        }, 2000);
-      } catch (err: any) {
+        // Scrub the spent token, then hand control back to the auth screen.
+        window.history.replaceState({}, '', '/');
+        setTimeout(onSuccess, 2200);
+      })
+      .catch((err: any) => {
         setStatus('error');
-        const errorMessage = err.response?.data?.message;
-        if (errorMessage) {
-          setMessage(errorMessage);
-        } else if (err.message) {
-          setMessage(err.message);
-        } else {
-          setMessage('Failed to verify email. The link may have expired. Please request a new verification email.');
-        }
-      }
-    };
-    verify();
-  }, [token, verifyEmail, onSuccess]);
+        setMessage(
+          err?.response?.data?.message ||
+            err?.message ||
+            'We could not verify that link — it may have already been used or expired.'
+        );
+      });
+    // Single-shot on mount: verifyEmail and onSuccess are recreated each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F7F8FA] dark:bg-[#0f0f13] p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2.5 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-yellow-400">
-              <Sparkles size={20} className="text-gray-900" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">TaskFlow</span>
-          </div>
-        </div>
+    <AuthShell headline={SHELL.headline} points={SHELL.points}>
+      {status === 'loading' && (
+        <AuthStatus
+          tone="neutral"
+          icon={<Loader2 size={24} className="animate-spin" />}
+          title="Verifying your email"
+        >
+          This takes a second. Keep this tab open.
+        </AuthStatus>
+      )}
 
-        <div className="rounded-2xl bg-white dark:bg-[#1a1a23] border border-gray-200 dark:border-gray-800 shadow-xl p-8 text-center">
-          {status === 'loading' && (
-            <div className="py-8">
-              <Loader2 size={40} className="animate-spin text-yellow-500 mx-auto mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">Verifying your email...</p>
-            </div>
-          )}
+      {status === 'success' && (
+        <AuthStatus
+          tone="success"
+          icon={<MailCheck size={26} />}
+          title="Email verified"
+          action={<AuthLinkButton onClick={onSuccess}>Go to sign in</AuthLinkButton>}
+        >
+          That is all we needed. Taking you back to sign in…
+        </AuthStatus>
+      )}
 
-          {status === 'success' && (
-            <div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-green-100 dark:bg-green-500/10 mb-4"
-              >
-                <CheckCircle2 size={32} className="text-green-500" />
-              </motion.div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Email Verified!</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Redirecting to sign in...</p>
-            </div>
-          )}
-
-          {status === 'error' && (
-            <div>
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-red-100 dark:bg-red-500/10 mb-4"
-              >
-                <XCircle size={32} className="text-red-500" />
-              </motion.div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Verification Failed</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{message}</p>
-              <button
-                onClick={onSuccess}
-                className="text-sm text-yellow-600 dark:text-yellow-400 hover:underline"
-              >
-                Back to sign in
-              </button>
-            </div>
-          )}
-        </div>
-      </motion.div>
-    </div>
+      {status === 'error' && (
+        <AuthStatus
+          tone="error"
+          icon={<MailX size={26} />}
+          title="Verification didn't finish"
+          action={<AuthLinkButton onClick={onSuccess}>Back to sign in</AuthLinkButton>}
+        >
+          {message}
+        </AuthStatus>
+      )}
+    </AuthShell>
   );
 }

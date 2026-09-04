@@ -89,6 +89,14 @@ const protect = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ message: 'User not found' });
     }
+    // Reject access tokens issued before the password last changed —
+    // a password change/reset revokes all previously-issued sessions.
+    if (req.user.passwordChangedAt && decoded.iat) {
+      const issuedAtMs = decoded.iat * 1000;
+      if (issuedAtMs < req.user.passwordChangedAt.getTime()) {
+        return res.status(401).json({ message: 'Session expired, please sign in again', code: 'TOKEN_EXPIRED' });
+      }
+    }
     if (!req.user.emailVerified) {
       return res.status(403).json({
         message: 'Please verify your email before accessing this resource.',

@@ -1,6 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, X, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { AlertTriangle } from 'lucide-react';
+import { Button } from './Button';
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
@@ -10,75 +11,106 @@ interface DeleteConfirmModalProps {
   message?: string;
   itemName?: string;
   loading?: boolean;
+  /** Label for the destructive action — "Delete", "Move to Trash", "Purge". */
+  confirmLabel?: string;
 }
 
 export function DeleteConfirmModal({
   isOpen,
   onClose,
   onConfirm,
-  title = 'Delete Task',
-  message = 'Are you sure you want to delete this task? This action cannot be undone.',
+  title = 'Delete task',
+  message = 'This moves the task to Trash. You can restore it for 30 days.',
   itemName,
   loading = false,
+  confirmLabel = 'Delete',
 }: DeleteConfirmModalProps) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  // Focus lands on Cancel, not Delete: a stray Enter on a destructive dialog
+  // should be a no-op, so the safe choice gets the default focus.
+  useEffect(() => {
+    if (!isOpen) return;
+    const restore = document.activeElement as HTMLElement | null;
+    const raf = requestAnimationFrame(() => cancelRef.current?.focus({ preventScroll: true }));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !loading) {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.addEventListener('keydown', onKeyDown, true);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+      restore?.focus?.({ preventScroll: true });
+    };
+  }, [isOpen, loading, onClose]);
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={onClose}
+            className="absolute inset-0 bg-gray-950/45 backdrop-blur-[2px]"
+            onClick={loading ? undefined : onClose}
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            aria-describedby="delete-confirm-message"
+            initial={{ opacity: 0, scale: 0.97, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className={cn(
-              'relative w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-800',
-              'bg-white dark:bg-[#1a1a23] shadow-2xl p-6'
-            )}
+            exit={{ opacity: 0, scale: 0.97, y: 8 }}
+            transition={{ duration: 0.17, ease: [0.22, 1, 0.36, 1] }}
+            className="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-card p-6 shadow-xl dark:border-gray-800"
           >
-            <button
-              onClick={onClose}
-              className="absolute right-4 top-4 rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
-            >
-              <X size={16} />
-            </button>
-
             <div className="flex flex-col items-center text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 dark:bg-red-500/10 mb-4">
-                <AlertTriangle size={24} className="text-red-500" />
+              <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-red-50 dark:bg-red-500/12">
+                <AlertTriangle size={20} className="text-red-500" aria-hidden="true" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">{title}</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{message}</p>
+              <h3
+                id="delete-confirm-title"
+                className="font-display mb-1.5 text-xl text-gray-900 dark:text-gray-100"
+              >
+                {title}
+              </h3>
+              <p
+                id="delete-confirm-message"
+                className="text-sm leading-relaxed text-gray-500 dark:text-gray-400"
+              >
+                {message}
+              </p>
               {itemName && (
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-1.5 mt-1 mb-3 max-w-full truncate">
-                  "{itemName}"
+                <p className="mt-3 max-w-full truncate rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                  {itemName}
                 </p>
               )}
             </div>
 
-            <div className="flex items-center gap-3 mt-5">
-              <button
+            <div className="mt-6 flex items-center gap-3">
+              <Button
+                ref={cancelRef}
+                variant="outline"
                 onClick={onClose}
                 disabled={loading}
-                className="flex-1 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                fullWidth
               >
                 Cancel
-              </button>
-              <button
-                onClick={onConfirm}
-                disabled={loading}
-                className="flex-1 rounded-xl bg-red-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600 active:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-                {loading ? 'Deleting...' : 'Delete'}
-              </button>
+              </Button>
+              <Button variant="danger" onClick={onConfirm} loading={loading} fullWidth>
+                {loading ? 'Deleting…' : confirmLabel}
+              </Button>
             </div>
           </motion.div>
         </div>

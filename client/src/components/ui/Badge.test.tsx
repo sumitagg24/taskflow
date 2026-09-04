@@ -73,22 +73,22 @@ describe('StatusBadge', () => {
 });
 
 describe('PriorityBadge', () => {
-  it('renders critical priority with emoji', () => {
-    render(<PriorityBadge priority="critical" />);
+  it('renders critical priority with a red dot', () => {
+    const { container } = render(<PriorityBadge priority="critical" />);
     expect(screen.getByText('Critical')).toBeInTheDocument();
-    expect(screen.getByText('🔴')).toBeInTheDocument();
+    expect(container.querySelector('.bg-red-500')).toBeTruthy();
   });
 
-  it('renders high priority', () => {
-    render(<PriorityBadge priority="high" />);
+  it('renders high priority with an orange dot', () => {
+    const { container } = render(<PriorityBadge priority="high" />);
     expect(screen.getByText('High')).toBeInTheDocument();
-    expect(screen.getByText('🟠')).toBeInTheDocument();
+    expect(container.querySelector('.bg-orange-400')).toBeTruthy();
   });
 
-  it('renders medium priority', () => {
-    render(<PriorityBadge priority="medium" />);
+  it('renders medium priority with a clay dot', () => {
+    const { container } = render(<PriorityBadge priority="medium" />);
     expect(screen.getByText('Medium')).toBeInTheDocument();
-    expect(screen.getByText('🟡')).toBeInTheDocument();
+    expect(container.querySelector('.bg-yellow-400')).toBeTruthy();
   });
 
   it('renders low priority', () => {
@@ -96,8 +96,9 @@ describe('PriorityBadge', () => {
     expect(screen.getByText('Low')).toBeInTheDocument();
   });
 
-  it('renders none priority without emoji', () => {
-    render(<PriorityBadge priority="none" />);
+  it('renders none priority with a hollow dot', () => {
+    const { container } = render(<PriorityBadge priority="none" />);
     expect(screen.getByText('None')).toBeInTheDocument();
+    expect(container.querySelector('.bg-transparent')).toBeTruthy();
   });
 });

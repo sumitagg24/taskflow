@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { reportCreateError } from '@/lib/planLimit';
 import { getTasks, createTask, calendarAPI } from '@/api/tasks';
 import { Modal } from '@/components/ui/Modal';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
@@ -73,8 +74,8 @@ export default function CalendarPage() {
       toast.success('Task created');
       setNewTitle('');
       setShowAddModal(false);
-    } catch {
-      toast.error('Failed to create task');
+    } catch (err) {
+      reportCreateError(err);
     }
   };
 

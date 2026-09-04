@@ -164,16 +164,63 @@ describe('Stats & Activity API', () => {
     mockedAxios.get = vi.fn().mockResolvedValue({ data: { total: 5 } });
     const { getStats } = await import('./tasks');
     const result = await getStats();
-    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/stats');
+    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/stats', { params: undefined });
     expect(result.data.total).toBe(5);
   });
 
   it('getActivityLog sends GET to /tasks/activity', async () => {
     const { getActivityLog } = await import('./tasks');
     await getActivityLog();
-    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/activity');
+    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/activity', { params: undefined });
   });
 
+  it('getActivityLog scopes the feed to one task when given an id', async () => {
+    const { getActivityLog } = await import('./tasks');
+    await getActivityLog({ taskId: 'abc123', limit: 25 });
+    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/activity', {
+      params: { taskId: 'abc123', limit: 25 },
+    });
+  });
+
+  it('getInsights sends GET to /tasks/insights with a day range and tz offset', async () => {
+    mockedAxios.get = vi.fn().mockResolvedValue({ data: { score: { value: 42 } } });
+    const { getInsights } = await import('./tasks');
+    await getInsights(7);
+    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/insights', {
+      params: { days: 7, tzOffset: expect.any(Number) },
+    });
+  });
+});
+
+describe('Trash API', () => {
+  it('getTrash sends GET to /tasks/trash', async () => {
+    mockedAxios.get = vi.fn().mockResolvedValue({ data: { tasks: [], retentionDays: 30 } });
+    const { getTrash } = await import('./tasks');
+    const result = await getTrash();
+    expect(mockedAxios.get).toHaveBeenCalledWith('/tasks/trash');
+    expect(result.data.retentionDays).toBe(30);
+  });
+
+  it('restoreTask sends POST to /tasks/:id/restore', async () => {
+    const { restoreTask } = await import('./tasks');
+    await restoreTask('abc');
+    expect(mockedAxios.post).toHaveBeenCalledWith('/tasks/abc/restore');
+  });
+
+  it('purgeTask sends DELETE to /tasks/:id/purge', async () => {
+    const { purgeTask } = await import('./tasks');
+    await purgeTask('abc');
+    expect(mockedAxios.delete).toHaveBeenCalledWith('/tasks/abc/purge');
+  });
+
+  it('emptyTrash sends DELETE to /tasks/trash', async () => {
+    const { emptyTrash } = await import('./tasks');
+    await emptyTrash();
+    expect(mockedAxios.delete).toHaveBeenCalledWith('/tasks/trash');
+  });
+});
+
+describe('Notifications API', () => {
   it('getNotifications sends GET to /notifications with default params', async () => {
     const { getNotifications } = await import('./tasks');
     await getNotifications();

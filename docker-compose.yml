@@ -24,6 +24,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-change-this-in-production}
       - PORT=5000
       - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - TRUST_PROXY=true
     depends_on:
       - mongodb
     restart: unless-stopped

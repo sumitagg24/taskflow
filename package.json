@@ -7,7 +7,12 @@
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
-    "start": "npm start --prefix server"
+    "start": "npm start --prefix server",
+    "test": "npm run test --prefix server && npm run test --prefix client",
+    "test:server": "npm run test --prefix server",
+    "test:client": "npm run test --prefix client",
+    "typecheck": "npm run typecheck --prefix client",
+    "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {
     "concurrently": "^9.2.3"

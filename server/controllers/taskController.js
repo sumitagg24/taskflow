@@ -1,6 +1,10 @@
 const Task = require('../models/Task');
 const ActivityLog = require('../models/ActivityLog');
+const User = require('../models/User');
+const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
+const { notifyUser } = require('../services/notificationService');
+const { enforceTaskLimit } = require('./growthController');
 const logger = require('../utils/logger');
 
 const ALLOWED_TASK_FIELDS = new Set([
@@ -19,6 +23,16 @@ const ALLOWED_SORT_FIELDS = new Set([
 
 const VALID_STATUSES = new Set(['backlog', 'pending', 'in-progress', 'completed', 'blocked', 'review', 'cancelled']);
 const VALID_PRIORITIES = new Set(['critical', 'high', 'medium', 'low', 'none']);
+
+// A trashed task is restorable for this long; after that the nightly job purges
+// it. Surfaced to the client so the UI can promise the same window.
+const TRASH_RETENTION_DAYS = 30;
+exports.TRASH_RETENTION_DAYS = TRASH_RETENTION_DAYS;
+
+// Every task query must be scoped to the owner *and* to live (non-trashed)
+// rows. Centralising it means a new endpoint can't accidentally serve or mutate
+// something the user has already thrown away.
+const ownedLive = (userId, extra = {}) => ({ ...extra, userId, deletedAt: null });
 
 const sanitizeString = (val) => {
   if (typeof val !== 'string') return val;
@@ -53,19 +67,78 @@ const logActivity = async (userId, userName, action, taskId, taskTitle, details,
   }
 };
 
+// `subtasks` and `dependencies` arrive as arrays of subdocuments, so they can't
+// ride along in ALLOWED_TASK_FIELDS: each entry has to be reshaped into exactly
+// the fields the schema owns, and dependencies additionally have to be proven to
+// point at tasks this caller can already see.
+const MAX_SUBTASKS = 100;
+const MAX_DEPENDENCIES = 25;
+
+const sanitizeSubtasks = (input) => {
+  if (!Array.isArray(input)) return null;
+  return input
+    .filter((s) => s && typeof s.title === 'string' && s.title.trim())
+    .slice(0, MAX_SUBTASKS)
+    .map((s, i) => ({
+      // Keep the _id when the client round-trips an existing subtask, so the
+      // per-subtask endpoints still resolve after a whole-form save.
+      ...(mongoose.Types.ObjectId.isValid(s._id) ? { _id: s._id } : {}),
+      title: s.title.trim().slice(0, 200),
+      completed: Boolean(s.completed),
+      order: Number.isFinite(Number(s.order)) ? Number(s.order) : i,
+    }));
+};
+
+const sanitizeDependencies = async (input, userId, selfId) => {
+  if (!Array.isArray(input)) return null;
+
+  const wanted = [];
+  const seen = new Set();
+  for (const dep of input.slice(0, MAX_DEPENDENCIES * 4)) {
+    const raw = dep && typeof dep === 'object' ? (dep.taskId?._id ?? dep.taskId) : dep;
+    const id = raw == null ? null : String(raw);
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) continue;
+    if (selfId && id === String(selfId)) continue; // a task cannot depend on itself
+    if (seen.has(id)) continue;
+    seen.add(id);
+    wanted.push({ taskId: id, type: dep?.type === 'blocks' ? 'blocks' : 'blocked-by' });
+    if (wanted.length >= MAX_DEPENDENCIES) break;
+  }
+  if (wanted.length === 0) return [];
+
+  // Only links to the caller's own live tasks survive. `GET /tasks/:id`
+  // populates dependency titles, so an unvalidated id would leak the title and
+  // status of somebody else's task.
+  const owned = await Task.find(
+    ownedLive(userId, { _id: { $in: wanted.map((w) => w.taskId) } })
+  )
+    .select('_id')
+    .lean();
+  const ownedIds = new Set(owned.map((t) => String(t._id)));
+  return wanted.filter((w) => ownedIds.has(w.taskId));
+};
+
 // Get all tasks for current user with filters
 exports.getTasks = async (req, res, next) => {
   try {
     const { status, priority, sort, search, category, tag, isFavorite, dueDateBefore, dueDateAfter } = req.query;
-    const filter = { userId: req.user._id };
+    const filter = ownedLive(req.user._id);
 
     if (status && VALID_STATUSES.has(status)) filter.status = status;
     if (priority && VALID_PRIORITIES.has(priority)) filter.priority = priority;
     if (category) filter.category = sanitizeString(category);
     if (tag) filter.tags = { $in: [sanitizeString(tag)] };
     if (isFavorite === 'true') filter.isFavorite = true;
-    if (dueDateBefore) filter.dueDate = { ...filter.dueDate, $lte: new Date(dueDateBefore) };
-    if (dueDateAfter) filter.dueDate = { ...filter.dueDate, $gte: new Date(dueDateAfter) };
+    if (dueDateBefore) {
+      const d = new Date(dueDateBefore);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: 'dueDateBefore must be a valid date' });
+      filter.dueDate = { ...filter.dueDate, $lte: d };
+    }
+    if (dueDateAfter) {
+      const d = new Date(dueDateAfter);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: 'dueDateAfter must be a valid date' });
+      filter.dueDate = { ...filter.dueDate, $gte: d };
+    }
 
     if (search) {
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -100,7 +173,7 @@ exports.getTasks = async (req, res, next) => {
 // Get single task
 exports.getTask = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id })
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }))
       .populate('assignee', 'name email avatar')
       .populate('comments.userId', 'name email avatar')
       .populate('dependencies.taskId', 'title status');
@@ -116,6 +189,11 @@ exports.createTask = async (req, res, next) => {
   try {
     if (!validate(req, res)) return;
 
+    // Free plans cap live, not-yet-completed tasks. Checked before any write so
+    // a blocked create leaves nothing half-made behind.
+    const limitHit = await enforceTaskLimit(req.user);
+    if (limitHit) return res.status(limitHit.status).json(limitHit.body);
+
     const rawTaskData = { ...req.body };
     const taskData = {};
     for (const key of ALLOWED_TASK_FIELDS) {
@@ -124,6 +202,13 @@ exports.createTask = async (req, res, next) => {
       }
     }
     taskData.userId = req.user._id;
+
+    // Subtasks composed in the create form used to be dropped on the floor here,
+    // because the whitelist above only copies scalar fields.
+    const newSubtasks = sanitizeSubtasks(req.body.subtasks);
+    if (newSubtasks) taskData.subtasks = newSubtasks;
+    const newDependencies = await sanitizeDependencies(req.body.dependencies, req.user._id);
+    if (newDependencies) taskData.dependencies = newDependencies;
 
     const task = await Task.create(taskData);
 
@@ -141,7 +226,21 @@ exports.createTask = async (req, res, next) => {
     }
 
     const populated = await Task.findById(task._id)
-      .populate('assignee', 'name email avatar');
+      .populate('assignee', 'name email avatar')
+      .populate('dependencies.taskId', 'title status');
+
+    // Notify the assignee when they are someone other than the creator.
+    if (task.assignee && task.assignee.toString() !== req.user._id.toString()) {
+      await notifyUser({
+        userId: task.assignee,
+        type: 'task_assigned',
+        title: 'New task assigned to you',
+        message: `"${task.title}" was assigned to you`,
+        relatedId: task._id,
+        relatedType: 'task',
+        metadata: { status: task.status },
+      });
+    }
 
     // Emit socket event
     const io = req.app.get('io');
@@ -160,7 +259,7 @@ exports.updateTask = async (req, res, next) => {
   try {
     if (!validate(req, res)) return;
 
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     const changes = [];
@@ -192,8 +291,45 @@ exports.updateTask = async (req, res, next) => {
       }
     }
 
+    // Same story as create: these two are arrays of subdocuments, so they get
+    // reshaped rather than copied. Sending `[]` is a legitimate "clear them all".
+    const nextSubtasks = sanitizeSubtasks(req.body.subtasks);
+    if (nextSubtasks) allowedUpdates.subtasks = nextSubtasks;
+    const nextDependencies = await sanitizeDependencies(req.body.dependencies, req.user._id, task._id);
+    if (nextDependencies) allowedUpdates.dependencies = nextDependencies;
+
+    const oldAssigneeId = task.assignee ? task.assignee.toString() : null;
+
     Object.assign(task, allowedUpdates);
     await task.save();
+
+    // Notify the new assignee when the assignment changes to another user.
+    const newAssignee = task.assignee ? task.assignee.toString() : null;
+    if (req.body.assignee !== undefined && newAssignee && newAssignee !== oldAssigneeId && newAssignee !== req.user._id.toString()) {
+      await notifyUser({
+        userId: task.assignee,
+        type: 'task_assigned',
+        title: 'New task assigned to you',
+        message: `"${task.title}" was assigned to you`,
+        relatedId: task._id,
+        relatedType: 'task',
+        metadata: { status: task.status },
+      });
+    }
+
+    // Notify the responsible user (assignee, else owner) on a status change.
+    const recipient = newAssignee ? task.assignee : req.user._id;
+    if (req.body.status && req.body.status !== oldStatus && recipient.toString() !== req.user._id.toString()) {
+      await notifyUser({
+        userId: recipient,
+        type: 'task_status_changed',
+        title: 'Task status changed',
+        message: `"${task.title}" changed from "${oldStatus}" to "${req.body.status}"`,
+        relatedId: task._id,
+        relatedType: 'task',
+        metadata: { status: req.body.status },
+      });
+    }
 
     // Log activity
     if (changes.length > 0) {
@@ -208,7 +344,8 @@ exports.updateTask = async (req, res, next) => {
 
     const populated = await Task.findById(task._id)
       .populate('assignee', 'name email avatar')
-      .populate('comments.userId', 'name email avatar');
+      .populate('comments.userId', 'name email avatar')
+      .populate('dependencies.taskId', 'title status');
 
     // Emit socket event
     const io = req.app.get('io');
@@ -222,15 +359,28 @@ exports.updateTask = async (req, res, next) => {
   }
 };
 
-// Delete task
+// Delete task (soft). The row stays for TRASH_RETENTION_DAYS so the client can
+// offer an instant Undo and a Trash view, instead of asking "are you sure?" and
+// then destroying the data anyway.
 exports.deleteTask = async (req, res, next) => {
   try {
-    const task = await Task.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOneAndUpdate(
+      ownedLive(req.user._id, { _id: req.params.id }),
+      { $set: { deletedAt: new Date() } },
+      { new: true }
+    );
     if (!task) return res.status(404).json({ message: 'Task not found' });
+
+    // Drop dependency edges that point at the trashed task so no live task
+    // renders a "blocked by <nothing>" chip.
+    await Task.updateMany(
+      ownedLive(req.user._id, { 'dependencies.taskId': task._id }),
+      { $pull: { dependencies: { taskId: task._id } } }
+    );
 
     await logActivity(
       req.user._id, req.user.name, 'task_deleted',
-      task._id, task.title, 'Task deleted'
+      task._id, task.title, 'Task moved to Trash'
     );
 
     // Emit socket event
@@ -239,16 +389,121 @@ exports.deleteTask = async (req, res, next) => {
       io.to(`user:${req.user._id}`).emit('task:deleted', { _id: task._id });
     }
 
-    res.json({ message: 'Task deleted successfully', _id: task._id });
+    res.json({
+      message: 'Task moved to Trash',
+      _id: task._id,
+      deletedAt: task.deletedAt,
+      retentionDays: TRASH_RETENTION_DAYS,
+    });
   } catch (error) {
     next(error);
+  }
+};
+
+// ========== Trash ==========
+exports.getTrash = async (req, res, next) => {
+  try {
+    const tasks = await Task.find({ userId: req.user._id, deletedAt: { $ne: null } })
+      .sort({ deletedAt: -1 })
+      .limit(200)
+      .populate('assignee', 'name email avatar')
+      .lean();
+
+    const retentionMs = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    res.json({
+      retentionDays: TRASH_RETENTION_DAYS,
+      tasks: tasks.map((t) => ({
+        ...t,
+        // Pre-computed so the UI can't drift from the server's idea of when a
+        // task actually disappears.
+        purgeAt: new Date(new Date(t.deletedAt).getTime() + retentionMs),
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.restoreTask = async (req, res, next) => {
+  try {
+    const task = await Task.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user._id, deletedAt: { $ne: null } },
+      { $set: { deletedAt: null } },
+      { new: true }
+    ).populate('assignee', 'name email avatar');
+    if (!task) return res.status(404).json({ message: 'Task not found in Trash' });
+
+    await logActivity(
+      req.user._id, req.user.name, 'task_restored',
+      task._id, task.title, 'Task restored from Trash'
+    );
+
+    const io = req.app.get('io');
+    if (io) io.to(`user:${req.user._id}`).emit('task:created', task);
+
+    res.json(task);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Permanent delete of one trashed task. Deliberately refuses to touch a live
+// task: the only route to destroying data is to trash it first.
+exports.purgeTask = async (req, res, next) => {
+  try {
+    const task = await Task.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user._id,
+      deletedAt: { $ne: null },
+    });
+    if (!task) return res.status(404).json({ message: 'Task not found in Trash' });
+
+    await logActivity(
+      req.user._id, req.user.name, 'task_purged',
+      task._id, task.title, 'Task permanently deleted'
+    );
+
+    res.json({ message: 'Task permanently deleted', _id: task._id });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.emptyTrash = async (req, res, next) => {
+  try {
+    const result = await Task.deleteMany({ userId: req.user._id, deletedAt: { $ne: null } });
+
+    await logActivity(
+      req.user._id, req.user.name, 'trash_emptied',
+      null, '', `Permanently deleted ${result.deletedCount} task(s)`
+    );
+
+    res.json({ message: 'Trash emptied', deletedCount: result.deletedCount });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Called by the scheduler: destroy anything that has sat in Trash past the
+// retention window.
+exports.purgeExpiredTrash = async () => {
+  try {
+    const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const result = await Task.deleteMany({ deletedAt: { $ne: null, $lte: cutoff } });
+    if (result.deletedCount) {
+      logger.info('Purged expired trash', { deletedCount: result.deletedCount, cutoff });
+    }
+    return result.deletedCount;
+  } catch (err) {
+    logger.error('Failed to purge expired trash', { error: err.message });
+    return 0;
   }
 };
 
 // ========== Subtask operations ==========
 exports.addSubtask = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     const subtask = { title: req.body.title, completed: false, order: task.subtasks.length };
@@ -268,7 +523,7 @@ exports.addSubtask = async (req, res, next) => {
 
 exports.updateSubtask = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     const subtask = task.subtasks.id(req.params.subtaskId);
@@ -295,7 +550,7 @@ exports.updateSubtask = async (req, res, next) => {
 
 exports.deleteSubtask = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     task.subtasks.pull({ _id: req.params.subtaskId });
@@ -313,7 +568,7 @@ exports.deleteSubtask = async (req, res, next) => {
 // ========== Comment operations ==========
 exports.addComment = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     const comment = {
@@ -327,6 +582,38 @@ exports.addComment = async (req, res, next) => {
     await task.save();
 
     await logActivity(req.user._id, req.user.name, 'comment_added', task._id, task.title, 'Comment added');
+
+    // Notify the task's assignee and owner about the comment, excluding the commenter.
+    const recipients = new Set([task.assignee, task.userId]);
+    for (const recipient of recipients) {
+      if (recipient && recipient.toString() !== req.user._id.toString()) {
+        await notifyUser({
+          userId: recipient,
+          type: 'comment_added',
+          title: 'New comment on your task',
+          message: `"${req.user.name}" commented on "${task.title}"`,
+          relatedId: task._id,
+          relatedType: 'task',
+        });
+      }
+    }
+
+    // Notify users mentioned in the comment (@username), excluding the commenter.
+    const mentions = (comment.text || '').match(/@([a-zA-Z0-9_]+)/g) || [];
+    for (const mention of new Set(mentions)) {
+      const username = mention.slice(1).toLowerCase();
+      const mentionedUser = await User.findOne({ username });
+      if (mentionedUser && mentionedUser._id.toString() !== req.user._id.toString()) {
+        await notifyUser({
+          userId: mentionedUser._id,
+          type: 'mention',
+          title: 'You were mentioned',
+          message: `"${req.user.name}" mentioned you on "${task.title}"`,
+          relatedId: task._id,
+          relatedType: 'task',
+        });
+      }
+    }
 
     const io = req.app.get('io');
     if (io) io.to(`user:${req.user._id}`).emit('task:updated', task);
@@ -342,7 +629,7 @@ exports.addComment = async (req, res, next) => {
 
 exports.deleteComment = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     task.comments.pull({ _id: req.params.commentId });
@@ -360,7 +647,7 @@ exports.deleteComment = async (req, res, next) => {
 // ========== Time tracking ==========
 exports.startTimer = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     task.timeSessions.push({ start: new Date() });
@@ -374,7 +661,7 @@ exports.startTimer = async (req, res, next) => {
 
 exports.stopTimer = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     const openSession = task.timeSessions.find(s => !s.end);
@@ -394,7 +681,7 @@ exports.stopTimer = async (req, res, next) => {
 // ========== Toggle favorite ==========
 exports.toggleFavorite = async (req, res, next) => {
   try {
-    const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
+    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
     if (!task) return res.status(404).json({ message: 'Task not found' });
 
     task.isFavorite = !task.isFavorite;
@@ -414,12 +701,18 @@ exports.updateOrder = async (req, res, next) => {
       return res.status(400).json({ message: 'orders must be an array' });
     }
 
-    const bulkOps = orders.map((o) => ({
-      updateOne: {
-        filter: { _id: o._id, userId: req.user._id },
-        update: { $set: { order: o.order, status: o.status } },
-      },
-    }));
+    const bulkOps = orders.map((o) => {
+      // Validate each entry to prevent NoSQL operator injection via _id/status.
+      if (typeof o?._id !== 'string' || (o.status !== undefined && !VALID_STATUSES.has(o.status))) {
+        throw Object.assign(new Error('Invalid order entry'), { statusCode: 400 });
+      }
+      return {
+        updateOne: {
+          filter: ownedLive(req.user._id, { _id: o._id }),
+          update: { $set: { order: Number(o.order) || 0, status: o.status } },
+        },
+      };
+    });
 
     await Task.bulkWrite(bulkOps);
     res.json({ message: 'Orders updated' });
@@ -435,6 +728,13 @@ exports.batchUpdate = async (req, res, next) => {
     if (!Array.isArray(taskIds) || taskIds.length === 0) {
       return res.status(400).json({ message: 'taskIds must be a non-empty array' });
     }
+    if (typeof updates !== 'object' || updates === null || Array.isArray(updates)) {
+      return res.status(400).json({ message: 'updates must be an object' });
+    }
+    // Reject non-string ids to prevent NoSQL operator injection.
+    if (!taskIds.every((id) => typeof id === 'string')) {
+      return res.status(400).json({ message: 'taskIds must contain only string ids' });
+    }
 
     const safeUpdates = {};
     for (const key of ALLOWED_BATCH_FIELDS) {
@@ -444,11 +744,11 @@ exports.batchUpdate = async (req, res, next) => {
     }
 
     await Task.updateMany(
-      { _id: { $in: taskIds }, userId: req.user._id },
+      ownedLive(req.user._id, { _id: { $in: taskIds } }),
       { $set: safeUpdates }
     );
 
-    const updated = await Task.find({ _id: { $in: taskIds }, userId: req.user._id });
+    const updated = await Task.find(ownedLive(req.user._id, { _id: { $in: taskIds } }));
     res.json(updated);
   } catch (error) {
     next(error);
@@ -458,31 +758,29 @@ exports.batchUpdate = async (req, res, next) => {
 // ========== Get stats ==========
 exports.getStats = async (req, res, next) => {
   try {
-    const [total, byStatus, byPriority, byCategory, overdue] = await Promise.all([
-      Task.countDocuments({ userId: req.user._id }),
-      Task.aggregate([
-        { $match: { userId: req.user._id } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
-      Task.aggregate([
-        { $match: { userId: req.user._id } },
-        { $group: { _id: '$priority', count: { $sum: 1 } } },
-      ]),
-      Task.aggregate([
-        { $match: { userId: req.user._id } },
-        { $group: { _id: '$category', count: { $sum: 1 } } },
-      ]),
-      Task.countDocuments({
-        userId: req.user._id,
-        dueDate: { $lte: new Date() },
-        status: { $nin: ['completed', 'cancelled'] },
-      }),
+    // `{ deletedAt: null }` also matches documents saved before the field
+    // existed, so no backfill migration is needed.
+    const live = ownedLive(req.user._id);
+    const groupBy = (field) => Task.aggregate([
+      { $match: live },
+      { $group: { _id: `$${field}`, count: { $sum: 1 } } },
     ]);
 
-    const completedToday = await Task.countDocuments({
-      userId: req.user._id,
+    const [total, byStatus, byPriority, byCategory, overdue, trashed] = await Promise.all([
+      Task.countDocuments(live),
+      groupBy('status'),
+      groupBy('priority'),
+      groupBy('category'),
+      Task.countDocuments(ownedLive(req.user._id, {
+        dueDate: { $lte: new Date() },
+        status: { $nin: ['completed', 'cancelled'] },
+      })),
+      Task.countDocuments({ userId: req.user._id, deletedAt: { $ne: null } }),
+    ]);
+
+    const completedToday = await Task.countDocuments(ownedLive(req.user._id, {
       completedAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-    });
+    }));
 
     res.json({
       total,
@@ -491,6 +789,7 @@ exports.getStats = async (req, res, next) => {
       byCategory,
       overdue,
       completedToday,
+      trashed,
     });
   } catch (error) {
     next(error);
@@ -500,9 +799,24 @@ exports.getStats = async (req, res, next) => {
 // ========== Get activity log ==========
 exports.getActivityLog = async (req, res, next) => {
   try {
-    const activities = await ActivityLog.find({ userId: req.user._id })
+    const filter = { userId: req.user._id };
+
+    // A task-scoped read backs the detail drawer's history panel. Without the
+    // filter it could only ever show whatever happened to fit in the global
+    // page, so an older task would look like it had no history at all.
+    if (req.query.taskId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.taskId)) {
+        return res.status(400).json({ message: 'Invalid task id' });
+      }
+      filter.taskId = req.query.taskId;
+    }
+
+    const requested = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 100) : 50;
+
+    const activities = await ActivityLog.find(filter)
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(limit);
     res.json(activities);
   } catch (error) {
     next(error);
@@ -513,7 +827,7 @@ exports.getActivityLog = async (req, res, next) => {
 exports.exportTasks = async (req, res, next) => {
   try {
     const { format = 'json' } = req.query;
-    const tasks = await Task.find({ userId: req.user._id })
+    const tasks = await Task.find(ownedLive(req.user._id))
       .populate('assignee', 'name email')
       .lean();
 
@@ -544,8 +858,8 @@ exports.exportTasks = async (req, res, next) => {
         escapeCsv(t.description || ''),
         t.status,
         t.priority,
-        t.dueDate ? new Date(t.dueDate).toISOString() : '',
-        t.category || '',
+        escapeCsv(t.dueDate ? new Date(t.dueDate).toISOString() : ''),
+        escapeCsv(t.category || ''),
         escapeCsv((t.tags || []).join('; ')),
         t.isFavorite ? 'Yes' : 'No',
         t.estimatedTime || 0,
@@ -567,12 +881,194 @@ exports.exportTasks = async (req, res, next) => {
   }
 };
 
+// ========== Insights ==========
+// Local-day bucketing. Everything in this endpoint is keyed by the *user's*
+// calendar day rather than UTC, because a streak that breaks at 5pm because the
+// server rolled over is worse than no streak at all. The client sends its
+// offset; we fall back to UTC when it doesn't.
+const dayKey = (date, offsetMinutes) =>
+  new Date(new Date(date).getTime() - offsetMinutes * 60_000).toISOString().slice(0, 10);
+
+const addDays = (key, delta) => {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+};
+
+// Longest run of consecutive day-keys present in the set, plus the run that ends
+// today (or yesterday — a streak shouldn't die until the day is actually over).
+const computeStreaks = (dayKeys, todayKey) => {
+  const sorted = [...dayKeys].sort();
+  let longest = 0;
+  let run = 0;
+  let prev = null;
+  for (const key of sorted) {
+    run = prev && addDays(prev, 1) === key ? run + 1 : 1;
+    if (run > longest) longest = run;
+    prev = key;
+  }
+
+  const set = new Set(dayKeys);
+  let cursor = set.has(todayKey) ? todayKey : addDays(todayKey, -1);
+  let current = 0;
+  while (set.has(cursor)) {
+    current += 1;
+    cursor = addDays(cursor, -1);
+  }
+
+  return { current, longest, todayDone: set.has(todayKey) };
+};
+
+const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) : 0);
+
+exports.getInsights = async (req, res, next) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 7), 180);
+    const tzOffset = Number.isFinite(Number(req.query.tzOffset))
+      ? Math.max(Math.min(Number(req.query.tzOffset), 840), -840)
+      : 0;
+
+    const tasks = await Task.find(ownedLive(req.user._id))
+      .select('title status priority category dueDate completedAt createdAt estimatedTime timeSpent')
+      .limit(5000)
+      .lean();
+
+    const now = new Date();
+    const todayKey = dayKey(now, tzOffset);
+    const windowStartKey = addDays(todayKey, -(days - 1));
+
+    // Per-day series, pre-seeded so a quiet day is a zero rather than a hole in
+    // the chart.
+    const series = [];
+    for (let i = 0; i < days; i += 1) {
+      series.push({ date: addDays(windowStartKey, i), created: 0, completed: 0 });
+    }
+    const indexOfDay = new Map(series.map((d, i) => [d.date, i]));
+
+    const completedDayKeys = new Set();
+    let completedInWindow = 0;
+    let createdInWindow = 0;
+    let last7 = 0;
+    let prev7 = 0;
+    const last7Start = addDays(todayKey, -6);
+    const prev7Start = addDays(todayKey, -13);
+
+    for (const t of tasks) {
+      if (t.createdAt) {
+        const key = dayKey(t.createdAt, tzOffset);
+        const idx = indexOfDay.get(key);
+        if (idx !== undefined) { series[idx].created += 1; createdInWindow += 1; }
+      }
+      if (t.completedAt) {
+        const key = dayKey(t.completedAt, tzOffset);
+        completedDayKeys.add(key);
+        const idx = indexOfDay.get(key);
+        if (idx !== undefined) { series[idx].completed += 1; completedInWindow += 1; }
+        if (key >= last7Start) last7 += 1;
+        else if (key >= prev7Start) prev7 += 1;
+      }
+    }
+
+    const open = tasks.filter((t) => !['completed', 'cancelled'].includes(t.status));
+    const completedAll = tasks.filter((t) => t.status === 'completed');
+
+    // Burndown walks backwards from today's open count, re-adding what was
+    // completed and removing what was created on each day.
+    const burndown = [];
+    let remaining = open.length;
+    for (let i = series.length - 1; i >= 0; i -= 1) {
+      burndown[i] = { date: series[i].date, remaining: Math.max(remaining, 0) };
+      remaining = remaining + series[i].completed - series[i].created;
+    }
+
+    const withDueDate = completedAll.filter((t) => t.dueDate && t.completedAt);
+    const onTime = withDueDate.filter((t) => new Date(t.completedAt) <= new Date(t.dueDate));
+    const activeDays = [...completedDayKeys].filter((k) => k >= windowStartKey).length;
+
+    const completionRate = pct(completedAll.length, tasks.length);
+    const onTimeRate = withDueDate.length ? pct(onTime.length, withDueDate.length) : 100;
+    const consistency = pct(activeDays, days);
+    // Momentum: this week against last week, centred on 50 so a flat week reads
+    // as neutral instead of as a failure.
+    const momentum = prev7 === 0
+      ? (last7 > 0 ? 75 : 40)
+      : Math.max(0, Math.min(100, Math.round(50 * (last7 / prev7))));
+
+    const score = Math.round(
+      completionRate * 0.4 + onTimeRate * 0.25 + momentum * 0.2 + consistency * 0.15
+    );
+    const grade = score >= 85 ? 'Excellent' : score >= 70 ? 'Strong' : score >= 50 ? 'Steady' : score >= 30 ? 'Building' : 'Getting started';
+
+    // Estimates vs actuals — only tasks that carry both numbers can say
+    // anything about estimation accuracy.
+    const tracked = tasks.filter((t) => (t.timeSpent || 0) > 0);
+    const estimated = completedAll.filter((t) => (t.estimatedTime || 0) > 0 && (t.timeSpent || 0) > 0);
+    const estimatedTotal = estimated.reduce((s, t) => s + t.estimatedTime, 0);
+    const spentOnEstimated = estimated.reduce((s, t) => s + t.timeSpent, 0);
+
+    const byCategory = new Map();
+    for (const t of tracked) {
+      const key = t.category || 'uncategorized';
+      byCategory.set(key, (byCategory.get(key) || 0) + (t.timeSpent || 0));
+    }
+
+    const overdueTasks = open.filter((t) => t.dueDate && new Date(t.dueDate) < now);
+    const oldestOverdueDays = overdueTasks.reduce((max, t) => {
+      const d = Math.floor((now - new Date(t.dueDate)) / 86_400_000);
+      return d > max ? d : max;
+    }, 0);
+
+    res.json({
+      range: { days, from: windowStartKey, to: todayKey, tzOffset },
+      score: {
+        value: score,
+        grade,
+        components: { completionRate, onTimeRate, momentum, consistency },
+      },
+      streak: computeStreaks(completedDayKeys, todayKey),
+      velocity: series,
+      burndown,
+      throughput: {
+        completed: completedInWindow,
+        created: createdInWindow,
+        net: createdInWindow - completedInWindow,
+        last7,
+        prev7,
+      },
+      time: {
+        spentTotal: tracked.reduce((s, t) => s + (t.timeSpent || 0), 0),
+        trackedCount: tracked.length,
+        estimatedTotal,
+        spentOnEstimated,
+        // >100% means work consistently runs longer than estimated.
+        accuracy: estimatedTotal > 0 ? Math.round((spentOnEstimated / estimatedTotal) * 100) : null,
+        byCategory: [...byCategory.entries()]
+          .map(([category, minutes]) => ({ category, minutes }))
+          .sort((a, b) => b.minutes - a.minutes)
+          .slice(0, 8),
+      },
+      backlog: {
+        open: open.length,
+        overdue: overdueTasks.length,
+        oldestOverdueDays,
+        byPriority: ['critical', 'high', 'medium', 'low', 'none'].map((priority) => ({
+          priority,
+          count: open.filter((t) => t.priority === priority).length,
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ========== Update recurring tasks (called by cron) ==========
 exports.processRecurringTasks = async () => {
   try {
     const now = new Date();
     const tasks = await Task.find({
       isRecurring: true,
+      deletedAt: null,
       recurringNextDate: { $lte: now },
       status: { $in: ['completed', 'cancelled'] },
     });

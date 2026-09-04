@@ -2,8 +2,11 @@ import { useState, useCallback, useRef, useMemo, useEffect, DragEvent, FormEvent
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MoreHorizontal, GripVertical, Trash2, Flame, MessageSquare, CheckSquare, Clock, Paperclip, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { reportCreateError } from '@/lib/planLimit';
 import { PriorityBadge } from './ui/Badge';
-import { updateTask, deleteTask, createTask, batchUpdate, timeTrackingAPI } from '@/api/tasks';
+import { Button } from './ui/Button';
+import { DeleteConfirmModal } from './ui/DeleteConfirmModal';
+import { updateTask, deleteTask, createTask, batchUpdate, restoreTask } from '@/api/tasks';
 import { BulkActionsBar } from './BulkActionsBar';
 import { TimeTrackingModal } from './TimeTrackingModal';
 import { toast } from 'sonner';
@@ -27,30 +30,43 @@ interface CardType {
 }
 
 const columns: { id: ColumnType; title: string; color: string }[] = [
-  { id: 'backlog', title: 'Backlog', color: 'text-gray-400' },
-  { id: 'pending', title: 'To Do', color: 'text-blue-500' },
-  { id: 'in-progress', title: 'In Progress', color: 'text-orange-500' },
-  { id: 'completed', title: 'Completed', color: 'text-green-500' },
+  { id: 'backlog', title: 'Backlog', color: 'text-gray-500 dark:text-gray-400' },
+  { id: 'pending', title: 'To Do', color: 'text-blue-600 dark:text-blue-300' },
+  { id: 'in-progress', title: 'In Progress', color: 'text-orange-600 dark:text-orange-300' },
+  { id: 'completed', title: 'Completed', color: 'text-green-600 dark:text-green-300' },
 ];
 
+// Column beds are a flat warm tint, not a shadowed panel — the cards carry the
+// only borders on the board.
 const columnBgColors: Record<string, string> = {
-  backlog: 'bg-gray-50 dark:bg-gray-800/30',
-  pending: 'bg-blue-50/50 dark:bg-blue-500/5',
-  'in-progress': 'bg-orange-50/50 dark:bg-orange-500/5',
-  completed: 'bg-green-50/50 dark:bg-green-500/5',
+  backlog: 'bg-gray-100/70 dark:bg-gray-800/30',
+  pending: 'bg-blue-50/60 dark:bg-blue-500/6',
+  'in-progress': 'bg-orange-50/60 dark:bg-orange-500/6',
+  completed: 'bg-green-50/60 dark:bg-green-500/6',
+};
+
+// Priority rail on the card's left edge, in the app's clay-family palette
+// rather than the stock Tailwind reds/yellows.
+const PRIORITY_RAIL: Record<string, string> = {
+  critical: '#c64545',
+  high: '#d89f55',
+  medium: '#cc785c',
+  low: '#b0aea5',
+  none: 'var(--border-color)',
 };
 
 interface KanbanBoardProps {
   tasks: CardType[];
   onRefresh: () => void;
-  onEdit: (task: any) => void;
   onDelete?: (task: any) => void;
 }
 
-export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: KanbanBoardProps) {
+export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardProps) {
   const [cards, setCards] = useState<CardType[]>(tasks);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [timeTrackTask, setTimeTrackTask] = useState<CardType | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Keep cards in sync with parent task list — useEffect prevents the
   // double-render caused by calling setState during render.
@@ -76,43 +92,49 @@ export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: Kanb
     }
   }, [onRefresh]);
 
-  const handleDeleteCard = useCallback(async (cardId: string) => {
-    const card = cards.find(c => c._id === cardId);
-    if (onDelete && card) {
-      onDelete(card);
-    } else {
-      // Fallback direct delete (for BurnBarrel)
-      try {
-        await deleteTask(cardId);
-        setCards(pv => pv.filter(c => c._id !== cardId));
-        setSelected(prev => {
-          if (!prev.has(cardId)) return prev;
-          const next = new Set(prev);
-          next.delete(cardId);
-          return next;
-        });
-        toast.success('Task deleted');
-      } catch {
-        toast.error('Failed to delete task');
-      }
-    }
-  }, [cards, onDelete]);
+  const dropFromSelection = useCallback((cardId: string) => {
+    setSelected(prev => {
+      if (!prev.has(cardId)) return prev;
+      const next = new Set(prev);
+      next.delete(cardId);
+      return next;
+    });
+  }, []);
 
-  const handleBurnDelete = useCallback(async (cardId: string) => {
+  // Deleting is a soft delete on the server, so the honest affordance is an
+  // instant Undo rather than a confirmation the user has to read.
+  const trashCard = useCallback(async (cardId: string) => {
+    const card = cards.find(c => c._id === cardId);
     try {
       await deleteTask(cardId);
       setCards(pv => pv.filter(c => c._id !== cardId));
-      setSelected(prev => {
-        if (!prev.has(cardId)) return prev;
-        const next = new Set(prev);
-        next.delete(cardId);
-        return next;
+      dropFromSelection(cardId);
+      toast.success(card ? `“${card.title}” moved to Trash` : 'Moved to Trash', {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              const { data } = await restoreTask(cardId);
+              setCards(pv => (pv.some(c => c._id === data._id) ? pv : [...pv, data]));
+              toast.success('Restored');
+            } catch {
+              toast.error('Could not restore — it is still in Trash');
+            }
+          },
+        },
       });
-      toast.success('Task deleted');
     } catch {
       toast.error('Failed to delete task');
     }
-  }, []);
+  }, [cards, dropFromSelection]);
+
+  const handleDeleteCard = useCallback(async (cardId: string) => {
+    const card = cards.find(c => c._id === cardId);
+    // The shell owns the confirm-and-undo flow when it passed a handler down;
+    // otherwise (BurnBarrel) trash it here.
+    if (onDelete && card) onDelete(card);
+    else await trashCard(cardId);
+  }, [cards, onDelete, trashCard]);
 
   const handleAddCard = useCallback(async (title: string, column: ColumnType) => {
     const tempId = `temp-${Math.random()}`;
@@ -123,9 +145,9 @@ export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: Kanb
       const { data } = await createTask({ title, status: column });
       setCards(pv => pv.map(c => c._id === tempId ? { ...data, status: column } : c));
       toast.success('Task created');
-    } catch {
+    } catch (err) {
       setCards(pv => pv.filter(c => c._id !== tempId));
-      toast.error('Failed to create task');
+      reportCreateError(err);
     }
   }, []);
 
@@ -167,19 +189,41 @@ export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: Kanb
     }
   }, [selected, clearSelection]);
 
+  // Bulk delete is the one place a dialog earns its keep: it is many rows at
+  // once, so the count gets confirmed before anything moves.
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} selected task${ids.length === 1 ? '' : 's'}?`)) return;
+    setBulkDeleting(true);
     try {
       await Promise.all(ids.map(id => deleteTask(id)));
       setCards(prev => prev.filter(c => !selected.has(c._id)));
-      toast.success(`${ids.length} task${ids.length === 1 ? '' : 's'} deleted`);
+      setBulkDeleteOpen(false);
+      toast.success(`${ids.length} task${ids.length === 1 ? '' : 's'} moved to Trash`, {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            const results = await Promise.allSettled(ids.map(id => restoreTask(id)));
+            const restored = results
+              .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+              .map(r => r.value.data);
+            setCards(prev => {
+              const seen = new Set(prev.map(c => c._id));
+              return [...prev, ...restored.filter(t => !seen.has(t._id))];
+            });
+            if (restored.length === ids.length) toast.success('Restored');
+            else toast.error(`Restored ${restored.length} of ${ids.length} — the rest are in Trash`);
+          },
+        },
+      });
       clearSelection();
     } catch {
       toast.error('Bulk delete failed');
+      onRefresh();
+    } finally {
+      setBulkDeleting(false);
     }
-  }, [selected, clearSelection]);
+  }, [selected, clearSelection, onRefresh]);
 
   // Collect unique existing tags from selected cards for tag-picker suggestions
   const selectedTags = useMemo(() => {
@@ -217,7 +261,6 @@ export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: Kanb
               cards={columnCards}
               onUpdateStatus={updateCardStatus}
               onDelete={handleDeleteCard}
-              onEdit={onEdit}
               onAddCard={handleAddCard}
               selected={selected}
               onToggleSelect={toggleSelect}
@@ -225,7 +268,7 @@ export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: Kanb
             />
           );
         })}
-        <BurnBarrel onDelete={handleBurnDelete} />
+        <BurnBarrel onDelete={trashCard} />
       </div>
 
       <AnimatePresence>
@@ -235,13 +278,23 @@ export default function KanbanBoard({ tasks, onRefresh, onEdit, onDelete }: Kanb
             totalTasks={cards.length}
             onSelectStatus={handleBulkStatus}
             onSelectPriority={handleBulkPriority}
-            onDelete={handleBulkDelete}
+            onDelete={() => setBulkDeleteOpen(true)}
             onSelectTags={handleBulkTag}
             existingTags={selectedTags}
             onClose={clearSelection}
           />
         )}
       </AnimatePresence>
+
+      <DeleteConfirmModal
+        isOpen={bulkDeleteOpen}
+        onClose={() => { if (!bulkDeleting) setBulkDeleteOpen(false); }}
+        onConfirm={handleBulkDelete}
+        title={`Move ${selected.size} task${selected.size === 1 ? '' : 's'} to Trash`}
+        message="They stay restorable for 30 days, and you can undo this right after."
+        confirmLabel="Move to Trash"
+        loading={bulkDeleting}
+      />
 
       {timeTrackTask && (
         <TimeTrackingModal
@@ -263,14 +316,13 @@ interface ColumnProps {
   column: ColumnType;
   onUpdateStatus: (id: string, status: string) => void;
   onDelete: (id: string) => void;
-  onEdit: (task: any) => void;
   onAddCard: (title: string, col: ColumnType) => void;
   selected: Set<string>;
   onToggleSelect: (id: string) => void;
   onStartTimer: (task: CardType) => void;
 }
 
-function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, onDelete, onEdit, onAddCard, selected, onToggleSelect, onStartTimer }: ColumnProps) {
+function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, onDelete, onAddCard, selected, onToggleSelect, onStartTimer }: ColumnProps) {
   const [active, setActive] = useState(false);
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState('');
@@ -352,18 +404,20 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
 
   return (
     <div className="flex w-72 shrink-0 flex-col">
-      <div className="flex items-center justify-between mb-3 px-1">
+      <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
-          <h3 className={cn('text-sm font-semibold uppercase tracking-wider', headingColor)}>{title}</h3>
-          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 text-[10px] font-medium text-gray-500">
+          <h3 className={cn('caption-upper', headingColor)}>{title}</h3>
+          <span className="bg-surface-strong flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[10px] font-medium tabular-nums text-gray-600 dark:text-gray-300">
             {cards.length}
           </span>
         </div>
         <button
           onClick={() => setAdding(true)}
-          className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="hover:bg-card-hover rounded-lg p-1 text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+          aria-label={`Add a task to ${title}`}
+          title={`Add a task to ${title}`}
         >
-          <Plus size={16} />
+          <Plus size={16} aria-hidden="true" />
         </button>
       </div>
 
@@ -372,18 +426,14 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={cn(
-          'flex flex-col gap-2 rounded-2xl p-3 transition-colors min-h-[200px]',
-          active ? 'bg-yellow-50/50 dark:bg-yellow-500/10 ring-2 ring-yellow-400/30' : bgColor
+          'flex min-h-[200px] flex-col gap-2 rounded-2xl p-3 transition-colors',
+          active ? 'bg-yellow-50 ring-2 ring-yellow-400/35 dark:bg-yellow-500/10' : bgColor
         )}
       >
         <AnimatePresence>
           {cards.length === 0 && !adding && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="py-10 text-center"
-            >
-              <p className="text-xs text-gray-400">Drop tasks here</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-10 text-center">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Drop tasks here</p>
             </motion.div>
           )}
           {cards.map(c => (
@@ -392,7 +442,6 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
               card={c}
               onDragStart={handleDragStart}
               onDelete={onDelete}
-              onEdit={onEdit}
               isSelected={selected.has(c._id)}
               onToggleSelect={onToggleSelect}
               onStartTimer={onStartTimer}
@@ -406,36 +455,40 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
           <motion.form
             layout
             onSubmit={handleAddSubmit}
-            className="rounded-xl border border-yellow-400/30 bg-yellow-50 dark:bg-yellow-500/5 p-3"
+            className="bg-card rounded-xl border border-yellow-400/40 p-3 ring-1 ring-yellow-400/10"
           >
+            <label className="sr-only" htmlFor={`add-card-${column}`}>
+              New task in {title}
+            </label>
             <textarea
+              id={`add-card-${column}`}
               value={text}
               onChange={(e) => setText(e.target.value)}
               autoFocus
-              placeholder="Add new task..."
-              className="w-full resize-none bg-transparent text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 outline-none"
+              placeholder="What needs doing?"
+              className="w-full resize-none bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-gray-100 dark:placeholder:text-gray-500"
               rows={2}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleAddSubmit(e);
                 }
+                if (e.key === 'Escape') {
+                  setAdding(false);
+                  setText('');
+                }
               }}
             />
-            <div className="mt-2 flex items-center justify-end gap-1.5">
-              <button
-                type="button"
-                onClick={() => { setAdding(false); setText(''); }}
-                className="rounded-lg px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-yellow-400 px-3 py-1 text-xs font-semibold text-gray-900 hover:bg-yellow-500 transition-colors"
-              >
-                Add
-              </button>
+            <div className="mt-2 flex items-center justify-between gap-1.5">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">Enter to add</span>
+              <div className="flex items-center gap-1.5">
+                <Button type="button" variant="ghost" size="sm" onClick={() => { setAdding(false); setText(''); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={!text.trim()}>
+                  Add
+                </Button>
+              </div>
             </div>
           </motion.form>
         ) : null}
@@ -448,13 +501,12 @@ interface CardProps {
   card: CardType;
   onDragStart: (e: DragEvent, card: CardType) => void;
   onDelete: (id: string) => void;
-  onEdit: (task: any) => void;
   isSelected: boolean;
   onToggleSelect: (id: string) => void;
   onStartTimer: (task: CardType) => void;
 }
 
-function Card({ card, onDragStart, onDelete, onEdit, isSelected, onToggleSelect, onStartTimer }: CardProps) {
+function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStartTimer }: CardProps) {
   const subtaskProgress = card.subtasks?.length
     ? Math.round((card.subtasks.filter((s: any) => s.completed).length / card.subtasks.length) * 100)
     : -1;
@@ -471,11 +523,14 @@ function Card({ card, onDragStart, onDelete, onEdit, isSelected, onToggleSelect,
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
         className={cn(
-          'group cursor-grab rounded-xl border bg-white dark:bg-gray-800/80 p-3.5 transition-all hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 active:cursor-grabbing',
-          isOverdue ? 'border-red-200 dark:border-red-500/30' : 'border-gray-100 dark:border-gray-700/50',
+          'group bg-card cursor-grab rounded-xl border p-3.5 transition-colors active:cursor-grabbing',
+          isOverdue ? 'border-red-300/70 dark:border-red-500/30' : 'border-hairline hover:border-gray-300 dark:hover:border-gray-600',
           isSelected && 'ring-2 ring-yellow-400'
         )}
-        style={{ borderLeftWidth: '3px', borderLeftColor: card.priority === 'critical' ? '#DC2626' : card.priority === 'high' ? '#F97316' : card.priority === 'medium' ? '#FACC15' : '#E5E7EB' }}
+        style={{
+          borderLeftWidth: '3px',
+          borderLeftColor: PRIORITY_RAIL[card.priority ?? 'none'] ?? PRIORITY_RAIL.none,
+        }}
       >
         <div
           draggable="true"
@@ -491,31 +546,49 @@ function Card({ card, onDragStart, onDelete, onEdit, isSelected, onToggleSelect,
                 'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
                 isSelected
                   ? 'border-yellow-400 bg-yellow-400 text-gray-900'
-                  : 'border-gray-300 dark:border-gray-600 hover:border-yellow-400'
+                  : 'border-gray-300 hover:border-yellow-400 dark:border-gray-600'
               )}
+              aria-pressed={isSelected}
+              aria-label={isSelected ? `Deselect “${card.title}”` : `Select “${card.title}” for bulk actions`}
               title={isSelected ? 'Deselect' : 'Select for bulk action'}
             >
-              {isSelected && <CheckSquare size={12} />}
+              {isSelected && <CheckSquare size={12} aria-hidden="true" />}
             </button>
-            <GripVertical size={14} className="mt-0.5 shrink-0 text-gray-300 dark:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug">{card.title}</p>
+            <GripVertical
+              size={14}
+              className="mt-0.5 shrink-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-600"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">{card.title}</p>
             </div>
-            <div className="flex shrink-0 gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
               <button
                 onClick={(e) => { e.stopPropagation(); onStartTimer(card); }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-yellow-500 transition-colors"
+                className="hover:bg-surface-strong rounded p-1 text-gray-500 transition-colors hover:text-yellow-600 dark:text-gray-400"
+                aria-label={`Track time on “${card.title}”`}
                 title="Start time tracking"
               >
-                <Timer size={14} />
+                <Timer size={14} aria-hidden="true" />
               </button>
+              {/* Opens the detail drawer. Dispatched rather than threaded as a
+                  prop: `open-task` is already the app's channel for this (the
+                  notification click-through uses it), and the alternative is
+                  passing a handler down through Column into every Card. */}
               <button
-                onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.dispatchEvent(
+                    new CustomEvent('open-task', { detail: { id: card._id } })
+                  );
+                }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                className="hover:bg-surface-strong rounded p-1 text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                aria-label={`Open “${card.title}”`}
+                title="Open task"
               >
-                <MoreHorizontal size={14} />
+                <MoreHorizontal size={14} aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -529,10 +602,15 @@ function Card({ card, onDragStart, onDelete, onEdit, isSelected, onToggleSelect,
           {card.tags && card.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {card.tags.slice(0, 3).map((tag: string, i: number) => (
-                <span key={i} className="inline-flex items-center rounded-md bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300">
+                <span key={i} className="bg-surface-strong inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300">
                   {tag}
                 </span>
               ))}
+              {card.tags.length > 3 && (
+                <span className="inline-flex items-center px-1 text-[10px] text-gray-500 dark:text-gray-400">
+                  +{card.tags.length - 3}
+                </span>
+              )}
             </div>
           )}
 
@@ -543,29 +621,30 @@ function Card({ card, onDragStart, onDelete, onEdit, isSelected, onToggleSelect,
               {card.dueDate && (
                 <span className={cn(
                   'flex items-center gap-1 text-[10px]',
-                  isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'
+                  isOverdue ? 'font-medium text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
                 )}>
-                  <Clock size={10} />
+                  <Clock size={10} aria-hidden="true" />
                   {new Date(card.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  {isOverdue && <span className="sr-only"> (overdue)</span>}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 text-gray-400">
+            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
               {(card.comments?.length ?? 0) > 0 && (
-                <span className="flex items-center gap-0.5 text-[10px]">
-                  <MessageSquare size={10} />
+                <span className="flex items-center gap-0.5 text-[10px]" title={`${card.comments!.length} comments`}>
+                  <MessageSquare size={10} aria-hidden="true" />
                   {card.comments!.length}
                 </span>
               )}
               {(card.subtasks?.length ?? 0) > 0 && (
-                <span className="flex items-center gap-0.5 text-[10px]">
-                  <CheckSquare size={10} />
+                <span className="flex items-center gap-0.5 text-[10px]" title="Subtasks complete">
+                  <CheckSquare size={10} aria-hidden="true" />
                   {card.subtasks!.filter((s: any) => s.completed).length}/{card.subtasks!.length}
                 </span>
               )}
               {(card.attachments?.length ?? 0) > 0 && (
-                <span className="flex items-center gap-0.5 text-[10px]">
-                  <Paperclip size={10} />
+                <span className="flex items-center gap-0.5 text-[10px]" title={`${card.attachments!.length} attachments`}>
+                  <Paperclip size={10} aria-hidden="true" />
                   {card.attachments!.length}
                 </span>
               )}
@@ -574,7 +653,14 @@ function Card({ card, onDragStart, onDelete, onEdit, isSelected, onToggleSelect,
 
           {/* Subtask progress bar */}
           {subtaskProgress >= 0 && (
-            <div className="h-1 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+            <div
+              className="bg-surface-strong h-1 overflow-hidden rounded-full"
+              role="progressbar"
+              aria-valuenow={subtaskProgress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Subtask progress"
+            >
               <div
                 className="h-full rounded-full bg-yellow-400 transition-all duration-500"
                 style={{ width: `${subtaskProgress}%` }}
@@ -618,11 +704,15 @@ function BurnBarrel({ onDelete }: { onDelete: (id: string) => void }) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       className={cn(
-        'flex h-48 w-16 shrink-0 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed transition-all mt-10',
-        active ? 'border-red-400 bg-red-50 dark:bg-red-500/10 text-red-500' : 'border-gray-200 dark:border-gray-700 text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+        'mt-10 flex h-48 w-16 shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed transition-colors',
+        active
+          ? 'border-red-400 bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
+          : 'border-hairline text-gray-500 hover:border-gray-300 dark:text-gray-400 dark:hover:border-gray-600'
       )}
+      aria-label="Drop a task here to move it to Trash"
+      title="Drop a task here to move it to Trash"
     >
-      {active ? <Flame size={20} className="animate-bounce" /> : <Trash2 size={18} />}
+      {active ? <Flame size={20} className="animate-bounce" aria-hidden="true" /> : <Trash2 size={18} aria-hidden="true" />}
       <span className="text-[10px] font-medium">Trash</span>
     </div>
   );

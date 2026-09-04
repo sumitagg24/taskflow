@@ -108,16 +108,25 @@ const taskSchema = new mongoose.Schema(
 
     // Category
     category: { type: String, default: 'uncategorized' },
+
+    // Soft delete. `null` means live; a Date means the task sits in Trash and
+    // is restorable until TRASH_RETENTION_DAYS have passed. Every read path
+    // must filter on `deletedAt: null` — deleting is meant to feel instant and
+    // undoable, not to actually destroy the row.
+    deletedAt: { type: Date, default: null },
   },
   {
     timestamps: true,
   }
 );
 
-taskSchema.index({ userId: 1, status: 1 });
-taskSchema.index({ userId: 1, priority: 1 });
-taskSchema.index({ userId: 1, dueDate: 1 });
-taskSchema.index({ userId: 1, category: 1 });
+// Every list query is scoped by owner *and* live-ness, so `deletedAt` is part
+// of the compound indexes rather than an index of its own.
+taskSchema.index({ userId: 1, deletedAt: 1, status: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, priority: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, dueDate: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, category: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, order: 1 });
 taskSchema.index({ title: 'text', description: 'text' });
 
 module.exports = mongoose.model('Task', taskSchema);

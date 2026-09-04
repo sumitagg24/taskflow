@@ -32,6 +32,9 @@ const userSchema = new mongoose.Schema(
       minlength: [8, 'Password must be at least 8 characters'],
       select: false,
     },
+    // When the password last changed — used to reject access tokens issued
+    // before the change (revokes all pre-change sessions).
+    passwordChangedAt: { type: Date, default: undefined },
     avatar: {
       type: String,
       default: '',
@@ -68,10 +71,18 @@ const userSchema = new mongoose.Schema(
     // Auth provider
     authProvider: {
       type: String,
-      enum: ['local', 'google'],
+      enum: ['local', 'google', 'github'],
       default: 'local',
     },
     googleId: { type: String, default: undefined, unique: true, sparse: true },
+    githubId: { type: String, default: undefined, unique: true, sparse: true },
+
+    // One-time OAuth exchange code. The redirect flow finishes on the server,
+    // so we hand the browser a short-lived opaque code instead of putting JWTs
+    // in a URL (they leak into history, referrers and access logs). The client
+    // POSTs it straight back to /api/auth/oauth/exchange for the real tokens.
+    oauthExchangeToken: { type: String, default: undefined },
+    oauthExchangeExpires: { type: Date, default: undefined },
 
     // Refresh token (hashed)
     refreshToken: { type: String, default: undefined },
@@ -104,6 +115,35 @@ const userSchema = new mongoose.Schema(
       streaming: { type: Boolean, default: false },
       timeout: { type: Number, default: 30000 },
     },
+
+    // ── Plan & growth ──────────────────────────────────────────────────────
+    // Plan is the enforcement point for usage limits (see config/plans.js).
+    // It is deliberately NOT writable through updateProfile — only billing or
+    // a referral payout may move it.
+    plan: {
+      type: String,
+      enum: ['free', 'pro', 'team'],
+      default: 'free',
+    },
+    planSince: { type: Date, default: Date.now },
+
+    // Short shareable code. Minted lazily on first read rather than at signup
+    // so existing accounts pick one up without a migration.
+    referralCode: { type: String, default: undefined, unique: true, sparse: true },
+    referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    referralCredits: { type: Number, default: 0 },
+
+    // Invites this user has sent. Stored on the user (rather than its own
+    // collection) because the list is small, always read with the owner, and
+    // never queried across users.
+    invites: [
+      {
+        email: { type: String, required: true, lowercase: true, trim: true },
+        invitedAt: { type: Date, default: Date.now },
+        acceptedAt: { type: Date, default: null },
+        acceptedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -112,6 +152,7 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
+userSchema.index({ oauthExchangeToken: 1 }, { sparse: true });
 userSchema.index({ username: 1 }, { unique: true });
 
 userSchema.pre('save', async function (next) {
@@ -134,6 +175,8 @@ userSchema.methods.toJSON = function () {
   delete obj.resetPasswordExpires;
   delete obj.emailVerificationToken;
   delete obj.emailVerificationExpires;
+  delete obj.oauthExchangeToken;
+  delete obj.oauthExchangeExpires;
   delete obj.aiApiKey;
   return obj;
 };
@@ -150,6 +193,36 @@ userSchema.methods.createPasswordResetToken = function () {
   this.resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
   this.resetPasswordExpires = Date.now() + 30 * 60 * 1000;
   return token;
+};
+
+/**
+ * Mint a single-use code the browser can trade for a real token pair. Short
+ * TTL (60s) because it only has to survive one redirect hop, and stored hashed
+ * so a database read cannot be replayed into a session.
+ */
+userSchema.methods.createOAuthExchangeToken = function () {
+  const token = crypto.randomBytes(32).toString('hex');
+  this.oauthExchangeToken = crypto.createHash('sha256').update(token).digest('hex');
+  this.oauthExchangeExpires = Date.now() + 60 * 1000;
+  return token;
+};
+
+/**
+ * Referral codes are shown to humans and retyped, so the alphabet drops the
+ * characters people confuse (0/O, 1/I/L). Not a secret: it only identifies who
+ * gets credit for a signup, and the credit is capped server-side.
+ */
+const REFERRAL_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+userSchema.methods.ensureReferralCode = function () {
+  if (this.referralCode) return this.referralCode;
+  const bytes = crypto.randomBytes(8);
+  let code = '';
+  for (let i = 0; i < 8; i += 1) {
+    code += REFERRAL_ALPHABET[bytes[i] % REFERRAL_ALPHABET.length];
+  }
+  this.referralCode = code;
+  return code;
 };
 
 module.exports = mongoose.model('User', userSchema);

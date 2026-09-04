@@ -17,8 +17,10 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((response) => {
       return response || fetch(event.request).then((fetchResponse) => {
         return caches.open(CACHE_NAME).then((cache) => {
-          if (event.request.url.startsWith(self.location.origin) &&
-              event.request.method === 'GET') {
+          const url = new URL(event.request.url);
+          const isSameOrigin = event.request.url.startsWith(self.location.origin);
+          const isApi = url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/');
+          if (isSameOrigin && event.request.method === 'GET' && !isApi) {
             cache.put(event.request, fetchResponse.clone());
           }
           return fetchResponse;

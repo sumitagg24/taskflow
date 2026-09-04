@@ -4,12 +4,13 @@ const {
   register, login, getProfile, updateProfile, updateFocusTime,
   forgotPassword, resetPassword, verifyEmail, resendVerification,
   refreshToken, changePassword, googleAuth, logout, checkUsername,
+  githubStart, githubCallback, exchangeOAuthCode, getAuthProviders,
 } = require('../controllers/authController');
 const {
   registerValidator, loginValidator, forgotPasswordValidator,
   resetPasswordValidator, verifyEmailValidator, resendVerificationValidator,
   changePasswordValidator, googleAuthValidator, refreshTokenValidator,
-  usernameCheckValidator,
+  usernameCheckValidator, oauthExchangeValidator,
 } = require('../validators/authValidators');
 const { protect } = require('../middleware/auth');
 const {
@@ -27,6 +28,10 @@ router.post('/reset-password', passwordResetLimiter, resetPasswordValidator, res
 router.post('/verify-email', verificationLimiter, verifyEmailValidator, verifyEmail);
 router.post('/resend-verification', emailLimiter, resendVerificationValidator, resendVerification);
 router.post('/google', oauthLimiter, googleAuthValidator, googleAuth);
+router.get('/providers', getAuthProviders);
+router.get('/github', oauthLimiter, githubStart);
+router.get('/github/callback', oauthLimiter, githubCallback);
+router.post('/oauth/exchange', oauthLimiter, oauthExchangeValidator, exchangeOAuthCode);
 router.post('/refresh-token', refreshLimiter, refreshTokenValidator, refreshToken);
 router.post('/logout', logoutLimiter, logout);
 

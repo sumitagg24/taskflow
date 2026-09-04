@@ -1,195 +1,146 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
-import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
-import {
-  Search, Plus, ChevronDown,
-  Settings, LogOut, User, Sparkles,
-} from 'lucide-react';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { Search, Plus, Sparkles, Settings, LogOut, User, ChevronDown, Bell } from 'lucide-react';
+import { useNotifications } from '@/context/NotificationContext';
+import { Avatar, Button, DropdownMenu, KbdShortcut, ThemeToggle, Tooltip } from '@/components/ui';
 
 interface NavbarProps {
   onNewTask: () => void;
-  onSearch?: (query: string) => void;
+  onOpenCommandPalette: () => void;
   onOpenAIAssistant?: () => void;
   onNavigate?: (section: string) => void;
+  activeSection?: string;
 }
 
-export default function Navbar({ onNewTask, onSearch, onOpenAIAssistant, onNavigate }: NavbarProps) {
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const profileRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const { resolvedTheme } = useTheme();
+const SECTION_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  all: 'All Tasks',
+  pending: 'To Do',
+  'in-progress': 'In Progress',
+  completed: 'Completed',
+  backlog: 'Backlog',
+  calendar: 'Calendar',
+  favorites: 'Favorites',
+  categories: 'Categories',
+  templates: 'Templates',
+  insights: 'Insights',
+  analytics: 'Analytics',
+  focus: 'Focus Timer',
+  notifications: 'Notifications',
+  team: 'Team',
+  trash: 'Trash',
+  settings: 'Settings',
+};
+
+export default function Navbar({
+  onNewTask,
+  onOpenCommandPalette,
+  onOpenAIAssistant,
+  onNavigate,
+  activeSection = 'dashboard',
+}: NavbarProps) {
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotifications();
 
-  // Keyboard shortcut: Cmd+K or Ctrl+K to focus search
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
-
-  // Close profile menu on click outside
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setShowProfileMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      onSearch?.(searchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery, onSearch]);
-
-  // Keyboard shortcut for new task: Cmd+N
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
-        e.preventDefault();
-        onNewTask();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onNewTask]);
-
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', {
+  const dateStr = new Date().toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-    year: 'numeric',
   });
 
   return (
-    <header className="sticky top-0 z-30 bg-white/80 dark:bg-[#0f0f13]/80 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800/50">
-      <div className="flex items-center justify-between h-16 px-4 lg:px-6 gap-4">
-        {/* Left: Breadcrumb */}
-        <div className="hidden sm:block">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Dashboard <span className="mx-1.5 text-gray-300 dark:text-gray-600">/</span>
-            <span className="text-gray-900 dark:text-gray-100 font-medium">Workspace</span>
-          </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{dateStr}</p>
+    <header
+      className="sticky top-0 z-30 border-b border-gray-200/70 backdrop-blur-xl dark:border-gray-800"
+      style={{ backgroundColor: 'color-mix(in srgb, var(--bg-primary) 82%, transparent)' }}
+    >
+      <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
+        <div className="hidden min-w-0 sm:block">
+          <h1 className="font-display truncate text-[19px] leading-tight text-gray-900 dark:text-gray-50">
+            {SECTION_TITLES[activeSection] ?? 'Workspace'}
+          </h1>
+          <p className="truncate text-xs text-gray-500 dark:text-gray-500">{dateStr}</p>
         </div>
 
-        {/* Center: Search */}
-        <div className="flex-1 max-w-lg mx-auto">
-          <div
-            className={cn(
-              'relative flex items-center rounded-xl border transition-all duration-200',
-              searchFocused
-                ? 'border-yellow-400 shadow-lg shadow-yellow-500/10 bg-white dark:bg-gray-900'
-                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:border-gray-300 dark:hover:border-gray-600'
-            )}
-          >
-            <Search size={16} className="ml-3 text-gray-400 shrink-0" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              placeholder="Search tasks... (Cmd+K)"
-              className="w-full bg-transparent px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 outline-none"
-            />
-            <kbd className="mr-2 hidden sm:inline-flex items-center gap-0.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 text-[10px] font-medium text-gray-400">
-              <span className="text-xs">⌘</span>K
-            </kbd>
-          </div>
-        </div>
+        {/* Search is a palette trigger, not an input: one search surface beats two. */}
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          className="mx-auto flex h-9 w-full max-w-md items-center gap-2.5 rounded-lg border border-gray-200 bg-card px-3 text-left text-sm text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
+        >
+          <Search size={15} className="shrink-0" aria-hidden="true" />
+          <span className="flex-1 truncate">Search tasks or jump to…</span>
+          <KbdShortcut keys={['mod', 'K']} className="hidden sm:inline-flex" />
+        </button>
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-1.5">
-          {/* AI Assistant */}
-          <button
-            onClick={onOpenAIAssistant}
-            className="hidden sm:flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors"
-          >
-            <Sparkles size={16} />
-            <span className="hidden lg:inline">Ask AI</span>
-          </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onOpenAIAssistant && (
+            <Tooltip content="Ask AI">
+              <button
+                type="button"
+                onClick={onOpenAIAssistant}
+                aria-label="Ask AI"
+                className="hidden h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-purple-700 transition-colors hover:bg-purple-50 sm:flex dark:text-purple-300 dark:hover:bg-purple-500/12"
+              >
+                <Sparkles size={16} aria-hidden="true" />
+                <span className="hidden lg:inline">Ask AI</span>
+              </button>
+            </Tooltip>
+          )}
 
-          {/* New Task */}
-          <button
-            onClick={onNewTask}
-            className="flex items-center gap-1.5 rounded-xl bg-yellow-400 px-4 py-2 text-sm font-semibold text-gray-900 hover:bg-yellow-500 transition-all hover:shadow-lg hover:shadow-yellow-500/20"
-          >
-            <Plus size={16} />
-            <span className="hidden sm:inline">New Task</span>
-          </button>
+          <Tooltip content={unreadCount > 0 ? `${unreadCount} unread` : 'Notifications'}>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('notifications')}
+              aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+              className="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+            >
+              <Bell size={17} aria-hidden="true" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-yellow-400 ring-2 ring-[var(--bg-primary)]" />
+              )}
+            </button>
+          </Tooltip>
 
-          {/* Theme Toggle */}
           <ThemeToggle />
 
-          {/* Profile */}
-          <div ref={profileRef} className="relative">
-            <button
-              onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center gap-2 rounded-xl p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 to-orange-400 text-sm font-bold text-gray-900">
-                {user?.name?.charAt(0).toUpperCase() || 'U'}
-              </div>
-              <ChevronDown size={14} className="text-gray-400 hidden sm:block" />
-            </button>
+          <Button size="sm" icon={<Plus size={15} />} onClick={onNewTask} className="ml-1 h-9 px-3">
+            <span className="hidden sm:inline">New Task</span>
+          </Button>
 
-            <AnimatePresence>
-              {showProfileMenu && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a23] shadow-xl py-2 z-50"
-                >
-                  <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
-                  </div>
-                  <button
-                    onClick={() => { onNavigate?.('dashboard'); setShowProfileMenu(false); }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <User size={16} />
-                    Profile
-                  </button>
-                  <button
-                    onClick={() => { onNavigate?.('settings'); setShowProfileMenu(false); }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <Settings size={16} />
-                    Settings
-                  </button>
-                  <div className="border-t border-gray-100 dark:border-gray-800 mt-1 pt-1">
-                    <button
-                      onClick={logout}
-                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-                    >
-                      <LogOut size={16} />
-                      Sign out
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          <DropdownMenu
+            align="end"
+            items={[
+              {
+                id: 'profile',
+                label: 'Profile',
+                icon: <User size={15} />,
+                onSelect: () => onNavigate?.('settings'),
+              },
+              {
+                id: 'settings',
+                label: 'Settings',
+                icon: <Settings size={15} />,
+                onSelect: () => onNavigate?.('settings'),
+              },
+              {
+                id: 'logout',
+                label: 'Sign out',
+                icon: <LogOut size={15} />,
+                danger: true,
+                separatorBefore: true,
+                onSelect: logout,
+              },
+            ]}
+            trigger={
+              <button
+                type="button"
+                aria-label="Account menu"
+                className="ml-0.5 flex items-center gap-1 rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <Avatar name={user?.name} size="sm" />
+                <ChevronDown size={13} className="hidden text-gray-400 sm:block" aria-hidden="true" />
+              </button>
+            }
+          />
         </div>
       </div>
     </header>

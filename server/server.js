@@ -15,6 +15,7 @@ const templateRoutes = require('./routes/templateRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const timeTrackingRoutes = require('./routes/timeTrackingRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const growthRoutes = require('./routes/growthRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const requestId = require('./middleware/requestId');
 const { apiLimiter, aiLimiter, uploadLimiter } = require('./middleware/rateLimiter');
@@ -85,8 +86,14 @@ if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
   );
 }
 
-// Trust proxy for rate limiting behind reverse proxy
-app.set('trust proxy', 1);
+// Trust proxy for rate limiting behind a reverse proxy.
+// Off by default: the server may be exposed directly, and blindly trusting
+// X-Forwarded-For lets anyone rotate IPs to bypass rate limits. Set
+// TRUST_PROXY=true only when a real reverse proxy (e.g. the docker client
+// nginx) is in front of this server.
+if (process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
 
 // ===== Global Middleware (order matters) =====
 
@@ -99,10 +106,18 @@ app.use(helmet({
       frameSrc: ["'self'", "https://accounts.google.com"],
       connectSrc: ["'self'", "https://accounts.google.com"],
       imgSrc: ["'self'", "data:", "https:"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      // Google Fonts serves the stylesheet from googleapis and the woff2 files
+      // from gstatic; without both, the Newsreader display face silently falls
+      // back to a system serif in production.
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+      // GitHub sign-in is a top-level redirect to github.com and back.
+      formAction: ["'self'", "https://github.com"],
     },
   },
-  crossOriginOpenerPolicy: { policy: 'same-origin' },
+  // Google Identity Services opens a popup that posts the credential back to
+  // the opener, which a strict `same-origin` COOP severs.
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
   crossOriginResourcePolicy: { policy: 'same-origin' },
 }));
 
@@ -140,8 +155,11 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 const io = initializeSocket(server);
 app.set('io', io);
 
-// Static files for uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static files for uploads — random names are unguessable; nosniff blocks
+// MIME sniffing so a stray HTML/SVG file can't run in the browser.
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+}));
 
 // ===== Built Client (SPA) =====
 const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
@@ -169,6 +187,7 @@ app.use('/api/notifications', apiLimiter, notificationRoutes);
 app.use('/api/templates', apiLimiter, templateRoutes);
 app.use('/api/calendar', apiLimiter, calendarRoutes);
 app.use('/api/time-tracking', apiLimiter, timeTrackingRoutes);
+app.use('/api/growth', apiLimiter, growthRoutes);
 
 app.use('/api/ai', aiLimiter, aiRoutes);
 
@@ -192,10 +211,16 @@ app.post('/api/upload', protect, uploadLimiter, upload.single('file'), (req, res
 });
 
 // Recurring tasks check (runs every hour)
-const { processRecurringTasks } = require('./controllers/taskController');
+const { processRecurringTasks, purgeExpiredTrash } = require('./controllers/taskController');
 setInterval(() => {
   processRecurringTasks().catch(err => logger.error('Recurring task processing failed:', err));
 }, 60 * 60 * 1000);
+
+// Trash retention sweep (runs every 6 hours). Soft-deleted tasks are restorable
+// for 30 days; this is what makes that promise finite.
+setInterval(() => {
+  purgeExpiredTrash().catch(err => logger.error('Trash purge failed:', err));
+}, 6 * 60 * 60 * 1000);
 
 // ===== API Documentation (rate limited) =====
 const swaggerUi = require('swagger-ui-express');
@@ -244,6 +269,17 @@ connectDB().then(async () => {
       logger.error('Daily focus time reset failed:', err);
     }
   }, 60 * 60 * 1000);
+
+  // Due-soon / overdue notification reminders (every 15 minutes)
+  const { processDueDateNotifications } = require('./services/notificationScheduler');
+  processDueDateNotifications().catch((err) =>
+    logger.error('Initial notification reminder run failed:', err)
+  );
+  setInterval(() => {
+    processDueDateNotifications().catch((err) =>
+      logger.error('Notification reminder run failed:', err)
+    );
+  }, 15 * 60 * 1000);
 
   setupGracefulShutdown(server, io);
 });

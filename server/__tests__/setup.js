@@ -17,6 +17,11 @@ const taskRoutes = require('../routes/taskRoutes');
 const authRoutes = require('../routes/authRoutes');
 const aiRoutes = require('../routes/aiRoutes');
 const notificationRoutes = require('../routes/notificationRoutes');
+const templateRoutes = require('../routes/templateRoutes');
+const calendarRoutes = require('../routes/calendarRoutes');
+const timeTrackingRoutes = require('../routes/timeTrackingRoutes');
+const aiSettingsRoutes = require('../routes/aiSettingsRoutes');
+const growthRoutes = require('../routes/growthRoutes');
 const errorHandler = require('../middleware/errorHandler');
 const requestId = require('../middleware/requestId');
 const { apiLimiter, aiLimiter } = require('../middleware/rateLimiter');
@@ -49,7 +54,12 @@ function createApp() {
   app.use('/api/auth', authRoutes);
   app.use('/api/tasks', apiLimiter, taskRoutes);
   app.use('/api/notifications', apiLimiter, notificationRoutes);
+  app.use('/api/templates', apiLimiter, templateRoutes);
+  app.use('/api/calendar', apiLimiter, calendarRoutes);
+  app.use('/api/time-tracking', apiLimiter, timeTrackingRoutes);
+  app.use('/api/growth', apiLimiter, growthRoutes);
   app.use('/api/ai', aiLimiter, aiRoutes);
+  app.use('/api/auth/ai-settings', apiLimiter, aiSettingsRoutes);
 
   // Swagger
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {

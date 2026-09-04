@@ -8,8 +8,27 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 let transporter = null;
 let emailConfigured = false;
 
+// Real SMTP transport is used when EMAIL_HOST is configured; otherwise we
+// fall back to Ethereal (dev/test mode). Never log credentials.
+const SMTP_CONFIGURED = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+
 async function getTransporter() {
   if (transporter) return transporter;
+
+  if (SMTP_CONFIGURED) {
+    transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 587,
+      secure: Number(process.env.EMAIL_PORT) === 465,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+    emailConfigured = true;
+    logger.info('Email Service initialized with SMTP');
+    return transporter;
+  }
 
   // Create test account with a 10-second timeout so Ethereal network issues
   // don't hang the entire process forever.
@@ -164,6 +183,33 @@ exports.sendWelcomeEmail = async (email, name) => {
   return sendEmail(email, 'Welcome to TaskFlow!', html);
 };
 
+/**
+ * Referral invite. The link carries the sender's referral code so attribution
+ * happens at signup without the recipient having to type anything.
+ */
+exports.sendInviteEmail = async (email, senderName, link) => {
+  const who = escapeHtml(senderName || 'Someone');
+  const html = baseTemplate(
+    `${who} invited you to TaskFlow`,
+    `
+    <p style="color: #6B7280; font-size: 14px; line-height: 1.6; text-align: center; margin-bottom: 24px;">
+      ${who} uses TaskFlow to plan their week — boards, a focus timer, and a weekly
+      review that actually gets read. Your account is free to start.
+    </p>
+    <div style="text-align: center; margin: 32px 0;">
+      <a href="${escapeHtml(link)}" style="display: inline-block; background: #cc785c; color: #ffffff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+        Accept the invite
+      </a>
+    </div>
+    <p style="color: #9CA3AF; font-size: 12px; text-align: center;">
+      If you weren't expecting this, you can ignore the email — nothing was created for you.
+    </p>
+    `
+  );
+
+  return sendEmail(email, `${senderName || 'A friend'} invited you to TaskFlow`, html);
+};
+
 exports.sendNotificationEmail = async (email, userName, notification) => {
   const html = baseTemplate(
     'TaskFlow Notification',
@@ -178,12 +224,12 @@ exports.sendNotificationEmail = async (email, userName, notification) => {
   return sendEmail(email, notification.title, html);
 };
 
-exports.isConfigured = () => emailConfigured;
+exports.isConfigured = () => emailConfigured || SMTP_CONFIGURED;
 
 exports.getEmailStatus = () => {
   return {
-    provider: 'ethereal',
-    configured: emailConfigured,
+    provider: SMTP_CONFIGURED ? 'smtp' : 'ethereal',
+    configured: emailConfigured || SMTP_CONFIGURED,
     clientUrl: CLIENT_URL,
     environment: NODE_ENV,
   };

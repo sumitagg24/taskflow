@@ -1,10 +1,28 @@
-import { useState, FormEvent, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, Lock, Eye, EyeOff, Loader2, CheckCircle2, XCircle } from 'lucide-react';
-import { authAPI } from '@/api/tasks';
+import { useState, FormEvent } from 'react';
+import { Lock, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { Input } from '@/components/ui/Input';
 import PasswordStrengthBar from '@/components/ui/PasswordStrengthBar';
-import api from '@/api/tasks';
+import AuthShell from './auth/AuthShell';
+import { PASSWORD_RULE_HINT, isStrongPassword } from './auth/password';
+import {
+  AuthAlert,
+  AuthHeading,
+  AuthLinkButton,
+  AuthStatus,
+  AuthSubmit,
+  RevealToggle,
+} from './auth/primitives';
+
+const SHELL = {
+  headline: 'One new password and you are back in.',
+  points: [
+    'The link works once, and only for 30 minutes',
+    'We sign you straight in once it saves',
+    'Every other session is signed out for safety',
+  ],
+} as const;
 
 interface ResetPasswordPageProps {
   token: string;
@@ -12,6 +30,7 @@ interface ResetPasswordPageProps {
 }
 
 export default function ResetPasswordPage({ token, onSuccess }: ResetPasswordPageProps) {
+  const { resetPassword } = useAuth();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -20,180 +39,133 @@ export default function ResetPasswordPage({ token, onSuccess }: ResetPasswordPag
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!token) {
-      setError('Missing reset token. Please request a new reset link.');
-    }
-  }, [token]);
+  const strong = isStrongPassword(password);
+  const matches = confirm.length === 0 || confirm === password;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!strong) {
+      setError(PASSWORD_RULE_HINT);
       return;
     }
     if (password !== confirm) {
-      setError('Passwords do not match');
+      setError('The two passwords do not match.');
       return;
     }
+
     setLoading(true);
     try {
-      const { data } = await authAPI.resetPassword(token, password);
-      if (data.accessToken && data.refreshToken) {
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
-      }
+      const message = await resetPassword(token, password);
+      // Burn the spent token from the address bar in the same tick as the sign-in,
+      // so the dashboard never paints with a used reset link still in history.
+      window.history.replaceState({}, '', '/');
       setDone(true);
-      toast.success(data.message || 'Password reset successfully!');
-      setTimeout(() => onSuccess(), 1500);
+      toast.success(message);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid or expired reset link');
+      setError(err.response?.data?.message || 'That reset link is invalid or has expired.');
     } finally {
       setLoading(false);
     }
   };
 
+  // A link with no token can never work, so say so instead of showing a form.
+  if (!token) {
+    return (
+      <AuthShell headline={SHELL.headline} points={SHELL.points}>
+        <AuthStatus
+          tone="error"
+          icon={<ShieldAlert size={26} />}
+          title="That link won't work"
+          action={<AuthLinkButton onClick={onSuccess}>Back to sign in</AuthLinkButton>}
+        >
+          The reset link is missing its token. Ask for a fresh one from the sign-in page — they only
+          stay valid for 30 minutes.
+        </AuthStatus>
+      </AuthShell>
+    );
+  }
+
+  // Signing in flips the app to the dashboard, so this panel is really the
+  // fallback for a server that reset the password without issuing a session.
+  if (done) {
+    return (
+      <AuthShell headline={SHELL.headline} points={SHELL.points}>
+        <AuthStatus
+          tone="success"
+          icon={<ShieldCheck size={26} />}
+          title="Password updated"
+          action={<AuthLinkButton onClick={onSuccess}>Continue</AuthLinkButton>}
+        >
+          Your new password is saved. Any other device that was signed in will need it too.
+        </AuthStatus>
+      </AuthShell>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F7F8FA] dark:bg-[#0f0f13] p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2.5 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-yellow-400">
-              <Sparkles size={20} className="text-gray-900" />
-            </div>
-            <span className="text-2xl font-bold text-gray-900 dark:text-gray-100">TaskFlow</span>
-          </div>
-        </div>
+    <AuthShell headline={SHELL.headline} points={SHELL.points}>
+      <AuthHeading title="Set a new password." eyebrow="Password reset">
+        {PASSWORD_RULE_HINT} Pick something you have not used here before.
+      </AuthHeading>
 
-        <div className="rounded-2xl bg-white dark:bg-[#1a1a23] border border-gray-200 dark:border-gray-800 shadow-xl p-8">
-          {done ? (
-            <div className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-green-100 dark:bg-green-500/10 mb-4"
-              >
-                <CheckCircle2 size={32} className="text-green-500" />
-              </motion.div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Password reset!</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Redirecting to your dashboard...</p>
-            </div>
-          ) : error && !token ? (
-            <div className="text-center">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-red-100 dark:bg-red-500/10 mb-4"
-              >
-                <XCircle size={32} className="text-red-500" />
-              </motion.div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Invalid Request</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{error}</p>
-              <button
-                onClick={onSuccess}
-                className="text-sm text-yellow-600 dark:text-yellow-400 hover:underline"
-              >
-                Back to sign in
-              </button>
-            </div>
-          ) : (
-            <>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Set new password</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Enter your new password below. Must be at least 8 characters with uppercase, lowercase, number, and special character.
-              </p>
+      {error && <AuthAlert>{error}</AuthAlert>}
 
-              {error && (
-                <div className="mb-4 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-100 dark:border-red-500/20 px-4 py-3 text-sm text-red-600 dark:text-red-400" role="alert">
-                  {error}
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">New Password</label>
-                  <div className="relative">
-                    <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      placeholder="At least 8 characters"
-                      className="input-field pl-9 pr-9"
-                      autoFocus
-                      required
-                      minLength={8}
-                      autoComplete="new-password"
-                      aria-label="New password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      tabIndex={-1}
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {password.length > 0 && (
-                    <div className="mt-2">
-                      <PasswordStrengthBar password={password} />
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Confirm Password</label>
-                  <div className="relative">
-                    <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input
-                      type={showConfirm ? 'text' : 'password'}
-                      value={confirm}
-                      onChange={e => setConfirm(e.target.value)}
-                      placeholder="Repeat new password"
-                      className="input-field pl-9 pr-9"
-                      required
-                      autoComplete="new-password"
-                      aria-label="Confirm new password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirm(!showConfirm)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                      tabIndex={-1}
-                      aria-label={showConfirm ? 'Hide password' : 'Show password'}
-                    >
-                      {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {confirm && password !== confirm && (
-                    <p className="mt-1 text-xs text-red-500" role="alert">Passwords do not match</p>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      Resetting...
-                    </>
-                  ) : 'Reset Password'}
-                </button>
-              </form>
-            </>
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div>
+          <Input
+            label="New password"
+            type={showPassword ? 'text' : 'password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
+            icon={<Lock size={16} />}
+            autoComplete="new-password"
+            autoFocus
+            required
+            rightElement={
+              <RevealToggle shown={showPassword} onToggle={() => setShowPassword((v) => !v)} />
+            }
+          />
+          {password.length > 0 && (
+            <div className="pt-3">
+              <PasswordStrengthBar password={password} />
+            </div>
           )}
         </div>
-      </motion.div>
-    </div>
+
+        <Input
+          label="Confirm password"
+          type={showConfirm ? 'text' : 'password'}
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder="Type it once more"
+          icon={<Lock size={16} />}
+          autoComplete="new-password"
+          required
+          error={!matches ? 'These do not match.' : undefined}
+          rightElement={
+            <RevealToggle shown={showConfirm} onToggle={() => setShowConfirm((v) => !v)} />
+          }
+        />
+
+        <div className="pt-2">
+          <AuthSubmit
+            loading={loading}
+            loadingLabel="Saving…"
+            disabled={!strong || password !== confirm}
+          >
+            Save new password
+          </AuthSubmit>
+        </div>
+      </form>
+
+      <p className="mt-7 text-[13px] leading-relaxed text-gray-500 dark:text-gray-500">
+        Changed your mind?{' '}
+        <AuthLinkButton onClick={onSuccess}>Go back to sign in</AuthLinkButton> — this link stays
+        valid until it expires.
+      </p>
+    </AuthShell>
   );
 }

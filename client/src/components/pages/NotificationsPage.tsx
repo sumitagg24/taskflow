@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '@/api/tasks';
+import { useNotifications } from '@/context/NotificationContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
@@ -39,8 +40,9 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const { refreshKey, refreshCount } = useNotifications();
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [refreshKey]);
 
   const load = async () => {
     setLoadError(false);
@@ -60,6 +62,7 @@ export default function NotificationsPage() {
     try {
       await markNotificationRead(id);
       setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+      refreshCount();
     } catch {}
   };
 
@@ -67,9 +70,17 @@ export default function NotificationsPage() {
     try {
       await markAllNotificationsRead();
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      refreshCount();
       toast.success('All notifications marked as read');
     } catch {
       toast.error('Failed to mark all as read');
+    }
+  };
+
+  const handleOpen = (notif: any) => {
+    if (!notif.isRead) handleMarkRead(notif._id);
+    if (notif.relatedType === 'task' && notif.relatedId) {
+      window.dispatchEvent(new CustomEvent('open-task', { detail: { id: notif.relatedId } }));
     }
   };
 
@@ -153,7 +164,7 @@ export default function NotificationsPage() {
                   'card p-4 flex items-start gap-3 cursor-pointer transition-all hover:shadow-md',
                   !notif.isRead && 'ring-1 ring-yellow-400/30 bg-yellow-50/30 dark:bg-yellow-500/5'
                 )}
-                onClick={() => !notif.isRead && handleMarkRead(notif._id)}
+                onClick={() => handleOpen(notif)}
               >
                 <div className={cn('rounded-full p-2.5 shrink-0', config.bg)}>
                   <Icon size={16} className={config.color} />

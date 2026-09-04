@@ -3,8 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="TaskFlow - Premium Task Management Application" />
-    <meta name="theme-color" content="#FACC15" />
+    <meta name="description" content="TaskFlow — a calm, focused workspace for planning and finishing work." />
+    <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#171614" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -12,21 +13,32 @@
     <meta name="apple-mobile-web-app-title" content="TaskFlow" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..600&display=swap"
+      rel="stylesheet"
+    />
     <title>TaskFlow</title>
     <script>
-      // Apply the saved theme class immediately — before any CSS loads — to
-      // prevent a flash of the wrong theme.  Handles all three states:
-      // stored 'light', stored 'dark', and uninitialized (defaults to dark).
-      var stored = localStorage.getItem('theme');
-      if (stored === 'light') {
-        document.documentElement.classList.add('light');
-      } else {
-        // Default: dark.  Must also remove 'light' in case a previous
-        // session left it on the element (e.g. after a crash mid-toggle).
-        document.documentElement.classList.remove('light');
-        document.documentElement.classList.add('dark');
-      }
+      // Apply the saved theme class before any CSS loads so there is no flash
+      // of the wrong theme. New users land on light — the cream canvas is the
+      // signature of this theme — and `dark` is only set when explicitly saved
+      // or when the stored choice is `system` and the OS asks for dark.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var dark =
+            stored === 'dark' ||
+            (stored === 'system' &&
+              window.matchMedia &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.remove('light', 'dark');
+          root.classList.add(dark ? 'dark' : 'light');
+          root.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.classList.add('light');
+        }
+      })();
     </script>
   </head>
   <body>

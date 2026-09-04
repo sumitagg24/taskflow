@@ -7,10 +7,13 @@ exports.exportCalendar = async (req, res, next) => {
     const { status, priority, category, tag } = req.query;
     const query = { userId: req.user._id };
 
-    if (status) query.status = status;
-    if (priority) query.priority = priority;
-    if (category) query.category = category;
-    if (tag) query.tags = tag;
+    const VALID_STATUSES = ['backlog', 'pending', 'in-progress', 'completed', 'blocked', 'review', 'cancelled'];
+    const VALID_PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'];
+
+    if (status && VALID_STATUSES.includes(status)) query.status = status;
+    if (priority && VALID_PRIORITIES.includes(priority)) query.priority = priority;
+    if (category && typeof category === 'string') query.category = category;
+    if (tag && typeof tag === 'string') query.tags = tag;
 
     const tasks = await Task.find(query)
       .sort({ dueDate: 1, createdAt: -1 })

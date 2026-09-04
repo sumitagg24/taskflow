@@ -1,5 +1,5 @@
 const { Server } = require('socket.io');
-const { verifyToken } = require('../middleware/auth');
+const { verifyAccessToken } = require('../middleware/auth');
 const { isOriginAllowed } = require('../config/cors');
 const logger = require('../utils/logger');
 
@@ -27,7 +27,7 @@ function initializeSocket(server) {
       if (!token) {
         return next(new Error('Authentication required'));
       }
-      const decoded = verifyToken(token);
+      const decoded = verifyAccessToken(token);
       if (decoded.token_type !== 'access' && decoded.type !== 'access') {
         return next(new Error('Invalid token type'));
       }

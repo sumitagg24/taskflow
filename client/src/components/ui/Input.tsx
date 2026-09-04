@@ -1,6 +1,66 @@
-import { InputHTMLAttributes, ReactNode, forwardRef, useEffect, useRef, useState } from 'react';
+import {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+  forwardRef,
+  useId,
+  useState,
+} from 'react';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff, CheckCircle2, XCircle } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, ChevronDown } from 'lucide-react';
+
+/** Shared label + helper/error scaffold so every field lines up on a grid. */
+function Field({
+  id,
+  label,
+  required,
+  error,
+  helperText,
+  children,
+  className,
+}: {
+  id?: string;
+  label?: string;
+  required?: boolean;
+  error?: string;
+  helperText?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      {label && (
+        <label htmlFor={id} className="block text-[13px] font-medium text-gray-700 dark:text-gray-300">
+          {label}
+          {required && (
+            <span className="ml-0.5 text-red-500" aria-hidden="true">
+              *
+            </span>
+          )}
+        </label>
+      )}
+      {children}
+      {(error || helperText) && (
+        <p
+          id={id ? `${id}-description` : undefined}
+          className={cn(
+            'text-xs',
+            error ? 'animate-shake text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
+          )}
+        >
+          {error || helperText}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const fieldBase =
+  'w-full bg-card border border-gray-200 text-sm text-gray-900 placeholder-gray-400 transition-[border-color,box-shadow] duration-200 outline-none ' +
+  'focus:border-yellow-400 focus:ring-[3px] focus:ring-yellow-400/15 focus-visible:outline-none ' +
+  'disabled:cursor-not-allowed disabled:bg-gray-100 disabled:opacity-60 ' +
+  'dark:bg-gray-900 dark:border-gray-700 dark:text-gray-100 dark:placeholder-gray-500 dark:disabled:bg-gray-800';
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -10,113 +70,96 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   rightElement?: ReactNode;
   required?: boolean;
   status?: string;
+  wrapperClassName?: string;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  // `status` is swallowed — it's only used by UsernameInput via className border colors.
-  // We destructure it here to keep it from leaking onto the underlying <input>.
-  ({ label, icon, error, helperText, rightElement, required, className, status: _status, ...props }, ref) => {
+  (
+    {
+      label,
+      icon,
+      error,
+      helperText,
+      rightElement,
+      required,
+      className,
+      wrapperClassName,
+      status: _status,
+      id: idProp,
+      ...props
+    },
+    ref
+  ) => {
     void _status;
-    const inputRef = useRef<HTMLInputElement>(null);
-    const hasIcon = !!icon;
-    const hasError = !!error;
-    const hasRightElement = !!rightElement;
-    const hasLabel = !!label;
-
-    // Focus the input when parent focuses
-    useEffect(() => {
-      if (props.autoFocus && inputRef.current) {
-        inputRef.current.focus();
-      }
-    }, [props.autoFocus]);
+    const autoId = useId();
+    const id = idProp ?? `input-${autoId}`;
 
     return (
-      <div className="space-y-1.5">
-        {hasLabel && (
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            {label}
-            {required && <span className="text-red-500 ml-0.5">*</span>}
-          </label>
-        )}
-
-        <div className="relative">
-          {/* Icon positioned at the left inside the input - increased padding to pl-11 (44px) */}
-          {hasIcon && (
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 transition-colors peer-focus:text-yellow-500">
+      <Field
+        id={id}
+        label={label}
+        required={required}
+        error={error}
+        helperText={helperText}
+        className={wrapperClassName}
+      >
+        <div className="group relative">
+          {icon && (
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400 transition-colors group-focus-within:text-yellow-500">
               {icon}
-            </div>
+            </span>
           )}
-
           <input
-            ref={inputRef}
+            id={id}
+            ref={ref}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error || helperText ? `${id}-description` : undefined}
             {...props}
             className={cn(
-              'peer w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 focus:border-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed',
-              hasIcon && 'pl-11',
-              hasRightElement && 'pr-10',
-              hasError && '!border-red-500 focus:border-red-500 focus:ring-red-500/20',
+              fieldBase,
+              'h-10 rounded-lg px-3.5',
+              icon && 'pl-10',
+              rightElement && 'pr-10',
+              error && 'border-red-500 focus:border-red-500 focus:ring-red-500/15',
               className
             )}
           />
-
-          {/* Right Element (Eye icon, status icon, etc.) */}
-          {hasRightElement && (
-            <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-              {rightElement}
-            </div>
+          {rightElement && (
+            <span className="absolute inset-y-0 right-0 flex items-center pr-2.5">{rightElement}</span>
           )}
         </div>
-
-        {/* Helper/Validation Text */}
-        <div className="min-h-[18px]">
-          {error ? (
-            <p className="text-xs text-red-500 animate-shake">{error}</p>
-          ) : (
-            helperText && (
-              <p className="text-xs text-gray-500 dark:text-gray-400 animate-fadeIn">{helperText}</p>
-            )
-          )}
-        </div>
-      </div>
+      </Field>
     );
   }
 );
 
 Input.displayName = 'Input';
 
-// Specialized Input for Password fields with toggle
 interface PasswordInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
-  helperText?: string;
+  helperText?: ReactNode;
   required?: boolean;
 }
 
-export function PasswordInput({ label, error, helperText, required, className, ...props }: PasswordInputProps) {
-  const [showPassword, setShowPassword] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+export function PasswordInput({ label, error, helperText, required, ...props }: PasswordInputProps) {
+  const [visible, setVisible] = useState(false);
 
   return (
     <Input
-      ref={inputRef}
       label={label}
       error={error}
       helperText={helperText}
       required={required}
-      type={showPassword ? 'text' : 'password'}
+      type={visible ? 'text' : 'password'}
       rightElement={
         <button
           type="button"
-          onClick={() => setShowPassword(!showPassword)}
-          className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
-          tabIndex={-1}
-          aria-label={showPassword ? 'Hide password' : 'Show password'}
+          onClick={() => setVisible((v) => !v)}
+          className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+          aria-label={visible ? 'Hide password' : 'Show password'}
         >
-          {showPassword ? (
-            <EyeOff size={16} />
-          ) : (
-            <Eye size={16} />
-          )}
+          {visible ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       }
       {...props}
@@ -124,42 +167,168 @@ export function PasswordInput({ label, error, helperText, required, className, .
   );
 }
 
-// Specialized Input for Username with status
 interface UsernameInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
-  helperText?: string;
+  helperText?: ReactNode;
   status?: 'idle' | 'available' | 'taken' | 'typing';
   required?: boolean;
 }
 
-export function UsernameInput({ label, error, helperText, status, required, className, ...props }: UsernameInputProps) {
-  let rightElement: ReactNode = null;
+export const UsernameInput = forwardRef<HTMLInputElement, UsernameInputProps>(
+  ({ label, error, helperText, status, required, className, ...props }, ref) => {
+    let rightElement: ReactNode = null;
+    if (status === 'available') rightElement = <CheckCircle2 size={16} className="text-green-600" />;
+    else if (status === 'taken') rightElement = <XCircle size={16} className="text-red-500" />;
+    else if (status === 'typing')
+      rightElement = (
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-yellow-500 dark:border-gray-600 dark:border-t-yellow-400" />
+      );
 
-  if (status === 'available') {
-    rightElement = <CheckCircle2 size={16} className="text-green-500" />;
-  } else if (status === 'taken') {
-    rightElement = <XCircle size={16} className="text-red-500" />;
-  } else if (status === 'typing') {
-    rightElement = (
-      <div className="w-4 h-4 border-2 border-gray-300 border-t-yellow-500 rounded-full animate-spin" />
+    return (
+      <Input
+        ref={ref}
+        label={label}
+        error={error}
+        helperText={helperText}
+        rightElement={rightElement}
+        required={required}
+        className={cn(
+          status === 'available' && 'border-green-500 focus:border-green-500 focus:ring-green-500/15',
+          status === 'taken' && 'border-red-500 focus:border-red-500 focus:ring-red-500/15',
+          className
+        )}
+        {...props}
+      />
     );
   }
+);
 
-  return (
-    <Input
-      label={label}
-      error={error}
-      helperText={helperText}
-      status={status}
-      rightElement={rightElement}
-      required={required}
-      className={cn(
-        status === 'available' && '!border-green-500 focus:border-green-500 focus:ring-green-500/20',
-        status === 'taken' && '!border-red-500 focus:border-red-500 focus:ring-red-500/20',
-        className
-      )}
-      {...props}
-    />
-  );
+UsernameInput.displayName = 'UsernameInput';
+
+interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+  error?: string;
+  helperText?: ReactNode;
+  required?: boolean;
+  wrapperClassName?: string;
 }
+
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ label, error, helperText, required, className, wrapperClassName, id: idProp, ...props }, ref) => {
+    const autoId = useId();
+    const id = idProp ?? `textarea-${autoId}`;
+
+    return (
+      <Field
+        id={id}
+        label={label}
+        required={required}
+        error={error}
+        helperText={helperText}
+        className={wrapperClassName}
+      >
+        <textarea
+          id={id}
+          ref={ref}
+          rows={props.rows ?? 4}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error || helperText ? `${id}-description` : undefined}
+          {...props}
+          className={cn(
+            fieldBase,
+            'resize-y rounded-lg px-3.5 py-2.5 leading-relaxed',
+            error && 'border-red-500 focus:border-red-500 focus:ring-red-500/15',
+            className
+          )}
+        />
+      </Field>
+    );
+  }
+);
+
+Textarea.displayName = 'Textarea';
+
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
+
+interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  label?: string;
+  error?: string;
+  helperText?: ReactNode;
+  required?: boolean;
+  options?: SelectOption[];
+  placeholder?: string;
+  wrapperClassName?: string;
+}
+
+export const Select = forwardRef<HTMLSelectElement, SelectProps>(
+  (
+    {
+      label,
+      error,
+      helperText,
+      required,
+      options,
+      placeholder,
+      className,
+      wrapperClassName,
+      id: idProp,
+      children,
+      ...props
+    },
+    ref
+  ) => {
+    const autoId = useId();
+    const id = idProp ?? `select-${autoId}`;
+
+    return (
+      <Field
+        id={id}
+        label={label}
+        required={required}
+        error={error}
+        helperText={helperText}
+        className={wrapperClassName}
+      >
+        <div className="relative">
+          <select
+            id={id}
+            ref={ref}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error || helperText ? `${id}-description` : undefined}
+            {...props}
+            className={cn(
+              fieldBase,
+              'h-10 cursor-pointer appearance-none rounded-lg pr-9 pl-3.5',
+              error && 'border-red-500 focus:border-red-500 focus:ring-red-500/15',
+              className
+            )}
+          >
+            {placeholder && (
+              <option value="" disabled={required}>
+                {placeholder}
+              </option>
+            )}
+            {options?.map((opt) => (
+              <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+                {opt.label}
+              </option>
+            ))}
+            {children}
+          </select>
+          <ChevronDown
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-gray-400"
+          />
+        </div>
+      </Field>
+    );
+  }
+);
+
+Select.displayName = 'Select';

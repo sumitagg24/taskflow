@@ -13,6 +13,9 @@ const activityLogSchema = new mongoose.Schema({
       'attachment_added', 'task_assigned', 'deadline_changed',
       'category_changed', 'tag_added', 'tag_removed',
       'task_moved', 'user_joined', 'user_left',
+      // Trash lifecycle: 'task_deleted' now means "moved to Trash", so the
+      // irreversible step gets its own verbs.
+      'task_restored', 'task_purged', 'trash_emptied',
     ],
   },
   taskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task', default: null },

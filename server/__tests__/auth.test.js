@@ -537,6 +537,66 @@ describe('POST /api/auth/change-password', () => {
       .send({ currentPassword: TEST_PASSWORD, newPassword: 'NewStr0ng$!' });
     expect(res.status).toBe(401);
   });
+
+  it('revokes pre-change access tokens (passwordChangedAt)', async () => {
+    const { user } = await createTestUser({ email: 'pcat@example.com' });
+    // Token with an iat clearly in the past, so the guard deterministically
+    // treats it as issued before the password change.
+    const oldAccessToken = jwt.sign(
+      { sub: user._id.toString(), id: user._id, type: 'access', token_type: 'access', iat: Math.floor(Date.now() / 1000) - 60, jti: crypto.randomUUID() },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${oldAccessToken}`)
+      .send({ currentPassword: TEST_PASSWORD, newPassword: 'NewStr0ng$!' });
+    expect(res.status).toBe(200);
+
+    const after = await request(app)
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${oldAccessToken}`);
+    expect(after.status).toBe(401);
+  });
+
+  it('change-password returns a usable fresh token pair', async () => {
+    const { accessToken } = await createTestUser({ email: 'cpfresh@example.com' });
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ currentPassword: TEST_PASSWORD, newPassword: 'NewStr0ng$!' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.accessToken).toBeDefined();
+    expect(res.body.refreshToken).toBeDefined();
+
+    const profile = await request(app)
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${res.body.accessToken}`);
+    expect(profile.status).toBe(200);
+  });
+
+  it('revokes pre-change access tokens on password reset', async () => {
+    const { user } = await createTestUserWithTokens({ email: 'pcareset@example.com' });
+    const token = user.createPasswordResetToken();
+    await user.save();
+
+    // Issue an access token with an iat clearly in the past, then reset.
+    const oldAccessToken = jwt.sign(
+      { sub: user._id.toString(), id: user._id, type: 'access', token_type: 'access', iat: Math.floor(Date.now() / 1000) - 60, jti: crypto.randomUUID() },
+      process.env.JWT_SECRET,
+      { expiresIn: '15m' }
+    );
+
+    await request(app).post('/api/auth/reset-password').send({ token, password: 'NewStr0ng$!' });
+
+    const after = await request(app)
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${oldAccessToken}`);
+    expect(after.status).toBe(401);
+  });
 });
 
 // ========================================================================

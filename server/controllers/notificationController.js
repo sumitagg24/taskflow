@@ -92,22 +92,3 @@ exports.deleteNotification = async (req, res, next) => {
     next(error);
   }
 };
-
-// Internal helper used by other controllers (tasks, time-tracking, etc.) to
-// create a notification for a specific user. Exposed as a service so we don't
-// duplicate the model call everywhere.
-exports.createNotification = async ({ userId, type = 'system', title, message, relatedId = null, relatedType = 'system', metadata = {} }) => {
-  if (!userId || !title || !message) {
-    throw new Error('createNotification: userId, title and message are required');
-  }
-
-  return Notification.create({
-    userId,
-    type,
-    title,
-    message,
-    relatedId,
-    relatedType,
-    metadata,
-  });
-};

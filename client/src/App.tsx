@@ -1,22 +1,27 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useState, useCallback, useEffect, lazy, Suspense, type ReactElement } from 'react';
 import { Toaster, toast } from 'sonner';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { getTasks, deleteTask } from '@/api/tasks';
+import { NotificationProvider } from '@/context/NotificationContext';
+import { getTasks, deleteTask, restoreTask } from '@/api/tasks';
 import Sidebar from '@/components/layout/Sidebar';
 import Navbar from '@/components/layout/Navbar';
-import Dashboard from '@/components/pages/Dashboard';
+import CommandPalette from '@/components/CommandPalette';
+import Dashboard, { PALETTE_USED_KEY } from '@/components/pages/Dashboard';
 import KanbanBoard from '@/components/KanbanBoard';
-import Filters from '@/components/Filters';
+import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
 import TaskForm from '@/components/TaskForm';
+import TaskDetailDrawer from '@/components/TaskDetailDrawer';
 import AIAssistant from '@/components/AIAssistant';
 import AuthPage from '@/components/pages/AuthPage';
 import ForgotPasswordPage from '@/components/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/components/pages/ResetPasswordPage';
 import VerifyEmailPage from '@/components/pages/VerifyEmailPage';
+import OAuthCallbackPage from '@/components/pages/auth/OAuthCallbackPage';
+import VerificationNoticePage from '@/components/pages/auth/VerificationNoticePage';
 import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
-import { Modal, DeleteConfirmModal, PageLoader } from '@/components/ui';
-import { Loader2, Plus, Sparkles } from 'lucide-react';
+import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard, LogoMark } from '@/components/ui';
+import { Plus, ListTodo } from 'lucide-react';
 
 const CalendarPage = lazy(() => import('@/components/pages/CalendarPage'));
 const SettingsPage = lazy(() => import('@/components/pages/SettingsPage'));
@@ -27,6 +32,18 @@ const AnalyticsPage = lazy(() => import('@/components/pages/AnalyticsPage'));
 const FocusTimerPage = lazy(() => import('@/components/pages/FocusTimerPage'));
 const TeamPage = lazy(() => import('@/components/pages/TeamPage'));
 const TemplatesPage = lazy(() => import('@/components/pages/TemplatesPage'));
+const InsightsPage = lazy(() => import('@/components/pages/InsightsPage'));
+const TrashPage = lazy(() => import('@/components/pages/TrashPage'));
+
+const LIST_SECTIONS = ['all', 'pending', 'in-progress', 'completed', 'backlog'] as const;
+
+const LIST_TITLES: Record<string, string> = {
+  all: 'All Tasks',
+  pending: 'To Do',
+  'in-progress': 'In Progress',
+  completed: 'Completed',
+  backlog: 'Backlog',
+};
 
 type TaskData = {
   _id: string;
@@ -43,24 +60,13 @@ type TaskData = {
   [key: string]: any;
 };
 
-type FiltersState = {
-  status: string;
-  priority: string;
-  sort: string;
-  search: string;
-  category: string;
-  tag: string;
-};
-
 function AppContent() {
   const { user, isAuthenticated } = useAuth();
   const { resolvedTheme } = useTheme();
 
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<FiltersState>({
-    status: '', priority: '', sort: '', search: '', category: '', tag: '',
-  });
+  const [filters, setFilters] = useState<FiltersValues>({ ...EMPTY_FILTERS });
   const [editTask, setEditTask] = useState<TaskData | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
@@ -68,12 +74,41 @@ function AppContent() {
   const [deleteTarget, setDeleteTarget] = useState<TaskData | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // The read-only detail drawer, keyed by id so it can fetch the fully
+  // populated task itself (comments, dependency titles) rather than reusing the
+  // trimmed copy the list already holds.
+  const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+  // An email address (or username) we know still needs verifying, captured from
+  // a refused sign-in so the user is not left with nowhere to go.
+  const [pendingVerification, setPendingVerification] = useState<string | null>(null);
 
-  const queryParams = new URLSearchParams(window.location.search);
-  const path = window.location.pathname;
-  const tokenParam = queryParams.get('token');
-  const resetToken = path.includes('reset-password') ? tokenParam : null;
-  const verificationToken = path.includes('verify-email') ? tokenParam : null;
+  // Which auth screen the entry URL asked for. Captured once on mount: the
+  // callback and token screens scrub the address bar as they work, and they must
+  // not unmount themselves half way through by re-reading window.location.
+  const [authRoute, setAuthRoute] = useState<{ kind: 'oauth' | 'reset' | 'verify' | 'none'; token: string }>(
+    () => {
+      const params = new URLSearchParams(window.location.search);
+      const path = window.location.pathname;
+      const token = params.get('token') ?? '';
+      if (path.includes('/auth/callback')) return { kind: 'oauth', token: '' };
+      if (path.includes('reset-password')) return { kind: 'reset', token };
+      if (path.includes('verify-email')) return { kind: 'verify', token };
+      return { kind: 'none', token: '' };
+    }
+  );
+
+  // Leave the token screens: drop the query and fall back to the sign-in form.
+  const clearAuthRoute = useCallback(() => {
+    window.history.replaceState({}, '', '/');
+    setAuthRoute({ kind: 'none', token: '' });
+  }, []);
+
+  // "Open" means read, not edit: the drawer fetches the populated task and
+  // offers Edit from its footer.
+  const openTaskById = useCallback((id: string) => {
+    setDetailTaskId(id);
+  }, []);
 
   useEffect(() => {
     // Listen for AI Assistant navigate event
@@ -84,10 +119,17 @@ function AppContent() {
     };
     window.addEventListener('navigate', navigateHandler as EventListener);
 
+    // Open a task in the edit modal (used by notification click-through).
+    const openTaskHandler = (e: CustomEvent) => {
+      if (e.detail?.id) openTaskById(e.detail.id);
+    };
+    window.addEventListener('open-task', openTaskHandler as EventListener);
+
     return () => {
       window.removeEventListener('navigate', navigateHandler as EventListener);
+      window.removeEventListener('open-task', openTaskHandler as EventListener);
     };
-  }, []);
+  }, [openTaskById]);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -110,18 +152,68 @@ function AppContent() {
     }
   }, [isAuthenticated, fetchTasks]);
 
+  // Restoring from Trash (or any cross-page mutation) asks the shell to refetch
+  // rather than trying to thread a task object back up through props.
+  useEffect(() => {
+    const onRefresh = () => { if (isAuthenticated) fetchTasks(); };
+    window.addEventListener('tasks:refresh', onRefresh);
+    return () => window.removeEventListener('tasks:refresh', onRefresh);
+  }, [isAuthenticated, fetchTasks]);
+
+  // ⌘K / Ctrl-K opens the palette from anywhere. Registered on the window in
+  // capture phase so it still fires while focus sits inside an input, but
+  // deliberately ignores the case where a modal-level handler already ran.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((open) => {
+          if (!open) localStorage.setItem(PALETTE_USED_KEY, '1');
+          return !open;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isAuthenticated]);
+
+  // Onboarding tracks palette discovery, so every entry point records it.
+  const openPalette = useCallback(() => {
+    localStorage.setItem(PALETTE_USED_KEY, '1');
+    setPaletteOpen(true);
+  }, []);
+
   const handleDeleteRequest = (task: TaskData) => {
     setDeleteTarget(task);
   };
 
+  // Delete is a soft delete on the server, so the honest affordance is an
+  // instant Undo rather than a scarier confirmation dialog.
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
+    const task = deleteTarget;
     setDeleting(true);
     try {
-      await deleteTask(deleteTarget._id);
-      setTasks(prev => prev.filter(t => t._id !== deleteTarget._id));
-      toast.success('Task deleted', { icon: '🗑️' });
+      await deleteTask(task._id);
+      setTasks((prev) => prev.filter((t) => t._id !== task._id));
       setDeleteTarget(null);
+      toast.success(`“${task.title}” moved to Trash`, {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              const { data } = await restoreTask(task._id);
+              setTasks((prev) =>
+                prev.some((t) => t._id === data._id) ? prev : [data, ...prev]
+              );
+              toast.success('Restored');
+            } catch {
+              toast.error('Could not restore — it is still in Trash');
+            }
+          },
+        },
+      });
     } catch {
       toast.error('Failed to delete task');
     } finally {
@@ -153,8 +245,10 @@ function AppContent() {
     setShowForm(false);
   };
 
-  const handleSearch = useCallback((query: string) => {
-    setFilters(prev => ({ ...prev, search: query }));
+  // The drawer mutates subtasks, comments, the timer and favourites, so its
+  // fresh copy is folded back into the list the board renders from.
+  const handleTaskChanged = useCallback((task: Record<string, any>) => {
+    setTasks((prev) => prev.map((t) => (t._id === task._id ? ({ ...t, ...task } as TaskData) : t)));
   }, []);
 
   const handleNavigate = (section: string) => {
@@ -163,84 +257,98 @@ function AppContent() {
 
   // --- Auth routing ---
   if (!isAuthenticated) {
-    // Check query params first
-    if (resetToken && !verificationToken) {
-      return (
-        <>
-          <ResetPasswordPage token={resetToken} onSuccess={() => {
-            window.history.replaceState({}, '', window.location.pathname);
-          }} />
-          <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
-        </>
-      );
+    const withToaster = (screen: ReactElement) => (
+      <>
+        {screen}
+        <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
+      </>
+    );
+
+    // The GitHub redirect lands here with a one-time exchange code.
+    if (authRoute.kind === 'oauth') {
+      return withToaster(<OAuthCallbackPage onDone={clearAuthRoute} />);
     }
-    if (verificationToken) {
-      return (
-        <>
-          <VerifyEmailPage token={verificationToken} onSuccess={() => {
-            window.history.replaceState({}, '', window.location.pathname);
-          }} />
-          <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
-        </>
+    if (authRoute.kind === 'reset') {
+      return withToaster(<ResetPasswordPage token={authRoute.token} onSuccess={clearAuthRoute} />);
+    }
+    if (authRoute.kind === 'verify') {
+      return withToaster(<VerifyEmailPage token={authRoute.token} onSuccess={clearAuthRoute} />);
+    }
+    if (pendingVerification !== null) {
+      return withToaster(
+        <VerificationNoticePage
+          identifier={pendingVerification}
+          onBack={() => setPendingVerification(null)}
+        />
       );
     }
     if (showForgotPassword) {
-      return (
-        <>
-          <ForgotPasswordPage onBack={() => setShowForgotPassword(false)} />
-          <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
-        </>
-      );
+      return withToaster(<ForgotPasswordPage onBack={() => setShowForgotPassword(false)} />);
     }
-    return (
-      <>
-        <AuthPage
-          onForgotPassword={() => setShowForgotPassword(true)}
-        />
-        <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
-      </>
+    return withToaster(
+      <AuthPage
+        onForgotPassword={() => setShowForgotPassword(true)}
+        onVerificationNeeded={setPendingVerification}
+      />
     );
   }
 
   const renderContent = () => {
-    switch (activeSection) {
-      case 'dashboard':
-        return <Dashboard onEditTask={handleEdit} onNewTask={handleNewTask} />;
+    if (LIST_SECTIONS.includes(activeSection as (typeof LIST_SECTIONS)[number])) {
+      const scoped = activeSection === 'all' ? tasks : tasks.filter((t) => t.status === activeSection);
+      const filtersActive = Object.values(filters).some((v) => v !== '');
 
-      case 'all':
-      case 'pending':
-      case 'in-progress':
-      case 'completed':
-      case 'backlog':
-        return (
-          <div className="p-4 lg:p-6 animate-fadeIn">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {activeSection === 'all' ? 'All Tasks' :
-                 activeSection === 'pending' ? 'To Do' :
-                 activeSection === 'in-progress' ? 'In Progress' :
-                 activeSection === 'completed' ? 'Completed' : 'Backlog'}
-              </h2>
-              <span className="text-sm text-gray-400">
-                {tasks.filter(t => activeSection === 'all' ? true : t.status === activeSection).length} tasks
-              </span>
-            </div>
-            <Filters filters={filters} onChange={setFilters} />
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 size={24} className="animate-spin text-yellow-500" />
-              </div>
-            ) : (
-              <KanbanBoard
-                tasks={activeSection === 'all' ? tasks : tasks.filter(t => t.status === activeSection)}
-                onRefresh={fetchTasks}
-                onEdit={handleEdit}
-                onDelete={handleDeleteRequest}
-              />
-            )}
+      return (
+        <div className="animate-fadeIn p-4 lg:p-6">
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <h2 className="font-display text-2xl text-gray-900 dark:text-gray-100">
+              {LIST_TITLES[activeSection]}
+            </h2>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'}
+            </span>
           </div>
-        );
+          <Filters filters={filters} onChange={setFilters} />
+          {loading ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          ) : scoped.length === 0 ? (
+            <EmptyState
+              icon={<ListTodo size={22} />}
+              title={filtersActive ? 'No tasks match these filters' : `Nothing in ${LIST_TITLES[activeSection]}`}
+              description={
+                filtersActive
+                  ? 'Try widening the filters, or clear them to see everything.'
+                  : 'Create your first task here and it will show up instantly.'
+              }
+              action={
+                filtersActive ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => setFilters({ ...EMPTY_FILTERS })}
+                  >
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Button icon={<Plus size={16} />} onClick={handleNewTask}>New task</Button>
+                )
+              }
+            />
+          ) : (
+            <KanbanBoard
+              tasks={scoped}
+              onRefresh={fetchTasks}
+              onDelete={handleDeleteRequest}
+            />
+          )}
+        </div>
+      );
+    }
 
+    switch (activeSection) {
       case 'calendar':
         return <CalendarPage />;
 
@@ -253,6 +361,9 @@ function AppContent() {
       case 'templates':
         return <TemplatesPage />;
 
+      case 'insights':
+        return <InsightsPage />;
+
       case 'analytics':
         return <AnalyticsPage />;
 
@@ -262,77 +373,102 @@ function AppContent() {
       case 'notifications':
         return <NotificationsPage />;
 
+      case 'trash':
+        return <TrashPage />;
+
       case 'settings':
         return <SettingsPage />;
 
       case 'team':
         return <TeamPage />;
 
+      case 'dashboard':
       default:
-        return <Dashboard onEditTask={handleEdit} onNewTask={handleNewTask} />;
+        return <Dashboard onEditTask={handleEdit} onNewTask={handleNewTask} onNavigate={handleNavigate} />;
     }
   };
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar activeSection={activeSection} onNavigate={handleNavigate} />
+    <NotificationProvider>
+      <div className="flex min-h-screen">
+        <Sidebar activeSection={activeSection} onNavigate={handleNavigate} />
 
-      <div className="flex flex-1 flex-col min-w-0">
-        <EmailVerificationBanner />
-        <Navbar
-          onNewTask={handleNewTask}
-          onSearch={handleSearch}
-          onOpenAIAssistant={() => setShowAIAssistant(true)}
+        <div className="flex flex-1 flex-col min-w-0">
+          <EmailVerificationBanner />
+          <Navbar
+            onNewTask={handleNewTask}
+            onOpenCommandPalette={openPalette}
+            onOpenAIAssistant={() => setShowAIAssistant(true)}
+            onNavigate={handleNavigate}
+            activeSection={activeSection}
+          />
+
+          <main className="flex-1 overflow-auto" key={activeSection}>
+            <Suspense fallback={<PageLoader />}>
+              {renderContent()}
+            </Suspense>
+          </main>
+        </div>
+
+        <Modal
+          isOpen={showForm}
+          onClose={() => { setShowForm(false); setEditTask(null); }}
+          title={editTask ? 'Edit Task' : 'Create Task'}
+          subtitle={editTask ? 'Update task details' : 'Add a new task to your workspace'}
+          size="xl"
+        >
+          <TaskForm
+            existingTask={editTask}
+            onSuccess={handleFormSubmit}
+            onCancel={() => { setShowForm(false); setEditTask(null); }}
+          />
+        </Modal>
+
+        <DeleteConfirmModal
+          isOpen={!!deleteTarget}
+          onClose={() => { if (!deleting) setDeleteTarget(null); }}
+          onConfirm={handleDeleteConfirm}
+          itemName={deleteTarget?.title}
+          loading={deleting}
+        />
+
+        <TaskDetailDrawer
+          taskId={detailTaskId}
+          onClose={() => setDetailTaskId(null)}
+          onChanged={handleTaskChanged}
+          onEdit={(task) => { setDetailTaskId(null); handleEdit(task as TaskData); }}
+          onDelete={(task) => { setDetailTaskId(null); handleDeleteRequest(task as TaskData); }}
+        />
+
+        <button
+          onClick={handleNewTask}
+          className="fixed right-5 bottom-5 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
+          aria-label="Create new task"
+        >
+          <Plus size={22} strokeWidth={2.25} aria-hidden="true" />
+        </button>
+
+        <AIAssistant isOpen={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
+
+        <CommandPalette
+          isOpen={paletteOpen}
+          onClose={() => setPaletteOpen(false)}
+          tasks={tasks}
           onNavigate={handleNavigate}
+          onOpenTask={openTaskById}
+          onNewTask={handleNewTask}
+          onOpenAIAssistant={() => setShowAIAssistant(true)}
         />
 
-        <main className="flex-1 overflow-auto" key={activeSection}>
-          <Suspense fallback={<PageLoader />}>
-            {renderContent()}
-          </Suspense>
-        </main>
+        <Toaster
+          position="bottom-right"
+          richColors
+          closeButton
+          theme={resolvedTheme}
+          toastOptions={{ duration: 3000 }}
+        />
       </div>
-
-      <Modal
-        isOpen={showForm}
-        onClose={() => { setShowForm(false); setEditTask(null); }}
-        title={editTask ? 'Edit Task' : 'Create Task'}
-        subtitle={editTask ? 'Update task details' : 'Add a new task to your workspace'}
-        size="xl"
-      >
-        <TaskForm
-          existingTask={editTask}
-          onSuccess={handleFormSubmit}
-          onCancel={() => { setShowForm(false); setEditTask(null); }}
-        />
-      </Modal>
-
-      <DeleteConfirmModal
-        isOpen={!!deleteTarget}
-        onClose={() => { if (!deleting) setDeleteTarget(null); }}
-        onConfirm={handleDeleteConfirm}
-        itemName={deleteTarget?.title}
-        loading={deleting}
-      />
-
-      <button
-        onClick={handleNewTask}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-yellow-400 text-gray-900 shadow-lg shadow-yellow-500/30 hover:bg-yellow-500 hover:shadow-xl hover:shadow-yellow-500/40 active:scale-95 transition-all md:hidden focus:outline-none focus:ring-2 focus:ring-yellow-500/50"
-        aria-label="Create new task"
-      >
-        <Plus size={24} />
-      </button>
-
-      <AIAssistant isOpen={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
-
-      <Toaster
-        position="bottom-right"
-        richColors
-        closeButton
-        theme={resolvedTheme}
-        toastOptions={{ duration: 3000 }}
-      />
-    </div>
+    </NotificationProvider>
   );
 }
 
@@ -363,36 +499,28 @@ function AppRouter() {
 
 function SplashScreen() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-6 bg-[#F7F8FA] dark:bg-[#0f0f13]">
-
-      {/* Brand mark */}
-      <div className="flex flex-col items-center gap-3 animate-fadeIn">
-        <div className="relative">
-          {/* Soft glow ring behind the icon */}
-          <div className="absolute inset-0 rounded-2xl bg-yellow-400/20 blur-xl animate-pulse" />
-          <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-yellow-400 shadow-lg shadow-yellow-500/30">
-            <Sparkles size={28} className="text-gray-900" />
-          </div>
-        </div>
-        <span className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-canvas">
+      <div className="animate-fadeIn flex flex-col items-center gap-3">
+        <LogoMark size={48} animate />
+        <span className="font-display text-2xl tracking-tight text-gray-900 dark:text-gray-100">
           TaskFlow
         </span>
       </div>
 
-      {/* Progress bar */}
-      <div className="w-40 h-1 rounded-full overflow-hidden">
+      {/* Indeterminate hairline. A shimmer reads as "working" without faking a
+          percentage we don't know. */}
+      <div className="h-[3px] w-32 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
         <div
-          className="h-full rounded-full animate-shimmer"
+          className="animate-shimmer h-full rounded-full"
           style={{
-            background: 'linear-gradient(90deg, #facc15 0%, #fde68a 50%, #facc15 100%)',
+            background:
+              'linear-gradient(90deg, transparent 0%, var(--color-clay) 50%, transparent 100%)',
             backgroundSize: '200% 100%',
           }}
         />
       </div>
 
-      <p className="text-sm text-gray-400 dark:text-gray-500 animate-fadeIn">
-        Starting up...
-      </p>
+      <p className="animate-fadeIn text-sm text-gray-500 dark:text-gray-400">Starting up…</p>
     </div>
   );
 }

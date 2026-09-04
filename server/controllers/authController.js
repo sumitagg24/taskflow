@@ -11,6 +11,7 @@ const {
   sendWelcomeEmail,
   getEmailStatus,
 } = require('../services/emailService');
+const { attributeReferral } = require('./growthController');
 
 // Account lockout configuration
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -96,6 +97,12 @@ exports.register = async (req, res, next) => {
     const verificationToken = user.createEmailVerificationToken();
     await user.save();
 
+    // Referral attribution is best-effort: a stale or bogus `referralCode`
+    // must never stop somebody creating an account.
+    if (req.body.referralCode) {
+      await attributeReferral(user, req.body.referralCode);
+    }
+
     try {
       await sendVerificationEmail(email, verificationToken);
     } catch {
@@ -174,7 +181,6 @@ exports.login = async (req, res, next) => {
       return res.status(403).json({
         message: 'Please verify your email before signing in. Check your inbox for the verification link.',
         code: 'EMAIL_NOT_VERIFIED',
-        email: user.email,
       });
     }
 
@@ -329,6 +335,9 @@ exports.resetPassword = async (req, res, next) => {
     user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+    // Second precision to match the access token's `iat` claim, so a token
+    // issued right after the change is never rejected by the guard.
+    user.passwordChangedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
 
     await user.save();
 
@@ -418,9 +427,15 @@ exports.changePassword = async (req, res, next) => {
 
     user.password = newPassword;
     user.refreshToken = undefined;
+    user.passwordChangedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
     await user.save();
 
-    res.json({ message: 'Password changed successfully' });
+    const auth = await createAuthResponse(user);
+
+    res.json({
+      message: 'Password changed successfully',
+      ...auth,
+    });
   } catch (error) {
     next(error);
   }
@@ -500,7 +515,7 @@ exports.googleAuth = async (req, res, next) => {
       try {
         user = await User.create({
           name: name || normalizedEmail.split('@')[0],
-          username: normalizedEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').slice(0, 30) || `user_${Date.now()}`,
+          username: await deriveUniqueUsername(normalizedEmail.split('@')[0]),
           email: normalizedEmail,
           authProvider: 'google',
           googleId,
@@ -529,6 +544,13 @@ exports.googleAuth = async (req, res, next) => {
               await user.save();
             }
           }
+          if (!user) {
+            // Duplicate key with nothing to recover — a concurrent write we
+            // cannot reconcile. Better a retryable 409 than a crash below.
+            return res.status(409).json({
+              message: 'Could not complete Google sign-in. Please try again.',
+            });
+          }
         } else {
           throw err;
         }
@@ -540,6 +562,335 @@ exports.googleAuth = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+// -------------------- GitHub OAuth --------------------
+/* GitHub has no ID token, so this is the authorization-code dance: we bounce
+   the browser to GitHub, it comes back with a `code`, and the server trades
+   that for an access token using the client secret. The finished session is
+   handed to the SPA as a single-use exchange code rather than a JWT in the
+   URL — see User.createOAuthExchangeToken. */
+
+const GITHUB_STATE_COOKIE = 'tf_gh_state';
+const GITHUB_SCOPE = 'read:user user:email';
+
+const githubConfigured = () =>
+  Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+
+const trimSlashes = (value) => String(value || '').replace(/\/+$/, '');
+
+const clientOrigin = () => trimSlashes(process.env.CLIENT_URL) || 'http://localhost:3000';
+
+// Defaults through the client origin so the dev proxy (:3000 → :5000) and the
+// same-origin production build both work with one registered callback URL.
+const githubCallbackUrl = () =>
+  trimSlashes(process.env.GITHUB_CALLBACK_URL) || `${clientOrigin()}/api/auth/github/callback`;
+
+const readCookie = (req, name) => {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(eq + 1).trim());
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+};
+
+const authCallbackRedirect = (params) =>
+  `${clientOrigin()}/auth/callback?${new URLSearchParams(params).toString()}`;
+
+const sanitizeUsername = (raw) =>
+  String(raw || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+
+/**
+ * Pick the first candidate that sanitizes to a free username, else append a
+ * random suffix. Without this an OAuth signup whose derived handle is taken
+ * fails with a raw duplicate-key error.
+ */
+const deriveUniqueUsername = async (...candidates) => {
+  for (const candidate of candidates) {
+    const base = sanitizeUsername(candidate);
+    if (base.length < 3) continue;
+    if (!(await User.exists({ username: base }))) return base;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const suffix = String(crypto.randomInt(1000, 10000));
+      const withSuffix = `${base.slice(0, 29 - suffix.length)}_${suffix}`;
+      if (!(await User.exists({ username: withSuffix }))) return withSuffix;
+    }
+  }
+  return `user_${crypto.randomBytes(6).toString('hex')}`;
+};
+
+const githubFetch = async (url, accessToken) => {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'TaskFlow',
+    },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub API ${url} responded ${response.status}`);
+  }
+  return response.json();
+};
+
+/** GET /api/auth/github — set a state cookie and bounce to GitHub. */
+exports.githubStart = (req, res) => {
+  if (!githubConfigured()) {
+    return res.redirect(
+      authCallbackRedirect({
+        error: 'PROVIDER_NOT_CONFIGURED',
+        message: 'GitHub sign-in is not configured on this server.',
+      })
+    );
+  }
+
+  const state = crypto.randomBytes(24).toString('hex');
+
+  res.cookie(GITHUB_STATE_COOKIE, state, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 10 * 60 * 1000,
+    path: '/api/auth',
+  });
+
+  const authorizeUrl = new URL('https://github.com/login/oauth/authorize');
+  authorizeUrl.searchParams.set('client_id', process.env.GITHUB_CLIENT_ID);
+  authorizeUrl.searchParams.set('redirect_uri', githubCallbackUrl());
+  authorizeUrl.searchParams.set('scope', GITHUB_SCOPE);
+  authorizeUrl.searchParams.set('state', state);
+  authorizeUrl.searchParams.set('allow_signup', 'true');
+
+  res.redirect(authorizeUrl.toString());
+};
+
+/** GET /api/auth/github/callback — trade the code, upsert the user, hand back
+ *  a one-time exchange code. Every failure lands on the SPA's /auth/callback
+ *  with an `error`, never on a raw JSON error page. */
+exports.githubCallback = async (req, res) => {
+  const fail = (error, message, logLine) => {
+    if (logLine) logger.warn(`GitHub OAuth: ${logLine}`);
+    res.clearCookie(GITHUB_STATE_COOKIE, { path: '/api/auth' });
+    return res.redirect(authCallbackRedirect({ error, message }));
+  };
+
+  try {
+    if (!githubConfigured()) {
+      return fail('PROVIDER_NOT_CONFIGURED', 'GitHub sign-in is not configured on this server.');
+    }
+
+    const { code, state, error: providerError } = req.query;
+
+    if (providerError) {
+      return fail(
+        'PROVIDER_DENIED',
+        'GitHub sign-in was cancelled.',
+        `provider returned ${providerError}`
+      );
+    }
+
+    const expectedState = readCookie(req, GITHUB_STATE_COOKIE);
+    const stateOk =
+      typeof state === 'string' &&
+      typeof expectedState === 'string' &&
+      state.length === expectedState.length &&
+      crypto.timingSafeEqual(Buffer.from(state), Buffer.from(expectedState));
+
+    if (!stateOk) {
+      return fail(
+        'STATE_MISMATCH',
+        'Sign-in session expired. Please try again.',
+        'state mismatch or missing state cookie'
+      );
+    }
+
+    if (!code || typeof code !== 'string') {
+      return fail('MISSING_CODE', 'GitHub did not return an authorization code.');
+    }
+
+    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'TaskFlow',
+      },
+      body: JSON.stringify({
+        client_id: process.env.GITHUB_CLIENT_ID,
+        client_secret: process.env.GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: githubCallbackUrl(),
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!tokenResponse.ok) {
+      return fail(
+        'TOKEN_EXCHANGE_FAILED',
+        'GitHub rejected the sign-in. Please try again.',
+        `token endpoint responded ${tokenResponse.status}`
+      );
+    }
+
+    const tokenBody = await tokenResponse.json();
+    const accessToken = tokenBody.access_token;
+
+    if (!accessToken) {
+      return fail(
+        'TOKEN_EXCHANGE_FAILED',
+        'GitHub rejected the sign-in. Please try again.',
+        `token endpoint returned ${tokenBody.error || 'no access_token'}`
+      );
+    }
+
+    const profile = await githubFetch('https://api.github.com/user', accessToken);
+    const githubId = profile.id ? String(profile.id) : null;
+
+    if (!githubId) {
+      return fail('NO_PROFILE', 'Could not read your GitHub profile.');
+    }
+
+    // `profile.email` is only the *public* one, and most accounts hide it, so
+    // fall back to the verified-address list that `user:email` grants us.
+    let email = typeof profile.email === 'string' ? profile.email : null;
+    if (!email) {
+      const emails = await githubFetch('https://api.github.com/user/emails', accessToken);
+      const list = Array.isArray(emails) ? emails : [];
+      const chosen =
+        list.find((e) => e.primary && e.verified) || list.find((e) => e.verified) || null;
+      email = chosen ? chosen.email : null;
+    }
+
+    if (!email) {
+      return fail(
+        'NO_VERIFIED_EMAIL',
+        'Your GitHub account has no verified email address. Add one on GitHub, then try again.',
+        `no verified email for github id ${githubId}`
+      );
+    }
+
+    const normalizedEmail = email.toLowerCase();
+
+    let user = await User.findOne({ $or: [{ githubId }, { email: normalizedEmail }] });
+
+    if (user) {
+      if (!user.githubId && user.authProvider !== 'github') {
+        return fail(
+          'ACCOUNT_EXISTS_WITH_DIFFERENT_PROVIDER',
+          user.authProvider === 'google'
+            ? 'This email already signs in with Google. Use the Google button instead.'
+            : 'This email is already registered with a password. Sign in with your password instead.',
+          `existing ${user.authProvider} account for ${normalizedEmail} — refusing auto-link`
+        );
+      }
+
+      if (user.githubId && user.githubId !== githubId) {
+        return fail(
+          'ACCOUNT_EXISTS_WITH_DIFFERENT_PROVIDER',
+          'This email is already associated with another account.',
+          `different github id already linked for ${normalizedEmail}`
+        );
+      }
+
+      if (profile.avatar_url && user.avatar !== profile.avatar_url) {
+        user.avatar = profile.avatar_url;
+      }
+    } else {
+      user = new User({
+        name: profile.name || profile.login || normalizedEmail.split('@')[0],
+        username: await deriveUniqueUsername(profile.login, normalizedEmail.split('@')[0]),
+        email: normalizedEmail,
+        authProvider: 'github',
+        githubId,
+        emailVerified: true,
+        avatar: profile.avatar_url || '',
+      });
+      logger.info(`GitHub OAuth: created new user ${normalizedEmail}`);
+    }
+
+    const isNewUser = user.isNew;
+    const exchangeCode = user.createOAuthExchangeToken();
+
+    try {
+      await user.save();
+    } catch (err) {
+      if (err.code === 11000) {
+        return fail(
+          'ACCOUNT_EXISTS_WITH_DIFFERENT_PROVIDER',
+          'This email is already associated with another account.',
+          `duplicate key saving ${normalizedEmail}`
+        );
+      }
+      throw err;
+    }
+
+    res.clearCookie(GITHUB_STATE_COOKIE, { path: '/api/auth' });
+    return res.redirect(
+      authCallbackRedirect({
+        code: exchangeCode,
+        provider: 'github',
+        ...(isNewUser ? { new: '1' } : {}),
+      })
+    );
+  } catch (error) {
+    return fail('UNEXPECTED', 'Could not complete GitHub sign-in. Please try again.', error.message);
+  }
+};
+
+// -------------------- OAuth code exchange --------------------
+/** POST /api/auth/oauth/exchange — swap a single-use redirect code for tokens. */
+exports.exchangeOAuthCode = async (req, res, next) => {
+  try {
+    validate(req);
+
+    const { code } = req.body;
+
+    const user = await User.findOne({
+      oauthExchangeToken: hashToken(code),
+      oauthExchangeExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'This sign-in link has expired. Please try again.',
+        code: 'INVALID_EXCHANGE_CODE',
+      });
+    }
+
+    // Single use: burn it before minting the session.
+    user.oauthExchangeToken = undefined;
+    user.oauthExchangeExpires = undefined;
+
+    const auth = await createAuthResponse(user);
+    res.json(auth);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** GET /api/auth/providers — lets the client hide buttons it cannot fulfil. */
+exports.getAuthProviders = (req, res) => {
+  res.json({
+    google: Boolean(process.env.GOOGLE_CLIENT_ID),
+    github: githubConfigured(),
+  });
 };
 
 // -------------------- Logout --------------------

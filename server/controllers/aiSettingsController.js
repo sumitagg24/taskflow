@@ -34,12 +34,20 @@ function isAllowedBaseUrl(raw) {
   try {
     const u = new URL(raw);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    const isLoopback = ['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(u.hostname);
     // Disallow plain http unless it's a loopback host (self-hosted).
-    if (u.protocol === 'http:' && !['localhost', '127.0.0.1', '::1', 'host.docker.internal'].includes(u.hostname)) {
+    if (u.protocol === 'http:' && !isLoopback) {
       return false;
     }
     if (BLOCKED_HOSTNAMES.has(u.hostname)) return false;
-    return ALLOWED_BASEURL_HOSTS.has(u.hostname);
+    if (!ALLOWED_BASEURL_HOSTS.has(u.hostname)) return false;
+    // Loopback http is used for self-hosted inference (Ollama, LM Studio, ...)
+    // which commonly runs on 11434/1234/8080. Reject exotic ports so the AI
+    // test endpoint can't reach arbitrary local services (SSRF).
+    if (u.protocol === 'http:' && isLoopback && u.port && !['80', '11434', '1234', '8080', '3000', '8000'].includes(u.port)) {
+      return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -144,7 +152,7 @@ exports.updateAiSettings = async (req, res, next) => {
         sanitized.maxTokens = m;
       }
       if (aiSettings.streaming !== undefined) {
-        sanitized.streaming = Boolean(aiSettings.streaming);
+        sanitized.streaming = aiSettings.streaming === true || aiSettings.streaming === 'true';
       }
       if (aiSettings.timeout !== undefined) {
         const t = Number(aiSettings.timeout);

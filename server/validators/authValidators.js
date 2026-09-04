@@ -28,6 +28,17 @@ const identifierRule = body('identifier')
   .notEmpty()
   .withMessage('Email or Username is required');
 
+// Sign-in only checks that *something* was submitted. Re-running the signup
+// complexity rules here would (a) leak the password policy to anyone probing
+// the endpoint, (b) turn a failed login into a 400 instead of a generic 401,
+// and (c) permanently lock out any account whose password predates the current
+// policy. Correctness of the secret is `comparePassword`'s job.
+const loginPasswordRule = body('password')
+  .notEmpty()
+  .withMessage('Password is required')
+  .isLength({ max: 200 })
+  .withMessage('Invalid credentials');
+
 const usernameRule = body('username')
   .trim()
   .notEmpty()
@@ -49,7 +60,7 @@ const registerValidator = [
   passwordRule,
 ];
 
-const loginValidator = [identifierRule, passwordRule];
+const loginValidator = [identifierRule, loginPasswordRule];
 
 const forgotPasswordValidator = [emailRule];
 
@@ -118,6 +129,17 @@ const usernameCheckValidator = [
     .withMessage('Username can only contain letters, numbers, and underscores'),
 ];
 
+const oauthExchangeValidator = [
+  body('code')
+    .trim()
+    .notEmpty()
+    .withMessage('Exchange code is required')
+    .isLength({ min: 64, max: 64 })
+    .withMessage('Invalid exchange code')
+    .matches(/^[a-f0-9]+$/)
+    .withMessage('Invalid exchange code'),
+];
+
 module.exports = {
   registerValidator,
   loginValidator,
@@ -129,4 +151,5 @@ module.exports = {
   googleAuthValidator,
   refreshTokenValidator,
   usernameCheckValidator,
+  oauthExchangeValidator,
 };

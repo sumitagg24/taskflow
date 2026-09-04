@@ -148,6 +148,9 @@ export const authAPI = {
   verifyEmail: (token: string): Promise<AxiosResponse> => api.post('/auth/verify-email', { token }),
   resendVerification: (email: string): Promise<AxiosResponse> => api.post('/auth/resend-verification', { email }),
   googleAuth: (credential: string): Promise<AxiosResponse> => api.post('/auth/google', { credential }),
+  exchangeOAuthCode: (code: string): Promise<AxiosResponse> => api.post('/auth/oauth/exchange', { code }),
+  getProviders: (): Promise<AxiosResponse<{ google: boolean; github: boolean }>> =>
+    api.get('/auth/providers'),
   changePassword: (currentPassword: string, newPassword: string): Promise<AxiosResponse> => api.post('/auth/change-password', { currentPassword, newPassword }),
 };
 
@@ -173,7 +176,23 @@ export const updateOrder = (orders: { _id: string; order: number; status: string
 export const batchUpdate = (taskIds: string[], updates: any): Promise<AxiosResponse> => api.post('/tasks/batch', { taskIds, updates });
 
 export const getStats = (params?: { timeframe?: string }): Promise<AxiosResponse> => api.get('/tasks/stats', { params });
-export const getActivityLog = (): Promise<AxiosResponse> => api.get('/tasks/activity');
+// Omitting `taskId` returns the account-wide feed (the Dashboard's activity
+// rail); passing one returns just that task's history for the detail drawer.
+export const getActivityLog = (params?: { taskId?: string; limit?: number }): Promise<AxiosResponse> =>
+  api.get('/tasks/activity', { params });
+
+// Insights — productivity score, streaks, velocity/burndown series and time
+// reports. `tzOffset` is sent so day buckets line up with the user's calendar
+// rather than the server's UTC midnight.
+export const getInsights = (days = 30): Promise<AxiosResponse> =>
+  api.get('/tasks/insights', { params: { days, tzOffset: new Date().getTimezoneOffset() } });
+
+// Trash. `deleteTask` is a soft delete, so it pairs with `restoreTask` for the
+// undo affordance; `purgeTask`/`emptyTrash` are the only irreversible calls.
+export const getTrash = (): Promise<AxiosResponse> => api.get('/tasks/trash');
+export const restoreTask = (id: string): Promise<AxiosResponse> => api.post(`/tasks/${id}/restore`);
+export const purgeTask = (id: string): Promise<AxiosResponse> => api.delete(`/tasks/${id}/purge`);
+export const emptyTrash = (): Promise<AxiosResponse> => api.delete('/tasks/trash');
 
 // Notifications — separate /api/notifications resource. The response is a
 // structured object { items, pagination, unreadCount }; callers that want
@@ -268,6 +287,81 @@ export const aiSettingsAPI = {
     maxTokens?: number;
     timeout?: number;
   }): Promise<AxiosResponse> => api.post('/auth/ai-settings/test', data || {}),
+};
+
+// ── Growth: plan tiers, usage limits, referrals and invites ────────────────
+// One GET backs the whole surface so the plan shown and the plan enforced come
+// from the same source (server/config/plans.js).
+
+export interface PlanLimits {
+  activeTasks: number | null;
+  templates: number | null;
+  savedViews: number | null;
+  aiRequestsPerDay: number | null;
+  attachmentsPerTask: number | null;
+}
+
+export interface Plan {
+  id: 'free' | 'pro' | 'team';
+  name: string;
+  price: number;
+  blurb?: string;
+  features?: string[];
+  limits: PlanLimits;
+}
+
+/** `limit: null` means unlimited — render it as such rather than as a meter. */
+export interface UsageCheck {
+  allowed: boolean;
+  limit: number | null;
+  used: number;
+  remaining: number | null;
+}
+
+export interface Invite {
+  email: string;
+  invitedAt: string;
+  acceptedAt: string | null;
+  status: 'pending' | 'accepted';
+}
+
+export interface GrowthState {
+  plan: Plan;
+  plans: Plan[];
+  usage: { activeTasks: UsageCheck; templates: UsageCheck };
+  referral: {
+    code: string;
+    link: string;
+    credits: number;
+    maxCredits: number;
+    signups: number;
+  };
+  invites: Invite[];
+}
+
+export const growthAPI = {
+  get: (): Promise<AxiosResponse<GrowthState>> => api.get('/growth'),
+  invite: (email: string): Promise<AxiosResponse> => api.post('/growth/invite', { email }),
+  revokeInvite: (email: string): Promise<AxiosResponse> =>
+    api.delete(`/growth/invite/${encodeURIComponent(email)}`),
+};
+
+/**
+ * The server answers a create that would breach the plan ceiling with 402 and
+ * `code: 'PLAN_LIMIT_REACHED'`. Callers use this to show an upgrade prompt
+ * instead of a generic "something went wrong".
+ */
+export interface PlanLimitError {
+  message: string;
+  code: 'PLAN_LIMIT_REACHED';
+  limit: number;
+  used: number;
+  resource: string;
+}
+
+export const asPlanLimitError = (error: any): PlanLimitError | null => {
+  const data = error?.response?.data;
+  return error?.response?.status === 402 && data?.code === 'PLAN_LIMIT_REACHED' ? data : null;
 };
 
 export const exportTasks = (format: string = 'json'): Promise<AxiosResponse> => {

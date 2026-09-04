@@ -1,7 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { captureReferralCode } from './lib/referral';
 import './styles/index.css';
+
+// Runs before the first render so `?ref=CODE` is banked and stripped from the
+// URL no matter which screen the invite link lands on.
+captureReferralCode();
 
 if ('serviceWorker' in navigator) {
   // In development, unregister any previously installed Service Workers so

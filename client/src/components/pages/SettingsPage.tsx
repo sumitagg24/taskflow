@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { toast } from 'sonner';
-import { authAPI, aiSettingsAPI } from '@/api/tasks';
-import { Settings, User, Lock, Bell, Clock, Loader2, Save, Eye, EyeOff, Sparkles, TestTube, Trash2, RefreshCw, ExternalLink, CheckCircle2, XCircle, Globe, BookOpen, Zap, Shield, DollarSign, Cpu, Moon } from 'lucide-react';
+import { authAPI, aiSettingsAPI, growthAPI, type GrowthState } from '@/api/tasks';
+import api from '@/api/tasks';
+import { Settings, User, Lock, Bell, Clock, Loader2, Save, Eye, EyeOff, Sparkles, TestTube, Trash2, RefreshCw, ExternalLink, CheckCircle2, XCircle, Globe, BookOpen, Zap, Shield, DollarSign, Cpu, Moon, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { PlanCard } from '@/components/widgets/PlanCard';
 
 export default function SettingsPage() {
   const { user, updateProfile } = useAuth();
@@ -32,6 +34,18 @@ export default function SettingsPage() {
     emailNotifications: user?.preferences?.emailNotifications ?? true,
   });
   const [saving, setSaving] = useState(false);
+
+  // Plan + usage, read from the same endpoint the enforcement path uses.
+  const [growth, setGrowth] = useState<GrowthState | null>(null);
+  const loadGrowth = useCallback(() => {
+    // A failed read leaves the section out rather than breaking Settings — the
+    // Invite & grow page is where that error gets reported.
+    growthAPI
+      .get()
+      .then(({ data }) => setGrowth(data))
+      .catch(() => {});
+  }, []);
+  useEffect(loadGrowth, [loadGrowth]);
 
   // AI Settings state
   const [aiSettings, setAiSettings] = useState({
@@ -218,7 +232,14 @@ export default function SettingsPage() {
     }
     setChangingPassword(true);
     try {
-      await authAPI.changePassword(passwords.current, passwords.newPass);
+      const { data } = await authAPI.changePassword(passwords.current, passwords.newPass);
+      // Password change rotates the session — persist the fresh token pair so
+      // the current session survives while all pre-change sessions are revoked.
+      if (data?.accessToken && data?.refreshToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
+      }
       toast.success('Password changed successfully');
       setPasswords({ current: '', newPass: '', confirm: '' });
     } catch (err: any) {
@@ -290,6 +311,25 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Plan & usage — compact here; upgrades and invites live on their own page. */}
+        {growth && (
+          <div className="space-y-3">
+            <PlanCard growth={growth} compact onRefresh={loadGrowth} />
+            <Button
+              variant="secondary"
+              size="sm"
+              iconRight={<ArrowRight size={13} />}
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent('navigate', { detail: { section: 'team' } })
+                )
+              }
+            >
+              Manage plan &amp; invites
+            </Button>
+          </div>
+        )}
 
         {/* Password Section */}
         <div className="card p-6">

@@ -16,8 +16,8 @@ exports.getTemplates = async (req, res, next) => {
     const { category, tag } = req.query;
     const query = { userId: req.user._id };
 
-    if (category) query.category = category;
-    if (tag) query.tags = tag;
+    if (category && typeof category === 'string') query.category = category;
+    if (tag && typeof tag === 'string') query.tags = tag;
 
     const templates = await TaskTemplate.find(query)
       .sort({ usageCount: -1, createdAt: -1 })
@@ -92,10 +92,7 @@ exports.updateTemplate = async (req, res, next) => {
       return res.status(404).json({ message: 'Template not found' });
     }
 
-    const isOwner = template.userId.toString() === req.user._id.toString();
-    const isShared = template.isShared;
-
-    if (!isOwner && !isShared) {
+    if (template.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -157,6 +154,13 @@ exports.applyTemplate = async (req, res, next) => {
       return res.status(404).json({ message: 'Template not found' });
     }
 
+    const isOwner = template.userId.toString() === req.user._id.toString();
+    const isShared = template.isShared;
+
+    if (!isOwner && !isShared) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
     // Increment usage count
     template.usageCount = (template.usageCount || 0) + 1;
     await template.save();
@@ -176,6 +180,13 @@ exports.copyTemplate = async (req, res, next) => {
 
     if (!template) {
       return res.status(404).json({ message: 'Template not found' });
+    }
+
+    const isOwner = template.userId.toString() === req.user._id.toString();
+    const isShared = template.isShared;
+
+    if (!isOwner && !isShared) {
+      return res.status(403).json({ message: 'Access denied' });
     }
 
     const newTemplate = await TaskTemplate.create({

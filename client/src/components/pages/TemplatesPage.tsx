@@ -6,6 +6,7 @@ import { templatesAPI, createTask } from '@/api/tasks';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import { reportCreateError } from '@/lib/planLimit';
 
 interface Template {
   _id: string;
@@ -90,7 +91,7 @@ export default function TemplatesPage() {
       });
       toast.success(`Task "${created.title}" created from template`);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to apply template');
+      reportCreateError(err, 'Failed to apply template');
     } finally {
       setApplying(null);
     }

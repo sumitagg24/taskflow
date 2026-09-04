@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { useNotifications } from '@/context/NotificationContext';
+import { Avatar, Logo, LogoMark, Tooltip } from '@/components/ui';
 import {
   LayoutDashboard, ListTodo, ClipboardList, ArrowRightCircle,
   CheckCircle2, Archive, Calendar, Tags, BarChart3, Timer,
-  Bell, Settings, ChevronLeft, ChevronRight,
-  LogOut, Sparkles, Menu, X, Star, Users, BookmarkPlus,
+  Bell, Settings, PanelLeftClose, PanelLeftOpen,
+  LogOut, Menu, X, Star, Users, BookmarkPlus, Trash2, Flame,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -15,188 +16,274 @@ interface SidebarProps {
   onNavigate: (section: string) => void;
 }
 
-const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'all', label: 'All Tasks', icon: ListTodo },
-  { type: 'divider' as const },
-  { id: 'pending', label: 'To Do', icon: ClipboardList },
-  { id: 'in-progress', label: 'In Progress', icon: ArrowRightCircle },
-  { id: 'completed', label: 'Completed', icon: CheckCircle2 },
-  { id: 'backlog', label: 'Backlog', icon: Archive },
-  { type: 'divider' as const },
-  { id: 'calendar', label: 'Calendar', icon: Calendar },
-  { id: 'favorites', label: 'Favorites', icon: Star },
-  { id: 'categories', label: 'Categories', icon: Tags },
-  { id: 'templates', label: 'Templates', icon: BookmarkPlus },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { id: 'focus', label: 'Focus Timer', icon: Timer },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'team', label: 'Team', icon: Users },
-  { type: 'divider' as const },
-  { id: 'settings', label: 'Settings', icon: Settings },
+type NavEntry =
+  | { type: 'section'; label: string }
+  | { type: 'item'; id: string; label: string; icon: typeof LayoutDashboard };
+
+const navItems: NavEntry[] = [
+  { type: 'item', id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { type: 'item', id: 'all', label: 'All Tasks', icon: ListTodo },
+  { type: 'section', label: 'Workflow' },
+  { type: 'item', id: 'pending', label: 'To Do', icon: ClipboardList },
+  { type: 'item', id: 'in-progress', label: 'In Progress', icon: ArrowRightCircle },
+  { type: 'item', id: 'completed', label: 'Completed', icon: CheckCircle2 },
+  { type: 'item', id: 'backlog', label: 'Backlog', icon: Archive },
+  { type: 'section', label: 'Plan' },
+  { type: 'item', id: 'calendar', label: 'Calendar', icon: Calendar },
+  { type: 'item', id: 'favorites', label: 'Favorites', icon: Star },
+  { type: 'item', id: 'categories', label: 'Categories', icon: Tags },
+  { type: 'item', id: 'templates', label: 'Templates', icon: BookmarkPlus },
+  { type: 'section', label: 'Insight' },
+  { type: 'item', id: 'insights', label: 'Insights', icon: Flame },
+  { type: 'item', id: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { type: 'item', id: 'focus', label: 'Focus Timer', icon: Timer },
+  { type: 'section', label: 'Workspace' },
+  { type: 'item', id: 'notifications', label: 'Notifications', icon: Bell },
+  { type: 'item', id: 'team', label: 'Team', icon: Users },
+  { type: 'item', id: 'trash', label: 'Trash', icon: Trash2 },
+  { type: 'item', id: 'settings', label: 'Settings', icon: Settings },
 ];
 
+const COLLAPSE_KEY = 'taskflow:sidebar-collapsed';
+
 export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => typeof localStorage !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1'
+  );
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { resolvedTheme } = useTheme();
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotifications();
 
-  const sidebarContent = (
-    <div className={cn(
-      'flex h-full flex-col',
-      collapsed ? 'w-[68px]' : 'w-[260px]'
-    )}>
-      {/* Logo */}
-      <div className={cn(
-        'flex items-center border-b border-gray-100 dark:border-gray-800/50 px-4 h-16',
-        collapsed ? 'justify-center' : 'justify-between'
-      )}>
-        {!collapsed && (
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-400">
-              <Sparkles size={16} className="text-gray-900" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">TaskFlow</h1>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">Workspace</p>
-            </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-400">
-            <Sparkles size={16} className="text-gray-900" />
-          </div>
-        )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex items-center justify-center rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
-      </div>
+  useEffect(() => {
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
+  }, [collapsed]);
 
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-        {navItems.map((item, i) => {
-          if ('type' in item && item.type === 'divider') {
-            return (
-              <div key={`divider-${i}`} className={cn(
-                'my-2 border-t border-gray-100 dark:border-gray-800/50',
-                collapsed && 'mx-2'
-              )} />
-            );
+  // Lock body scroll while the mobile drawer is up, and close it on Escape.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMobileOpen(false);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [mobileOpen]);
+
+  const renderNav = (isCollapsed: boolean) => (
+    <nav className="flex-1 overflow-y-auto px-2.5 py-3" aria-label="Main">
+      {navItems.map((entry, i) => {
+        if (entry.type === 'section') {
+          if (isCollapsed) {
+            return <div key={`sec-${i}`} className="mx-2 my-2 h-px bg-gray-200/70 dark:bg-gray-800" />;
           }
-          const Icon = item.icon!;
-          const isActive = activeSection === item.id;
           return (
-            <button
-              key={item.id}
-              onClick={() => {
-                onNavigate(item.id!);
-                setMobileOpen(false);
-              }}
-              className={cn(
-                'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                collapsed && 'justify-center px-2',
-                isActive
-                  ? 'bg-yellow-50 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400'
-                  : 'text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800/50 hover:text-gray-700 dark:hover:text-gray-200'
-              )}
-              title={collapsed ? item.label : undefined}
-            >
-              <Icon size={18} className={cn(
-                'shrink-0',
-                isActive ? 'text-yellow-500' : 'text-gray-400 dark:text-gray-500'
-              )} />
-              {!collapsed && <span>{item.label}</span>}
-              {isActive && !collapsed && (
-                <motion.div
-                  layoutId="activeIndicator"
-                  className="ml-auto h-2 w-2 rounded-full bg-yellow-400"
-                />
-              )}
-            </button>
+            <p key={`sec-${i}`} className="caption-upper mt-5 mb-1.5 px-3 first:mt-1">
+              {entry.label}
+            </p>
           );
-        })}
-      </nav>
+        }
 
-      {/* User Profile */}
-      {!collapsed && user && (
-        <div className="border-t border-gray-100 dark:border-gray-800/50 p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 to-orange-400 text-sm font-bold text-gray-900">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{user.email}</p>
-            </div>
-            <button
-              onClick={logout}
-              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-red-500 transition-colors"
-              title="Logout"
-            >
-              <LogOut size={16} />
-            </button>
+        const Icon = entry.icon;
+        const isActive = activeSection === entry.id;
+        const badge = entry.id === 'notifications' && unreadCount > 0 ? unreadCount : 0;
+
+        const button = (
+          <button
+            type="button"
+            onClick={() => {
+              onNavigate(entry.id);
+              setMobileOpen(false);
+            }}
+            aria-current={isActive ? 'page' : undefined}
+            className={cn(
+              'relative flex w-full items-center gap-2.5 rounded-lg text-[13.5px] font-medium',
+              'transition-colors duration-200',
+              isCollapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2',
+              isActive
+                ? 'text-gray-900 dark:text-gray-50'
+                : 'text-gray-600 hover:bg-gray-200/45 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800/60 dark:hover:text-gray-100'
+            )}
+            style={isActive ? { backgroundColor: 'var(--bg-sidebar-active)' } : undefined}
+          >
+            {/* Clay spine on the active row — the editorial alternative to a filled pill. */}
+            {isActive && (
+              <span
+                aria-hidden="true"
+                className="absolute top-1.5 bottom-1.5 -left-2.5 w-[3px] rounded-r-full bg-yellow-400"
+              />
+            )}
+            <Icon
+              size={17}
+              aria-hidden="true"
+              className={cn(
+                'shrink-0',
+                isActive ? 'text-yellow-600 dark:text-yellow-400' : 'text-gray-400 dark:text-gray-500'
+              )}
+            />
+            {!isCollapsed && <span className="truncate">{entry.label}</span>}
+            {badge > 0 && (
+              <span
+                className={cn(
+                  'flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-yellow-400 px-1 text-[10px] font-bold text-gray-950',
+                  isCollapsed ? 'absolute top-1 right-1.5' : 'ml-auto'
+                )}
+              >
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
+          </button>
+        );
+
+        return (
+          <div key={entry.id} className="px-0.5">
+            {isCollapsed ? (
+              <Tooltip content={entry.label} side="right" delay={120}>
+                {button}
+              </Tooltip>
+            ) : (
+              button
+            )}
           </div>
-        </div>
+        );
+      })}
+    </nav>
+  );
+
+  const brand = (isCollapsed: boolean) => (
+    <div
+      className={cn(
+        'flex h-16 shrink-0 items-center border-b border-gray-200/70 px-4 dark:border-gray-800',
+        isCollapsed ? 'justify-center' : 'justify-between'
+      )}
+    >
+      {isCollapsed ? (
+        <LogoMark size={32} />
+      ) : (
+        <Logo
+          size={32}
+          wordmarkSize={17}
+          subtitle={user?.name ? `${user.name.split(' ')[0]}'s workspace` : 'Workspace'}
+          wordmarkClassName="text-[17px]"
+        />
+      )}
+      {!isCollapsed && (
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          aria-label="Collapse sidebar"
+          className="hidden shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-200/50 hover:text-gray-700 lg:flex dark:hover:bg-gray-800 dark:hover:text-gray-200"
+        >
+          <PanelLeftClose size={16} aria-hidden="true" />
+        </button>
       )}
     </div>
   );
 
+  const footer = (isCollapsed: boolean) =>
+    user && (
+      <div className="shrink-0 border-t border-gray-200/70 p-3 dark:border-gray-800">
+        {isCollapsed ? (
+          <div className="flex flex-col items-center gap-2">
+            <Tooltip content="Expand sidebar" side="right" delay={120}>
+              <button
+                type="button"
+                onClick={() => setCollapsed(false)}
+                aria-label="Expand sidebar"
+                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-200/50 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+              >
+                <PanelLeftOpen size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <Tooltip content={user.name} side="right" delay={120}>
+              <button type="button" onClick={() => onNavigate('settings')} aria-label="Open settings">
+                <Avatar name={user.name} size="sm" />
+              </button>
+            </Tooltip>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <Avatar name={user.name} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-gray-900 dark:text-gray-100">
+                {user.name}
+              </p>
+              <p className="truncate text-[11px] text-gray-500 dark:text-gray-500">{user.email}</p>
+            </div>
+            <Tooltip content="Sign out">
+              <button
+                type="button"
+                onClick={logout}
+                aria-label="Sign out"
+                className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/12 dark:hover:text-red-400"
+              >
+                <LogOut size={15} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          </div>
+        )}
+      </div>
+    );
+
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className={cn(
-        'hidden md:flex h-screen flex-col border-r border-gray-100 dark:border-gray-800/50',
-        'transition-all duration-300 ease-in-out shrink-0',
-        collapsed ? 'w-[68px]' : 'w-[260px]'
-      )}
+      <aside
+        className={cn(
+          'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-gray-200/70 md:flex dark:border-gray-800',
+          'transition-[width] duration-300',
+          collapsed ? 'w-[64px]' : 'w-[248px]'
+        )}
         style={{ backgroundColor: 'var(--bg-sidebar)' }}
       >
-        {sidebarContent}
+        {brand(collapsed)}
+        {renderNav(collapsed)}
+        {footer(collapsed)}
       </aside>
 
-      {/* Mobile toggle */}
       <button
+        type="button"
         onClick={() => setMobileOpen(true)}
         aria-label="Open navigation menu"
-        className="fixed bottom-4 left-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-yellow-400 text-gray-900 shadow-lg shadow-yellow-500/30 md:hidden"
+        className="fixed bottom-5 left-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-gray-900 text-gray-50 shadow-lg md:hidden dark:bg-gray-100 dark:text-gray-900"
       >
-        <Menu size={20} />
+        <Menu size={20} aria-hidden="true" />
       </button>
 
-      {/* Mobile sidebar overlay */}
       <AnimatePresence>
         {mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm md:hidden"
-            onClick={() => setMobileOpen(false)}
-          >
+          <div className="fixed inset-0 z-50 md:hidden">
             <motion.div
-              initial={{ x: -300 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-gray-950/45 backdrop-blur-[2px]"
+              onClick={() => setMobileOpen(false)}
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Navigation"
+              initial={{ x: -288 }}
               animate={{ x: 0 }}
-              exit={{ x: -300 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="h-full w-[280px] shadow-xl"
+              exit={{ x: -288 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
+              className="relative flex h-full w-[272px] flex-col shadow-xl"
               style={{ backgroundColor: 'var(--bg-sidebar)' }}
-              onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-end p-3">
-                <button
-                  onClick={() => setMobileOpen(false)}
-                  className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              {sidebarContent}
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close navigation menu"
+                className="absolute top-4 right-3 z-10 rounded-lg p-1.5 text-gray-400 hover:bg-gray-200/60 dark:hover:bg-gray-800"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+              {brand(false)}
+              {renderNav(false)}
+              {footer(false)}
             </motion.div>
-          </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </>

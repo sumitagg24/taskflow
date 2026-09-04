@@ -104,11 +104,11 @@ export default function FavoritesPage() {
             </div>
           </div>
 
-          {/* Kanban view */}
+          {/* Kanban view. Cards open the detail drawer via the `open-task`
+              event, so no edit handler is needed here. */}
           <KanbanBoard
             tasks={tasks}
             onRefresh={loadFavorites}
-            onEdit={() => {}}
           />
         </>
       )}

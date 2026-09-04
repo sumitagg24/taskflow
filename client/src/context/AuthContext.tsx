@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import api from '../api/tasks';
 import { useTheme } from './ThemeContext';
 import { googleSignOut } from '../hooks/useGoogleAuth';
+import { clearReferralCode, getReferralCode } from '@/lib/referral';
 
 interface User {
   _id: string;
@@ -46,7 +47,11 @@ interface AuthContextType {
   updateFocusTime: (minutes: number) => Promise<void>;
   verifyEmail: (token: string) => Promise<void>;
   resendVerification: (email: string) => Promise<void>;
+  /** Finish a reset link and sign the account straight in. */
+  resetPassword: (token: string, password: string) => Promise<string>;
   googleAuth: (credential: string) => Promise<void>;
+  /** Trade the one-time code from an OAuth redirect for a real session. */
+  exchangeOAuthCode: (code: string) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -198,7 +203,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (name: string, username: string, email: string, password: string) => {
-    const { data } = await api.post<AuthResponse & { message: string }>('/auth/register', { name, username, email, password });
+    // Referral attribution is best-effort on the server too, so a stale code
+    // can't block the signup — send it if we have one and drop it either way.
+    const referralCode = getReferralCode();
+    const { data } = await api.post<AuthResponse & { message: string }>('/auth/register', {
+      name,
+      username,
+      email,
+      password,
+      ...(referralCode ? { referralCode } : {}),
+    });
+    clearReferralCode();
     setAuth(data);
     toast.success(data.message || 'Account created successfully!');
   };
@@ -255,8 +270,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // The server hands back a full session with the reset, so route it through
+  // setAuth — otherwise `user` stays null and the app bounces back to sign-in.
+  const resetPassword = async (token: string, password: string) => {
+    const { data } = await api.post<AuthResponse>('/auth/reset-password', { token, password });
+    setAuth(data);
+    return data.message || 'Password reset successfully!';
+  };
+
   const googleAuth = async (credential: string) => {
     const { data } = await api.post<AuthResponse>('/auth/google', { credential });
+    setAuth(data);
+    toast.success(`Welcome, ${data.user.name}!`);
+  };
+
+  const exchangeOAuthCode = async (code: string) => {
+    const { data } = await api.post<AuthResponse>('/auth/oauth/exchange', { code });
     setAuth(data);
     toast.success(`Welcome, ${data.user.name}!`);
   };
@@ -273,7 +302,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateFocusTime,
       verifyEmail,
       resendVerification,
+      resetPassword,
       googleAuth,
+      exchangeOAuthCode,
       refreshUser,
     }}>
       {children}

@@ -277,20 +277,37 @@ exports.exportTimeTracking = async (req, res, next) => {
 
     // Generate CSV
     const headers = ['Date', 'Task', 'Category', 'Priority', 'Start Time', 'End Time', 'Duration (min)', 'Notes'];
+    const escapeCsv = (val) => {
+      const str = String(val ?? '');
+      // Block formula-injection prefixes and characters that break CSV structure
+      if (
+        str.startsWith('=') ||
+        str.startsWith('+') ||
+        str.startsWith('-') ||
+        str.startsWith('@') ||
+        str.includes('"') ||
+        str.includes(',') ||
+        str.includes('\n') ||
+        str.includes('\r')
+      ) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
     const rows = sessions.map(s => [
-      s.start.toISOString().split('T')[0],
-      s.taskId?.title || 'Unknown Task',
-      s.taskId?.category || '',
-      s.taskId?.priority || '',
-      s.start.toISOString(),
-      s.end?.toISOString() || '',
-      s.duration || '',
-      (s.notes || '').replace(/"/g, '""'),
+      escapeCsv(s.start.toISOString().split('T')[0]),
+      escapeCsv(s.taskId?.title || 'Unknown Task'),
+      escapeCsv(s.taskId?.category || ''),
+      escapeCsv(s.taskId?.priority || ''),
+      escapeCsv(s.start.toISOString()),
+      escapeCsv(s.end?.toISOString() || ''),
+      escapeCsv(s.duration || ''),
+      escapeCsv(s.notes || ''),
     ]);
 
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ...rows.map(row => row.join(',')),
     ].join('\n');
 
     const filename = `time-tracking-${new Date().toISOString().split('T')[0]}.csv`;
@@ -368,7 +385,7 @@ exports.getTimeReport = async (req, res, next) => {
     res.json({
       period,
       startDate: match.start.$gte.toISOString(),
-      endDate: match.start.$lte.toISOString(),
+      endDate: match.start.$lte ? match.start.$lte.toISOString() : null,
       report: report[0] || { totalDuration: 0, sessionCount: 0, avgDuration: 0, longestSession: 0, totalPaused: 0 },
     });
   } catch (error) {

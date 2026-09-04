@@ -6,8 +6,9 @@ const {
   addComment, deleteComment,
   startTimer, stopTimer,
   toggleFavorite, updateOrder, batchUpdate,
-  getStats, getActivityLog,
+  getStats, getActivityLog, getInsights,
   exportTasks,
+  getTrash, restoreTask, purgeTask, emptyTrash,
 } = require('../controllers/taskController');
 const {
   createTaskValidator, updateTaskValidator, idValidator,
@@ -21,9 +22,16 @@ router.use(protect);
 // Stats & logs
 router.get('/stats', getStats);
 router.get('/activity', getActivityLog);
+router.get('/insights', getInsights);
 
 // Export
 router.get('/export', exportTasks);
+
+// Trash. Declared before `/:id` so "trash" is never parsed as an id.
+router.get('/trash', getTrash);
+router.delete('/trash', emptyTrash);
+router.post('/:id/restore', idValidator, restoreTask);
+router.delete('/:id/purge', idValidator, purgeTask);
 
 // Batch operations
 router.post('/batch', batchUpdate);

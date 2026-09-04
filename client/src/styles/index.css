@@ -2,194 +2,397 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ============================================================================
+   TaskFlow design system — "Claude" editorial theme
+   ----------------------------------------------------------------------------
+   Anchored on Anthropic's public brand language: a tinted-cream canvas, a
+   single clay/coral accent, warm neutrals (no cool grays), serif display type
+   and hairline borders instead of shadows.
+
+   Reference tokens (Claude design analysis, VoltAgent/awesome-design-md):
+     primary #cc785c · primary-active #a9583e · ink #141413 · body #3d3d3a
+     muted #6c6a64 · hairline #e6dfd8 · canvas #faf9f5 · surface #f5f0e8
+     surface-dark #181715 · error #c64545 · warning #d4a017 · success #5db872
+
+   The built-in Tailwind hue scales are re-pointed at warm equivalents below,
+   so `yellow-*` renders as clay and `gray-*` as warm stone across the app.
+   That keeps one source of truth for color instead of a per-component patch.
+   ========================================================================== */
+
 @theme {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  
-  --color-background: #F7F8FA;
-  --color-background-dark: #0f0f13;
-  --color-card: #FFFFFF;
-  --color-card-dark: #1a1a23;
-  --color-card-hover: #F3F4F6;
-  --color-card-hover-dark: #22222e;
-  
-  --color-primary: #FACC15;
-  --color-primary-light: #FDE68A;
-  --color-primary-dark: #EAB308;
-  --color-primary-foreground: #1a1a23;
-  
-  --color-sidebar: #FFFFFF;
-  --color-sidebar-dark: #12121a;
-  --color-sidebar-hover: #F3F4F6;
-  --color-sidebar-hover-dark: #1e1e2a;
-  --color-sidebar-active: #FEF9C3;
-  --color-sidebar-active-dark: #2a2a1a;
-  
-  --color-info: #3B82F6;
-  --color-success: #22C55E;
-  --color-warning: #F59E0B;
-  --color-danger: #EF4444;
-  --color-muted: #6B7280;
-  
-  --color-status-todo: #3B82F6;
-  --color-status-progress: #F59E0B;
-  --color-status-done: #22C55E;
-  --color-status-backlog: #9CA3AF;
-  --color-status-blocked: #EF4444;
-  --color-status-review: #8B5CF6;
-  --color-status-cancelled: #6B7280;
-  
-  --color-priority-critical: #DC2626;
-  --color-priority-high: #F97316;
-  --color-priority-medium: #FACC15;
-  --color-priority-low: #6B7280;
-  --color-priority-none: #9CA3AF;
-  
-  --color-border: #E5E7EB;
-  --color-border-dark: #2a2a3a;
-  --color-input: #F9FAFB;
-  --color-input-dark: #1e1e2a;
-  --color-text: #111827;
-  --color-text-dark: #F3F4F6;
-  --color-text-secondary: #6B7280;
-  --color-text-secondary-dark: #9CA3AF;
-  --color-text-muted: #9CA3AF;
-  --color-text-muted-dark: #6B7280;
-  
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-card-hover: 0 10px 25px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.04);
-  --shadow-modal: 0 25px 50px rgba(0, 0, 0, 0.15);
-  --shadow-dropdown: 0 10px 30px rgba(0, 0, 0, 0.1);
+  /* -- Type ---------------------------------------------------------------- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Newsreader', 'Tiempos Headline', Georgia, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* -- Clay / coral accent (re-points `yellow-*`) --------------------------
+     400 is the fill tone, 500 the hover fill, 600+ are text-safe on cream.  */
+  --color-yellow-50: #fbf3ef;
+  --color-yellow-100: #f6e5dd;
+  --color-yellow-200: #eecabb;
+  --color-yellow-300: #e2a992;
+  --color-yellow-400: #cc785c;
+  --color-yellow-500: #b8624a;
+  --color-yellow-600: #a9583e;
+  --color-yellow-700: #8f4630;
+  --color-yellow-800: #733929;
+  --color-yellow-900: #5a2e22;
+  --color-yellow-950: #3a1e17;
+
+  --color-clay: #cc785c;
+  --color-clay-hover: #c26f52;
+  --color-clay-active: #a9583e;
+  --color-kraft: #d4a27f;
+  --color-manilla: #ebdbbc;
+
+  /* -- Warm stone neutrals (re-points `gray-*`) ---------------------------- */
+  --color-gray-50: #faf9f5;
+  --color-gray-100: #f0eee6;
+  --color-gray-200: #e6e1d7;
+  --color-gray-300: #d3cec4;
+  --color-gray-400: #b0aea5;
+  --color-gray-500: #8e8b82;
+  --color-gray-600: #6c6a64;
+  --color-gray-700: #4a4843;
+  --color-gray-800: #2c2b28;
+  --color-gray-900: #1f1e1d;
+  --color-gray-950: #141413;
+
+  /* -- Error / red (anchor #c64545) ---------------------------------------- */
+  --color-red-50: #fbf0ee;
+  --color-red-100: #f6dfdb;
+  --color-red-200: #edbeb7;
+  --color-red-300: #e09b91;
+  --color-red-400: #d4736b;
+  --color-red-500: #c64545;
+  --color-red-600: #b03636;
+  --color-red-700: #932d2d;
+  --color-red-800: #762727;
+  --color-red-900: #5c2020;
+  --color-red-950: #3d1616;
+
+  /* -- Success / cactus (anchor #5db872) ----------------------------------- */
+  --color-green-50: #f0f5ee;
+  --color-green-100: #dfeddc;
+  --color-green-200: #c0dcbb;
+  --color-green-300: #9cc796;
+  --color-green-400: #75b177;
+  --color-green-500: #5b9a62;
+  --color-green-600: #4a8151;
+  --color-green-700: #3d6a43;
+  --color-green-800: #325538;
+  --color-green-900: #29452f;
+  --color-green-950: #182b1c;
+
+  /* -- Kraft gold (re-points `orange-*`; separates from clay) --------------- */
+  --color-orange-50: #fcf5ec;
+  --color-orange-100: #f8e9d4;
+  --color-orange-200: #f0d2a9;
+  --color-orange-300: #e5b679;
+  --color-orange-400: #d89f55;
+  --color-orange-500: #bd8438;
+  --color-orange-600: #a06e2e;
+  --color-orange-700: #835a28;
+  --color-orange-800: #694823;
+  --color-orange-900: #543a1e;
+  --color-orange-950: #322213;
+
+  /* -- Warning amber (anchor #d4a017) -------------------------------------- */
+  --color-amber-50: #fbf6e8;
+  --color-amber-100: #f6ecc9;
+  --color-amber-200: #edd897;
+  --color-amber-300: #e0c061;
+  --color-amber-400: #d4a017;
+  --color-amber-500: #b78c17;
+  --color-amber-600: #997415;
+  --color-amber-700: #7b5e15;
+  --color-amber-800: #634c15;
+  --color-amber-900: #513f14;
+  --color-amber-950: #2f2409;
+
+  /* -- Sky (re-points `blue-*`) -------------------------------------------- */
+  --color-blue-50: #f0f4f9;
+  --color-blue-100: #dfe9f3;
+  --color-blue-200: #bfd3e7;
+  --color-blue-300: #9bb9d8;
+  --color-blue-400: #789fc8;
+  --color-blue-500: #5a84b2;
+  --color-blue-600: #4a6e99;
+  --color-blue-700: #3f5c80;
+  --color-blue-800: #354c68;
+  --color-blue-900: #2d3f55;
+  --color-blue-950: #1b2733;
+
+  /* -- Heather (re-points `purple-*` / `violet-*` / `indigo-*`) ------------- */
+  --color-purple-50: #f5f2f7;
+  --color-purple-100: #ebe5f0;
+  --color-purple-200: #d7cce1;
+  --color-purple-300: #beadce;
+  --color-purple-400: #a48fba;
+  --color-purple-500: #8873a4;
+  --color-purple-600: #715e8b;
+  --color-purple-700: #5d4d72;
+  --color-purple-800: #4c3f5c;
+  --color-purple-900: #3e344a;
+  --color-purple-950: #251f2d;
+  --color-indigo-400: #8f92c4;
+  --color-indigo-500: #6f74ab;
+  --color-indigo-600: #5b6091;
+  --color-violet-400: #a48fba;
+  --color-violet-500: #8873a4;
+
+  /* -- Teal / emerald (anchor #5db8a6) ------------------------------------- */
+  --color-teal-50: #eef6f4;
+  --color-teal-100: #d8ebe6;
+  --color-teal-200: #b2d8ce;
+  --color-teal-300: #85c0b2;
+  --color-teal-400: #5db8a6;
+  --color-teal-500: #479184;
+  --color-teal-600: #3a776d;
+  --color-teal-700: #325f58;
+  --color-emerald-50: #eef6f2;
+  --color-emerald-100: #d8ebe3;
+  --color-emerald-200: #b2d8c8;
+  --color-emerald-300: #85c0a8;
+  --color-emerald-400: #5fae90;
+  --color-emerald-500: #479177;
+  --color-emerald-600: #3a7761;
+  --color-emerald-700: #325f4f;
+
+  /* -- Fig (re-points `pink-*` / `rose-*`) --------------------------------- */
+  --color-pink-100: #f4e3e6;
+  --color-pink-300: #d4a3ac;
+  --color-pink-400: #c2848f;
+  --color-pink-500: #a9646f;
+  --color-rose-400: #c2848f;
+  --color-rose-500: #a9646f;
+
+  /* -- Semantic surfaces ---------------------------------------------------
+     These deliberately point at the mode-scoped tokens below rather than at
+     literal hex, so the utilities Tailwind generates from them (`bg-card`,
+     `bg-canvas`, `border-hairline`, `ring-card`…) are theme-aware. Hard-coding
+     light values here made every `bg-card` surface stay white in dark mode.
+     `var()` resolves at use time, so the indirection costs nothing. */
+  --color-canvas: var(--bg-primary);
+  --color-card: var(--bg-card);
+  --color-card-hover: var(--bg-card-hover);
+  --color-surface: var(--bg-surface);
+  --color-surface-strong: var(--bg-surface-strong);
+  --color-hairline: var(--border-color);
+  --color-hairline-strong: var(--border-strong);
+  --color-ink: var(--text-primary);
+  --color-body: var(--text-secondary);
+  --color-muted: var(--text-secondary);
+  --color-muted-soft: var(--text-muted);
+
+  /* -- Radius: 6 tabs · 8 buttons/inputs · 12 cards · 16 containers -------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
+
+  /* -- Elevation: color-block first, shadow rare --------------------------- */
+  --shadow-xs: 0 1px 1px rgba(20, 20, 19, 0.03);
+  --shadow-sm: 0 1px 2px rgba(20, 20, 19, 0.04);
+  --shadow-md: 0 1px 3px rgba(20, 20, 19, 0.06);
+  --shadow-lg: 0 2px 8px rgba(20, 20, 19, 0.07);
+  --shadow-xl: 0 8px 28px rgba(20, 20, 19, 0.1);
+  --shadow-2xl: 0 16px 48px rgba(20, 20, 19, 0.14);
+
+  /* -- Motion -------------------------------------------------------------- */
+  --ease-editorial: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ============================================================================
+   Mode tokens — consumed by the `.card` / `.input-field` component classes
+   and by inline `var(--bg-…)` styles in the layout shell.
+   ========================================================================== */
+:root,
+.light {
+  color-scheme: light;
+  --bg-primary: #faf9f5;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f5f3ec;
+  --bg-surface: #f0eee6;
+  --bg-surface-strong: #e8e0d2;
+  --bg-sidebar: #f5f4ee;
+  --bg-sidebar-hover: #ebe8de;
+  --bg-sidebar-active: #f6e5dd;
+  --bg-input: #ffffff;
+  --border-color: #e6e1d7;
+  --border-strong: #d3cec4;
+  --text-primary: #1f1e1d;
+  --text-secondary: #6c6a64;
+  --text-muted: #8e8b82;
+  --accent: #cc785c;
+  --accent-strong: #a9583e;
+  --accent-ink: #1a1917;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg-primary: #171614;
+  --bg-card: #201f1c;
+  --bg-card-hover: #292824;
+  --bg-surface: #252320;
+  --bg-surface-strong: #302e2a;
+  --bg-sidebar: #1b1a18;
+  --bg-sidebar-hover: #262521;
+  --bg-sidebar-active: #33251f;
+  --bg-input: #201f1c;
+  --border-color: #35332e;
+  --border-strong: #45423b;
+  --text-primary: #f5f3ec;
+  --text-secondary: #b0aea5;
+  --text-muted: #8e8b82;
+  --accent: #cc785c;
+  --accent-strong: #e2a992;
+  --accent-ink: #1a1917;
+}
+
+/* ============================================================================
+   Base
+   ========================================================================== */
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   font-family: var(--font-sans);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Light mode */
-:root, .light {
-  --bg-primary: #F7F8FA;
-  --bg-card: #FFFFFF;
-  --bg-card-hover: #F3F4F6;
-  --bg-sidebar: #FFFFFF;
-  --bg-sidebar-hover: #F3F4F6;
-  --bg-sidebar-active: #FEF9C3;
-  --bg-input: #F9FAFB;
-  --border-color: #E5E7EB;
-  --text-primary: #111827;
-  --text-secondary: #6B7280;
-  --text-muted: #9CA3AF;
-}
-
-/* Dark mode */
-.dark {
-  --bg-primary: #0f0f13;
-  --bg-card: #1a1a23;
-  --bg-card-hover: #22222e;
-  --bg-sidebar: #12121a;
-  --bg-sidebar-hover: #1e1e2a;
-  --bg-sidebar-active: #2a2a1a;
-  --bg-input: #1e1e2a;
-  --border-color: #2a2a3a;
-  --text-primary: #F3F4F6;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
-}
-
-body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: background-color 0.3s var(--ease-editorial), color 0.3s var(--ease-editorial);
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* Display type never goes bold and always carries negative tracking. */
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--text-primary);
+}
+
+/* One visible focus treatment for the whole app. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Scrollbar — hairline, warm, unobtrusive. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: var(--text-muted); }
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent; }
 
-/* Animations */
+/* ============================================================================
+   Motion
+   ========================================================================== */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fadeInUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes fadeInDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-@keyframes slideInLeft { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes slideInLeft { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes slideInRight { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+  20%, 40%, 60%, 80% { transform: translateX(3px); }
+}
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.06); opacity: 0.9; }
+}
 
-.animate-fadeIn { animation: fadeIn 0.3s ease; }
-.animate-fadeInUp { animation: fadeInUp 0.5s ease; }
-.animate-fadeInDown { animation: fadeInDown 0.3s ease; }
-.animate-scaleIn { animation: scaleIn 0.3s ease; }
-.animate-slideInLeft { animation: slideInLeft 0.4s ease; }
-.animate-slideInRight { animation: slideInRight 0.4s ease; }
+.animate-fadeIn { animation: fadeIn 0.25s var(--ease-editorial) both; }
+.animate-fadeInUp { animation: fadeInUp 0.4s var(--ease-editorial) both; }
+.animate-fadeInDown { animation: fadeInDown 0.25s var(--ease-editorial) both; }
+.animate-scaleIn { animation: scaleIn 0.22s var(--ease-editorial) both; }
+.animate-slideInLeft { animation: slideInLeft 0.35s var(--ease-editorial) both; }
+.animate-slideInRight { animation: slideInRight 0.35s var(--ease-editorial) both; }
 .animate-spin { animation: spin 0.7s linear infinite; }
 .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-.animate-shimmer { animation: shimmer 1.4s ease-in-out infinite; }
+.animate-shimmer { animation: shimmer 1.6s ease-in-out infinite; }
+.animate-shake { animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both; }
+.animate-breathe { animation: breathe 4s ease-in-out infinite; }
 
-/* Card styles */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+   Components
+   ========================================================================== */
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
-  border-radius: 16px;
-  box-shadow: var(--shadow-card);
-  transition: all 0.2s ease;
+  border-radius: 12px;
+  transition: border-color 0.2s var(--ease-editorial), background-color 0.2s var(--ease-editorial);
 }
 .card:hover {
-  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-strong);
 }
 
-/* Glass effect for cards */
+/* Opt-in variants for surfaces that should read as a color block. */
+.card-flat { background: var(--bg-surface); border-color: transparent; }
+.card-quiet { background: transparent; border-color: var(--border-color); }
 .card-glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-.dark .card-glass {
-  background: rgba(26, 26, 35, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--border-color);
 }
 
-/* Button styles */
 .btn-primary {
-  background: #FACC15;
-  color: #1a1a23;
-  border-radius: 10px;
-  font-weight: 600;
-  padding: 0.5rem 1.25rem;
-  transition: all 0.2s ease;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 0.625rem 1.25rem;
+  transition: background-color 0.18s var(--ease-editorial), transform 0.18s var(--ease-editorial);
 }
-.btn-primary:hover {
-  background: #EAB308;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3);
-}
-.btn-primary:active {
-  transform: translateY(0);
-}
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); }
+.btn-primary:active { background: var(--accent-strong); transform: translateY(0.5px); }
 
 .btn-secondary {
   background: var(--bg-card);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   font-weight: 500;
-  padding: 0.5rem 1.25rem;
-  transition: all 0.2s ease;
+  padding: 0.625rem 1.25rem;
+  transition: background-color 0.18s var(--ease-editorial), border-color 0.18s var(--ease-editorial);
 }
-.btn-secondary:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--text-muted);
-}
+.btn-secondary:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
 
 .btn-ghost {
   background: transparent;
@@ -197,72 +400,134 @@ body {
   border-radius: 8px;
   font-weight: 500;
   padding: 0.5rem;
-  transition: all 0.2s ease;
+  transition: background-color 0.18s var(--ease-editorial), color 0.18s var(--ease-editorial);
 }
-.btn-ghost:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
+.btn-ghost:hover { background: var(--bg-card-hover); color: var(--text-primary); }
 
 .btn-danger {
-  background: #EF4444;
-  color: white;
-  border-radius: 10px;
-  font-weight: 600;
-  padding: 0.5rem 1.25rem;
-  transition: all 0.2s ease;
+  background: #c64545;
+  color: #fff;
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 0.625rem 1.25rem;
+  transition: background-color 0.18s var(--ease-editorial);
 }
-.btn-danger:hover {
-  background: #DC2626;
-}
+.btn-danger:hover { background: #b03636; }
 
-/* Input styles */
 .input-field {
   width: 100%;
   background: var(--bg-input);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 0.625rem 0.875rem;
   color: var(--text-primary);
   font-size: 0.875rem;
+  line-height: 1.4;
   outline: none;
-  transition: all 0.2s ease;
+  transition: border-color 0.18s var(--ease-editorial), box-shadow 0.18s var(--ease-editorial);
 }
 .input-field:focus {
-  border-color: #FACC15;
-  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent);
 }
-.input-field::placeholder {
-  color: var(--text-muted);
-}
+.input-field::placeholder { color: var(--text-muted); }
+.input-field:focus-visible { outline: none; }
 
-/* Badge styles */
 .badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.125rem 0.625rem;
+  padding: 0.1875rem 0.625rem;
   border-radius: 9999px;
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.25rem;
 }
 
-/* Skeleton loading */
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-card-hover) 25%, var(--bg-input) 50%, var(--bg-card-hover) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--bg-surface) 25%,
+    var(--bg-card-hover) 50%,
+    var(--bg-surface) 75%
+  );
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
+  animation: shimmer 1.6s ease-in-out infinite;
   border-radius: 8px;
 }
 
-/* Fade Animation — consolidated (see line 118) */
-
-/* Shake Animation for errors */
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
-  20%, 40%, 60%, 80% { transform: translateX(4px); }
+/* Uppercase micro-label — the spec's `caption-uppercase` token. */
+.caption-upper {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
-.animate-shake {
-  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+
+/* Hairline rule that reads as an editorial divider rather than a border. */
+.rule {
+  height: 1px;
+  background: var(--border-color);
+  border: 0;
+}
+
+/* Keyboard shortcut chip. */
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.375rem;
+  height: 1.375rem;
+  padding: 0 0.3125rem;
+  border: 1px solid var(--border-color);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* Multi-line clamps used by task cards and list rows. */
+.line-clamp-1, .line-clamp-2, .line-clamp-3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.line-clamp-1 { -webkit-line-clamp: 1; }
+.line-clamp-2 { -webkit-line-clamp: 2; }
+.line-clamp-3 { -webkit-line-clamp: 3; }
+
+/* Hide scrollbars on horizontal rails (kanban, chip rows) without losing scroll. */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Screen-reader-only helper for icon-only controls. */
+.sr-only-focusable:not(:focus):not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Paper grain — a very faint warm texture on the canvas, Anthropic-style. */
+.canvas-grain::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--accent) 8%, transparent) 0.5px,
+    transparent 0.5px
+  );
+  background-size: 22px 22px;
 }

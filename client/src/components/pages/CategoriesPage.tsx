@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn, CATEGORY_CONFIG } from '@/lib/utils';
-import { getTasks } from '@/api/tasks';
+import { getTasks, toTaskArray } from '@/api/tasks';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import {
   Tags, Search, ArrowRight, Loader2,
@@ -18,7 +18,7 @@ export default function CategoriesPage() {
   const loadTasks = async () => {
     try {
       const { data } = await getTasks({});
-      setTasks(data);
+      setTasks(toTaskArray(data));
     } catch {}
     setLoading(false);
   };

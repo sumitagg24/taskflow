@@ -96,6 +96,15 @@ describe('Tasks API', () => {
     expect(mockedAxios.get).toHaveBeenCalledWith('/tasks', { params: { status: 'pending', priority: 'high' } });
   });
 
+  it('toTaskArray unwraps paginated and legacy shapes', async () => {
+    const { toTaskArray } = await import('./tasks');
+    const rows = [{ _id: '1', title: 'A' }];
+    expect(toTaskArray(rows)).toEqual(rows);
+    expect(toTaskArray({ data: rows, page: 1, limit: 50, total: 1, totalPages: 1 })).toEqual(rows);
+    expect(toTaskArray(null)).toEqual([]);
+    expect(toTaskArray(undefined)).toEqual([]);
+  });
+
   it('getTask sends GET to /tasks/:id', async () => {
     const { getTask } = await import('./tasks');
     await getTask('123');

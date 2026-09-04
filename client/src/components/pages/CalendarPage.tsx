@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
-import { getTasks, createTask, calendarAPI } from '@/api/tasks';
+import { getTasks, toTaskArray, createTask, calendarAPI } from '@/api/tasks';
 import { Modal } from '@/components/ui/Modal';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { toast } from 'sonner';
@@ -28,7 +28,7 @@ export default function CalendarPage() {
     setLoadError(false);
     try {
       const { data } = await getTasks({});
-      setTasks(data);
+      setTasks(toTaskArray(data));
     } catch {
       setLoadError(true);
       toast.error('Failed to load tasks');

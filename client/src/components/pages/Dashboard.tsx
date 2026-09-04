@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { getTasks, getStats, aiAPI, getNotifications } from '@/api/tasks';
+import { getTasks, toTaskArray, getStats, aiAPI, getNotifications } from '@/api/tasks';
 import {
   Card, CardHeader, StatCard, StatusBadge, PriorityBadge, PriorityDot,
   Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut,
@@ -81,7 +81,7 @@ export default function Dashboard({ onEditTask, onNewTask, onNavigate }: Dashboa
   const load = useCallback(async () => {
     try {
       const [tasksRes, statsRes] = await Promise.all([getTasks({ sort: 'updated' }), getStats()]);
-      setTasks(tasksRes.data);
+      setTasks(toTaskArray(tasksRes.data));
       setStats(statsRes.data);
     } catch {
       // Read-only surface: a failed fetch falls through to empty states rather

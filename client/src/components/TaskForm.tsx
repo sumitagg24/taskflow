@@ -4,7 +4,7 @@ import {
   Plus, X, Calendar, Tag as TagIcon, Repeat, Clock, Sparkles,
   Link2, Search, GripVertical,
 } from 'lucide-react';
-import { createTask, updateTask, getTasks, aiAPI } from '@/api/tasks';
+import { createTask, updateTask, getTasks, toTaskArray, aiAPI } from '@/api/tasks';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { fuzzyFilter } from '@/lib/fuzzy';
@@ -221,7 +221,7 @@ export default function TaskForm({ existingTask, onSuccess, onCancel }: TaskForm
     setLoadingCandidates(true);
     try {
       const { data } = await getTasks({ sort: 'updated' });
-      setCandidates(Array.isArray(data) ? data : []);
+      setCandidates(toTaskArray(data));
     } catch {
       setCandidates([]);
       toast.error('Could not load tasks to link');

@@ -10,6 +10,9 @@ interface TaskParams {
   isFavorite?: string;
   dueDateBefore?: string;
   dueDateAfter?: string;
+  page?: number;
+  limit?: number;
+  paginate?: boolean;
 }
 
 interface AuthCredentials {
@@ -155,6 +158,19 @@ export const authAPI = {
 };
 
 export const getTasks = (params?: TaskParams): Promise<AxiosResponse> => api.get('/tasks', { params });
+
+/**
+ * `GET /tasks` returns `{ data, page, limit, total, totalPages }` unless
+ * `?paginate=false` was sent (legacy bare array). Every list caller unwraps
+ * through here so neither shape can crash a `.map`/`.filter`.
+ */
+export const toTaskArray = (data: unknown): any[] => {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray((data as { data?: unknown }).data)) {
+    return (data as { data: any[] }).data;
+  }
+  return [];
+};
 export const getTask = (id: string): Promise<AxiosResponse> => api.get(`/tasks/${id}`);
 export const createTask = (data: any): Promise<AxiosResponse> => api.post('/tasks', data);
 export const updateTask = (id: string, data: any): Promise<AxiosResponse> => api.put(`/tasks/${id}`, data);

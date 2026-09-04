@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { getTasks, toggleFavorite } from '@/api/tasks';
+import { getTasks, toTaskArray, toggleFavorite } from '@/api/tasks';
 import { toast } from 'sonner';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import KanbanBoard from '@/components/KanbanBoard';
@@ -18,7 +18,7 @@ export default function FavoritesPage() {
     setLoadError(false);
     try {
       const { data } = await getTasks({ isFavorite: 'true' });
-      setTasks(data);
+      setTasks(toTaskArray(data));
     } catch {
       setLoadError(true);
       toast.error('Failed to load favorites');

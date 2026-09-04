@@ -3,7 +3,7 @@ import { Toaster, toast } from 'sonner';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
-import { getTasks, deleteTask, restoreTask } from '@/api/tasks';
+import { getTasks, toTaskArray, deleteTask, restoreTask } from '@/api/tasks';
 import Sidebar from '@/components/layout/Sidebar';
 import Navbar from '@/components/layout/Navbar';
 import CommandPalette from '@/components/CommandPalette';
@@ -137,8 +137,11 @@ function AppContent() {
         Object.entries(filters).filter(([, v]) => v && v !== '')
       );
       const { data } = await getTasks(params);
-      setTasks(data);
+      setTasks(toTaskArray(data));
     } catch {
+      toast.error('Could not load tasks', {
+        action: { label: 'Retry', onClick: () => fetchTasks() },
+      });
     } finally {
       setLoading(false);
     }

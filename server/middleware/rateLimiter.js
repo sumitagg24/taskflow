@@ -14,7 +14,7 @@ let redisReady = false;
 let redisInitAttempted = false;
 
 async function ensureRedisStore() {
-  if (!isProduction || !process.env.REDIS_URL || !redisInitAttempted) return;
+  if (!isProduction || !process.env.REDIS_URL || redisInitAttempted) return;
 
   redisInitAttempted = true;
   try {

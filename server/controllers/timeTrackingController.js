@@ -1,5 +1,7 @@
+const mongoose = require('mongoose');
 const Task = require('../models/Task');
 const TimeSession = require('../models/TimeSession');
+const { escapeCsvCell } = require('../utils/csv');
 
 // -------------------- Start Timer --------------------
 // Helper: load a task and verify it belongs to the caller. Returns the task
@@ -195,17 +197,25 @@ exports.getTimerHistory = async (req, res, next) => {
     const { taskId, startDate, endDate, page = 1, limit = 50 } = req.query;
     const query = { userId: req.user._id };
 
-    if (taskId) query.taskId = taskId;
+    // Only a string ObjectId may filter by task — anything else (e.g. a
+    // NoSQL operator object) is ignored.
+    if (typeof taskId === 'string' && taskId && mongoose.Types.ObjectId.isValid(taskId)) {
+      query.taskId = taskId;
+    }
     if (startDate) query.start = { $gte: new Date(startDate) };
     if (endDate) {
       query.start = query.start || {};
       query.start.$lte = new Date(endDate);
     }
 
+    // Clamp pagination exactly like the notifications list (1..100).
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const safePage = Math.max(parseInt(page, 10) || 1, 1);
+
     const sessions = await TimeSession.find(query)
       .sort({ start: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
+      .skip((safePage - 1) * safeLimit)
+      .limit(safeLimit)
       .populate('taskId', 'title category priority dueDate');
 
     // Calculate stats
@@ -249,8 +259,8 @@ exports.getTimerHistory = async (req, res, next) => {
       stats: stats[0] || { totalDuration: 0, sessionCount: 0, avgDuration: 0, longestSession: 0, shortestSession: 0 },
       dailyStats,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: safePage,
+        limit: safeLimit,
         total: await TimeSession.countDocuments(query),
       },
     });
@@ -277,23 +287,7 @@ exports.exportTimeTracking = async (req, res, next) => {
 
     // Generate CSV
     const headers = ['Date', 'Task', 'Category', 'Priority', 'Start Time', 'End Time', 'Duration (min)', 'Notes'];
-    const escapeCsv = (val) => {
-      const str = String(val ?? '');
-      // Block formula-injection prefixes and characters that break CSV structure
-      if (
-        str.startsWith('=') ||
-        str.startsWith('+') ||
-        str.startsWith('-') ||
-        str.startsWith('@') ||
-        str.includes('"') ||
-        str.includes(',') ||
-        str.includes('\n') ||
-        str.includes('\r')
-      ) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
+    const escapeCsv = escapeCsvCell;
     const rows = sessions.map(s => [
       escapeCsv(s.start.toISOString().split('T')[0]),
       escapeCsv(s.taskId?.title || 'Unknown Task'),

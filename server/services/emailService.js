@@ -82,7 +82,24 @@ const baseTemplate = (title, content) => `
   </div>
 `;
 
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+
+// Header values must never carry CR/LF (header injection). Fold runs of
+// CR/LF to a single space; subjects are additionally capped in length.
+const sanitizeHeader = (val) => String(val ?? '').replace(/[\r\n]+/g, ' ');
+
 const sendEmail = async (to, subject, html) => {
+  // Accept a single address or an array; every address must look like an email.
+  const recipients = Array.isArray(to) ? to : [to];
+  const cleanRecipients = recipients.map((r) => sanitizeHeader(r).trim());
+  const bad = cleanRecipients.find((r) => !EMAIL_RE.test(r));
+  if (bad) {
+    logger.warn('Email not sent: invalid recipient email address');
+    throw new Error('Invalid recipient email address');
+  }
+  const cleanTo = Array.isArray(to) ? cleanRecipients : cleanRecipients[0];
+  const cleanSubject = sanitizeHeader(subject).trim().slice(0, 200);
+
   if (!emailConfigured) {
     try {
       await getTransporter();
@@ -96,8 +113,8 @@ const sendEmail = async (to, subject, html) => {
     const transport = await getTransporter();
     const info = await transport.sendMail({
       from: FROM_EMAIL,
-      to,
-      subject,
+      to: cleanTo,
+      subject: cleanSubject,
       html,
     });
 
@@ -105,8 +122,8 @@ const sendEmail = async (to, subject, html) => {
 
     logger.info('=================================================');
     logger.info('EMAIL SENT');
-    logger.info(`To:        ${to}`);
-    logger.info(`Subject:   ${subject}`);
+    logger.info(`To:        ${Array.isArray(cleanTo) ? cleanTo.join(', ') : cleanTo}`);
+    logger.info(`Subject:   ${cleanSubject}`);
     logger.info(`Message ID: ${info.messageId}`);
     logger.info(`Preview URL: ${previewUrl}`);
     logger.info('=================================================');

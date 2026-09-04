@@ -937,7 +937,12 @@ exports.updateProfile = async (req, res, next) => {
 
     if (name) user.name = name;
     if (bio !== undefined) user.bio = bio;
-    if (avatar !== undefined) user.avatar = avatar;
+    if (avatar !== undefined) {
+      if (!User.isValidAvatarUrl(avatar) || String(avatar).length > 2048) {
+        return res.status(400).json({ message: 'Avatar must be an https:// URL or a data:image/ URI' });
+      }
+      user.avatar = avatar;
+    }
     if (preferences) {
       if (preferences.theme) user.preferences.theme = preferences.theme;
       if (preferences.notifications !== undefined) user.preferences.notifications = preferences.notifications;

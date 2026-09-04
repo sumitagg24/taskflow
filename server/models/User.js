@@ -2,6 +2,16 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
+// Avatars are rendered as <img src> by clients, so only allow https URLs and
+// inline data:image/ URIs. Empty string means "no avatar". CR/LF are rejected
+// to block header/log injection via the stored value.
+const isValidAvatarUrl = (v) => {
+  if (v === undefined || v === null || v === '') return true;
+  if (typeof v !== 'string') return false;
+  if (/[\r\n]/.test(v)) return false;
+  return v.startsWith('https://') || v.startsWith('data:image/');
+};
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -38,6 +48,13 @@ const userSchema = new mongoose.Schema(
     avatar: {
       type: String,
       default: '',
+      maxlength: [2048, 'Avatar URL is too long'],
+      validate: {
+        validator: function (v) {
+          return isValidAvatarUrl(v);
+        },
+        message: 'Avatar must be an https:// URL or a data:image/ URI',
+      },
     },
     bio: {
       type: String,
@@ -154,6 +171,10 @@ userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 userSchema.index({ oauthExchangeToken: 1 }, { sparse: true });
 userSchema.index({ username: 1 }, { unique: true });
+
+// Shared with the profile-update path so API validation rejects exactly what
+// the schema would reject (with a 400 instead of a 500).
+userSchema.statics.isValidAvatarUrl = isValidAvatarUrl;
 
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password') || !this.password) return next();

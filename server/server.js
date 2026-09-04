@@ -157,8 +157,14 @@ app.set('io', io);
 
 // Static files for uploads — random names are unguessable; nosniff blocks
 // MIME sniffing so a stray HTML/SVG file can't run in the browser.
+// Served as attachments under a sandboxed (opaque-origin) CSP so even a
+// smuggled HTML/SVG file downloads instead of executing in our origin.
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  setHeaders: (res) => res.setHeader('X-Content-Type-Options', 'nosniff'),
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', 'attachment');
+    res.setHeader('Content-Security-Policy', 'sandbox');
+  },
 }));
 
 // ===== Built Client (SPA) =====

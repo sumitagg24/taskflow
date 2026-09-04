@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { getSystemHealth } = require('../controllers/systemController');
 const { getEmailStatus, isConfigured } = require('../services/emailService');
+const { protect } = require('../middleware/auth');
+
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
 const devOnly = (req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
@@ -20,10 +23,10 @@ router.get('/email-status', (req, res) => {
   });
 });
 
-router.post('/email-test', async (req, res) => {
-  const { to } = req.body;
-  if (!to) {
-    return res.status(400).json({ message: 'Missing "to" email address in request body' });
+router.post('/email-test', protect, async (req, res) => {
+  const { to } = req.body || {};
+  if (!to || typeof to !== 'string' || !EMAIL_RE.test(to.trim())) {
+    return res.status(400).json({ message: 'Valid "to" email address is required in request body' });
   }
 
   try {

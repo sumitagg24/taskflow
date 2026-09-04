@@ -42,8 +42,12 @@ const fileFilter = (req, file, cb) => {
   const expectedExt = MIME_TO_EXT[mime];
   const extOk = ALLOWED_EXTENSIONS.has(ext);
   const mimeOk = !!expectedExt;
+  // The extension must match the MIME-implied extension — otherwise a
+  // renamed script (e.g. shell.php relabelled image/png) sails through.
+  // `.jpeg` is the same format as `.jpg`, so accept it for image/jpeg.
+  const extMatches = expectedExt === ext || (mime === 'image/jpeg' && ext === '.jpeg');
 
-  if (extOk && mimeOk) {
+  if (extOk && mimeOk && extMatches) {
     cb(null, true);
   } else {
     cb(new Error('File type not allowed'), false);

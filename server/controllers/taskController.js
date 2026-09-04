@@ -4,6 +4,7 @@ const User = require('../models/User');
 const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
 const { notifyUser } = require('../services/notificationService');
+const { escapeCsvCell } = require('../utils/csv');
 const { enforceTaskLimit } = require('./growthController');
 const logger = require('../utils/logger');
 
@@ -147,8 +148,8 @@ exports.getTasks = async (req, res, next) => {
 
     if (status && VALID_STATUSES.has(status)) filter.status = status;
     if (priority && VALID_PRIORITIES.has(priority)) filter.priority = priority;
-    if (category) filter.category = sanitizeString(category);
-    if (tag) filter.tags = { $in: [sanitizeString(tag)] };
+    if (category && typeof category === 'string') filter.category = sanitizeString(category);
+    if (tag && typeof tag === 'string') filter.tags = { $in: [sanitizeString(tag)] };
     if (isFavorite === 'true') filter.isFavorite = true;
     if (dueDateBefore) {
       const d = new Date(dueDateBefore);
@@ -910,26 +911,7 @@ exports.exportTasks = async (req, res, next) => {
       .lean();
 
     if (format === 'csv') {
-      const escapeCsv = (val) => {
-        const str = String(val ?? '');
-        // Block formula-injection prefixes and characters that break CSV structure
-        if (
-          str.includes('"') ||
-          str.includes(',') ||
-          str.includes('\n') ||
-          str.includes('\r') ||
-          str.startsWith('=') ||
-          str.startsWith('+') ||
-          str.startsWith('-') ||
-          str.startsWith('@') ||
-          str.startsWith('\t') ||
-          str.startsWith('http') ||
-          str.startsWith('HTTP')
-        ) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
+      const escapeCsv = escapeCsvCell;
       const headers = ['title','description','status','priority','dueDate','category','tags','isFavorite','estimatedTime','timeSpent','createdAt','updatedAt'];
       const rows = tasks.map(t => [
         escapeCsv(t.title || ''),

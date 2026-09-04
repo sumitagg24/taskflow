@@ -210,16 +210,28 @@ app.post('/api/upload', protect, uploadLimiter, upload.single('file'), (req, res
   });
 });
 
-// Recurring tasks check (runs every hour)
+// Recurring tasks check (runs every hour). The `running` flag skips a tick
+// while the previous one is still in flight — with >1 replica each instance
+// still runs its own sweep, but a slow sweep never stacks up locally.
 const { processRecurringTasks, purgeExpiredTrash } = require('./controllers/taskController');
+let recurringRunning = false;
 setInterval(() => {
-  processRecurringTasks().catch(err => logger.error('Recurring task processing failed:', err));
+  if (recurringRunning) return;
+  recurringRunning = true;
+  processRecurringTasks()
+    .catch(err => logger.error('Recurring task processing failed:', err))
+    .finally(() => { recurringRunning = false; });
 }, 60 * 60 * 1000);
 
 // Trash retention sweep (runs every 6 hours). Soft-deleted tasks are restorable
 // for 30 days; this is what makes that promise finite.
+let purgeRunning = false;
 setInterval(() => {
-  purgeExpiredTrash().catch(err => logger.error('Trash purge failed:', err));
+  if (purgeRunning) return;
+  purgeRunning = true;
+  purgeExpiredTrash()
+    .catch(err => logger.error('Trash purge failed:', err))
+    .finally(() => { purgeRunning = false; });
 }, 6 * 60 * 60 * 1000);
 
 // ===== API Documentation (rate limited) =====
@@ -257,7 +269,10 @@ connectDB().then(async () => {
   });
 
   // Daily reset of focus time
+  let focusResetRunning = false;
   setInterval(async () => {
+    if (focusResetRunning) return;
+    focusResetRunning = true;
     try {
       const User = require('./models/User');
       const yesterday = new Date(Date.now() - 86400000).toDateString();
@@ -267,6 +282,8 @@ connectDB().then(async () => {
       );
     } catch (err) {
       logger.error('Daily focus time reset failed:', err);
+    } finally {
+      focusResetRunning = false;
     }
   }, 60 * 60 * 1000);
 
@@ -275,10 +292,13 @@ connectDB().then(async () => {
   processDueDateNotifications().catch((err) =>
     logger.error('Initial notification reminder run failed:', err)
   );
+  let notifyRunning = false;
   setInterval(() => {
-    processDueDateNotifications().catch((err) =>
-      logger.error('Notification reminder run failed:', err)
-    );
+    if (notifyRunning) return;
+    notifyRunning = true;
+    processDueDateNotifications()
+      .catch((err) => logger.error('Notification reminder run failed:', err))
+      .finally(() => { notifyRunning = false; });
   }, 15 * 60 * 1000);
 
   setupGracefulShutdown(server, io);

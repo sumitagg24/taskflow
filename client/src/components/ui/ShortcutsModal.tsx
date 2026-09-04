@@ -1,6 +1,8 @@
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Command } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface ShortcutsModalProps {
   isOpen: boolean;
@@ -17,6 +19,8 @@ const shortcuts = [
 ];
 
 export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, isOpen, onClose);
   return (
     <AnimatePresence>
       {isOpen && (
@@ -30,6 +34,11 @@ export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
             onClick={onClose}
           />
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Keyboard shortcuts"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}

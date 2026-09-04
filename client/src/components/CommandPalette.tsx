@@ -6,6 +6,7 @@ import {
   Sparkles, Star, Sun, Tags, Timer, Trash2, Users, Archive, Bell, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { fuzzyFilter, highlightChunks, type FuzzyResult } from '@/lib/fuzzy';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
@@ -66,6 +67,8 @@ export default function CommandPalette({
   const [recent, setRecent] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, isOpen, onClose);
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { logout } = useAuth();
 
@@ -331,9 +334,11 @@ export default function CommandPalette({
             onClick={onClose}
           />
           <motion.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.98, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: -8 }}

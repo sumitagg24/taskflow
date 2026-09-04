@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, X, Bot, User, Loader2, Lightbulb, Settings, ExternalLink } from 'lucide-react';
 import { aiAPI, aiSettingsAPI } from '@/api/tasks';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { cn } from '@/lib/utils';
 
 interface Message {
@@ -33,6 +34,8 @@ export default function AIAssistant({ isOpen, onClose }: { isOpen: boolean; onCl
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [checkingConfig, setCheckingConfig] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, isOpen, onClose);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -111,6 +114,11 @@ export default function AIAssistant({ isOpen, onClose }: { isOpen: boolean; onCl
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="AI assistant"
+          tabIndex={-1}
           initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}

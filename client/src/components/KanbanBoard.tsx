@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect, DragEvent, FormEvent } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect, memo, DragEvent, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MoreHorizontal, GripVertical, Trash2, Flame, MessageSquare, CheckSquare, Clock, Paperclip, Timer } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -163,6 +163,8 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
+  const handleStartTimer = useCallback((card: CardType) => setTimeTrackTask(card), []);
+
   const handleBulkStatus = useCallback(async (status: string) => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
@@ -252,7 +254,7 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
         {columns.map(col => {
           const columnCards = cards.filter(c => c.status === col.id);
           return (
-            <Column
+            <MemoColumn
               key={col.id}
               title={col.title}
               column={col.id}
@@ -264,7 +266,7 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
               onAddCard={handleAddCard}
               selected={selected}
               onToggleSelect={toggleSelect}
-              onStartTimer={(card) => setTimeTrackTask(card)}
+              onStartTimer={handleStartTimer}
             />
           );
         })}
@@ -326,6 +328,15 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
   const [active, setActive] = useState(false);
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState('');
+  const [visibleCount, setVisibleCount] = useState(100);
+  useEffect(() => setVisibleCount(100), [cards.length]);
+  const moveNeighbor = useCallback((cardId: string, direction: -1 | 1) => {
+    const order = columns.map((c) => c.id);
+    const card = cards.find((c) => c._id === cardId);
+    if (!card) return;
+    const next = order[order.indexOf(card.status as ColumnType) + direction];
+    if (next) onUpdateStatus(cardId, next);
+  }, [cards, onUpdateStatus]);
   // Ref-based backup store for drag data — avoids relying solely on dataTransfer
   const dragDataRef = useRef<{ cardId: string; fromColumn: string } | null>(null);
 
@@ -436,8 +447,8 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
               <p className="text-xs text-gray-500 dark:text-gray-400">Drop tasks here</p>
             </motion.div>
           )}
-          {cards.map(c => (
-            <Card
+          {cards.slice(0, visibleCount).map(c => (
+            <MemoCard
               key={c._id}
               card={c}
               onDragStart={handleDragStart}
@@ -445,9 +456,19 @@ function Column({ title, headingColor, bgColor, cards, column, onUpdateStatus, o
               isSelected={selected.has(c._id)}
               onToggleSelect={onToggleSelect}
               onStartTimer={onStartTimer}
+              onMoveCard={moveNeighbor}
             />
           ))}
         </AnimatePresence>
+        {cards.length > visibleCount && (
+          <button
+            type="button"
+            onClick={() => setVisibleCount((c) => c + 100)}
+            className="mt-1 rounded-lg px-3 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-200/60 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+          >
+            Show more ({cards.length - visibleCount} remaining)
+          </button>
+        )}
         <DropIndicator beforeId={null} column={column} />
 
         {/* Add Card Form */}
@@ -504,9 +525,10 @@ interface CardProps {
   isSelected: boolean;
   onToggleSelect: (id: string) => void;
   onStartTimer: (task: CardType) => void;
+  onMoveCard: (id: string, direction: -1 | 1) => void;
 }
 
-function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStartTimer }: CardProps) {
+function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStartTimer, onMoveCard }: CardProps) {
   const subtaskProgress = card.subtasks?.length
     ? Math.round((card.subtasks.filter((s: any) => s.completed).length / card.subtasks.length) * 100)
     : -1;
@@ -534,6 +556,13 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
       >
         <div
           draggable="true"
+          tabIndex={0}
+          role="button"
+          aria-label={`${card.title} — press left or right arrow to move between columns`}
+          onKeyDown={(e: React.KeyboardEvent) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); onMoveCard(card._id, 1); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); onMoveCard(card._id, -1); }
+          }}
           onDragStart={(e: DragEvent<HTMLDivElement>) => onDragStart(e, card)}
           className="space-y-2"
         >
@@ -672,6 +701,9 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
     </>
   );
 }
+
+const MemoCard = memo(Card);
+const MemoColumn = memo(Column);
 
 function DropIndicator({ beforeId, column }: { beforeId: string | null; column: string }) {
   return (

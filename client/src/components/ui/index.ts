@@ -28,3 +28,4 @@ export { ThemeToggle } from './ThemeToggle';
 export { Logo, LogoMark } from './Logo';
 export { default as PasswordStrengthBar } from './PasswordStrengthBar';
 export { default as EmailVerificationBanner } from './EmailVerificationBanner';
+export { ErrorBoundary } from './ErrorBoundary';

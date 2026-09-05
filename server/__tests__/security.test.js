@@ -185,4 +185,36 @@ describe('Security fixes', () => {
       expect(res.status).toBe(200);
     });
   });
+
+  describe('cookie CSRF origin check', () => {
+    it('forbids cookie-authed mutation from a disallowed origin', async () => {
+      const res = await request(app)
+        .post('/api/tasks')
+        .set('Cookie', `accessToken=${ownerToken}`)
+        .set('Origin', 'https://evil.example')
+        .send({ title: 'My Task', description: 'Task description', priority: 'high' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.message).toBe('Cross-origin request forbidden');
+    });
+
+    it('allows cookie-authed mutation with no Origin (non-browser client)', async () => {
+      const res = await request(app)
+        .post('/api/tasks')
+        .set('Cookie', `accessToken=${ownerToken}`)
+        .send({ title: 'My Task', description: 'Task description', priority: 'high' });
+
+      expect(res.status).toBe(201);
+    });
+
+    it('allows cookie-authed mutation from an allowed origin', async () => {
+      const res = await request(app)
+        .post('/api/tasks')
+        .set('Cookie', `accessToken=${ownerToken}`)
+        .set('Origin', 'http://localhost:3000')
+        .send({ title: 'My Task', description: 'Task description', priority: 'high' });
+
+      expect(res.status).toBe(201);
+    });
+  });
 });

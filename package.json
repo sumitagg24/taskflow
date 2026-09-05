@@ -15,6 +15,6 @@
     "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {
-    "concurrently": "^9.2.3"
+    "concurrently": "^10.0.5"
   }
 }

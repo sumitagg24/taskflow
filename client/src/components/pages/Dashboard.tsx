@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ListTodo, ArrowRightCircle, CheckCircle2, AlertTriangle,
-  Calendar, Clock, Quote, Bell, Flame, Check, X, Plus,
+  Calendar, Clock, Quote, Bell, Flame, Check, X, Plus, Pencil, Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -20,6 +20,7 @@ import Notes from '@/components/widgets/Notes';
 
 interface DashboardProps {
   onEditTask: (task: any) => void;
+  onDeleteTask: (task: any) => void;
   onNewTask: () => void;
   /** Section ids match the Sidebar/App router so tiles can link into a real view. */
   onNavigate: (section: string) => void;
@@ -64,10 +65,28 @@ function dueLabel(date: string) {
   return `In ${diff} days`;
 }
 
+/**
+ * Exact due stamp for list rows: "Sep 6 · 5:00 PM". Tasks whose time is
+ * midnight carry no real time-of-day, so only the date is shown.
+ */
+function dueStamp(date: string): string {
+  const d = new Date(date);
+  const day = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const time = dueTime(date);
+  return time ? `${day} · ${time}` : day;
+}
+
+/** Time-of-day only ("5:00 PM"), or '' when the due date is date-only. */
+function dueTime(date: string): string {
+  const d = new Date(date);
+  if (d.getHours() === 0 && d.getMinutes() === 0) return '';
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 const statusCount = (stats: any, id: string): number =>
   stats?.byStatus?.find((s: any) => s._id === id)?.count || 0;
 
-export default function Dashboard({ onEditTask, onNewTask, onNavigate }: DashboardProps) {
+export default function Dashboard({ onEditTask, onDeleteTask, onNewTask, onNavigate }: DashboardProps) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -327,37 +346,62 @@ export default function Dashboard({ onEditTask, onNewTask, onNavigate }: Dashboa
             <ul className="space-y-1">
               {todayTasks.map((task) => (
                 <li key={task._id}>
-                  <button
-                    onClick={() => onEditTask(task)}
-                    className="hover:bg-card-hover flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors"
-                  >
-                    <PriorityDot priority={task.priority ?? 'none'} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {task.title}
+                  <div className="group hover:bg-card-hover flex w-full items-center gap-1.5 rounded-lg p-1.5 transition-colors">
+                    <button
+                      onClick={() => onEditTask(task)}
+                      aria-label={`Open ${task.title}`}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
+                    >
+                      <PriorityDot priority={task.priority ?? 'none'} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {task.title}
+                        </span>
+                        {task.description && (
+                          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                            {task.description}
+                          </span>
+                        )}
                       </span>
-                      {task.description && (
-                        <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                          {task.description}
-                        </span>
-                      )}
+                      <span className="flex shrink-0 items-center gap-2">
+                        {task.dueDate && (
+                          <span
+                            className={cn(
+                              'text-xs font-medium',
+                              new Date(task.dueDate) < new Date()
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-gray-500 dark:text-gray-400'
+                            )}
+                            title={`Due ${dueStamp(task.dueDate)}`}
+                          >
+                            {dueLabel(task.dueDate)}
+                            {dueTime(task.dueDate) ? ` · ${dueTime(task.dueDate)}` : ''}
+                          </span>
+                        )}
+                        <StatusBadge status={task.status} />
+                      </span>
+                    </button>
+                    <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => onEditTask(task)}
+                        aria-label={`Edit ${task.title}`}
+                        title="Edit task"
+                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-900 dark:hover:bg-gray-700/60 dark:hover:text-gray-100"
+                      >
+                        <Pencil size={14} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteTask(task)}
+                        aria-label={`Delete ${task.title}`}
+                        title="Delete task"
+                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
                     </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {task.dueDate && (
-                        <span
-                          className={cn(
-                            'text-xs font-medium',
-                            new Date(task.dueDate) < new Date()
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-gray-500 dark:text-gray-400'
-                          )}
-                        >
-                          {dueLabel(task.dueDate)}
-                        </span>
-                      )}
-                      <StatusBadge status={task.status} />
-                    </span>
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -441,30 +485,53 @@ export default function Dashboard({ onEditTask, onNewTask, onNavigate }: Dashboa
             <ul className="space-y-1">
               {upcomingDeadlines.map((task) => (
                 <li key={task._id}>
-                  <button
-                    onClick={() => onEditTask(task)}
-                    className="hover:bg-card-hover flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors"
-                  >
-                    <PriorityBadge priority={task.priority ?? 'none'} />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {task.title}
-                    </span>
-                    <span className="shrink-0 text-right">
-                      <span
-                        className={cn(
-                          'block text-xs font-medium',
-                          new Date(task.dueDate) < new Date()
-                            ? 'text-red-600 dark:text-red-400'
-                            : 'text-gray-600 dark:text-gray-300'
-                        )}
+                  <div className="group hover:bg-card-hover flex w-full items-center gap-1.5 rounded-lg p-1.5 transition-colors">
+                    <button
+                      onClick={() => onEditTask(task)}
+                      aria-label={`Open ${task.title}`}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
+                    >
+                      <PriorityBadge priority={task.priority ?? 'none'} />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {task.title}
+                      </span>
+                      <span className="shrink-0 text-right" title={`Due ${dueStamp(task.dueDate)}`}>
+                        <span
+                          className={cn(
+                            'block text-xs font-medium',
+                            new Date(task.dueDate) < new Date()
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-600 dark:text-gray-300'
+                          )}
+                        >
+                          {dueLabel(task.dueDate)}
+                        </span>
+                        <span className="block text-[11px] text-gray-400 dark:text-gray-500">
+                          {dueStamp(task.dueDate)}
+                        </span>
+                      </span>
+                    </button>
+                    <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => onEditTask(task)}
+                        aria-label={`Edit ${task.title}`}
+                        title="Edit task"
+                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-900 dark:hover:bg-gray-700/60 dark:hover:text-gray-100"
                       >
-                        {dueLabel(task.dueDate)}
-                      </span>
-                      <span className="block text-[11px] text-gray-400 dark:text-gray-500">
-                        {new Date(task.dueDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
+                        <Pencil size={14} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteTask(task)}
+                        aria-label={`Delete ${task.title}`}
+                        title="Delete task"
+                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
                     </span>
-                  </button>
+                  </div>
                 </li>
               ))}
             </ul>

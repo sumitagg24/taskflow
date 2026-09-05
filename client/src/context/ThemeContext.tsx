@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
+import { authAPI } from '@/api/tasks';
 
 export type Theme = 'dark' | 'light' | 'system';
 export type ResolvedTheme = 'dark' | 'light';
@@ -46,6 +47,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem(STORAGE_KEY);
     return isTheme(stored) ? stored : 'light';
   });
+  // Whether an explicit choice already existed when this session booted.
+  // A stored choice always beats the server default — otherwise every login
+  // or profile refresh would yank the UI back to the account default.
+  const [hadStoredChoice] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) !== null;
+    } catch {
+      return false;
+    }
+  });
+  // Explicit in-session choice (toggle click). Server sync never overrides it.
+  const touchedRef = useRef(false);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolve(theme));
 
   // Persist the choice and paint the resolved value.
@@ -73,23 +87,48 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback((next: Theme) => {
     // Paint synchronously so the toggle icon and the canvas flip in the same
     // frame instead of lagging a render behind.
+    touchedRef.current = true;
     const painted = resolve(next);
     applyThemeClass(painted);
     setResolvedTheme(painted);
     setThemeState(next);
+    // Persist to the account (debounced) so the choice survives new browsers
+    // and devices instead of fighting the server default on every sync.
+    // Fire-and-forget: the local choice stands even if the request fails.
+    if (persistTimer.current) clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      try {
+        const hasSession = document.cookie.split(';').some((p) => p.trim() === 'tf_session=1');
+        if (!hasSession) return;
+      } catch {
+        return;
+      }
+      authAPI.updateProfile({ preferences: { theme: next } }).catch(() => {});
+    }, 800);
   }, []);
+
+  // Drop a pending persist on unmount rather than firing into a dead tree.
+  useEffect(
+    () => () => {
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+    },
+    []
+  );
 
   const toggleTheme = useCallback(() => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   }, [resolvedTheme, setTheme]);
 
-  // Sync from server-stored preferences on login/profile refresh. Only applies
-  // when the server value differs, so a local un-saved toggle isn't clobbered.
+  // Sync from server-stored preferences on login/profile refresh. Applies ONLY
+  // when the user has never chosen: no explicit click this session and no
+  // stored choice from a previous one. Otherwise the account default (e.g.
+  // 'dark' for every new signup) would clobber the toggle on every sync.
   const syncFromUser = useCallback(
     (prefs: { theme?: string } | null | undefined) => {
+      if (touchedRef.current || hadStoredChoice) return;
       if (isTheme(prefs?.theme) && prefs.theme !== theme) setTheme(prefs.theme);
     },
-    [setTheme, theme]
+    [setTheme, theme, hadStoredChoice]
   );
 
   const value = useMemo(

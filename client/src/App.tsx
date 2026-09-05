@@ -393,7 +393,7 @@ function AppContent() {
 
       case 'dashboard':
       default:
-        return <Dashboard onEditTask={handleEdit} onNewTask={handleNewTask} onNavigate={handleNavigate} />;
+        return <Dashboard onEditTask={handleEdit} onDeleteTask={handleDeleteRequest} onNewTask={handleNewTask} onNavigate={handleNavigate} />;
     }
   };
 

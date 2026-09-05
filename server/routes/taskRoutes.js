@@ -13,7 +13,9 @@ const {
 const {
   createTaskValidator, updateTaskValidator, idValidator,
   subtaskIdValidator, commentIdValidator,
+  listQueryValidator, exportQueryValidator,
 } = require('../validators/taskValidators');
+const validate = require('../validators/validate');
 const { protect } = require('../middleware/auth');
 
 // All routes require auth
@@ -25,7 +27,7 @@ router.get('/activity', getActivityLog);
 router.get('/insights', getInsights);
 
 // Export
-router.get('/export', exportTasks);
+router.get('/export', exportQueryValidator, validate, exportTasks);
 
 // Trash. Declared before `/:id` so "trash" is never parsed as an id.
 router.get('/trash', getTrash);
@@ -39,7 +41,7 @@ router.put('/order', updateOrder);
 
 // Standard CRUD
 router.route('/')
-  .get(getTasks)
+  .get(listQueryValidator, validate, getTasks)
   .post(createTaskValidator, createTask);
 
 router.route('/:id')

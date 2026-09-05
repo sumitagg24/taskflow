@@ -19,7 +19,8 @@ const ALLOWED_BATCH_FIELDS = new Set([
 ]);
 
 const ALLOWED_SORT_FIELDS = new Set([
-  'dueDate', 'priority', 'title', 'status', 'oldest', 'updated',
+  'dueDate', '-dueDate', 'priority', '-priority', 'title', '-title',
+  'status', 'oldest', 'updated',
 ]);
 
 const VALID_STATUSES = new Set(['backlog', 'pending', 'in-progress', 'completed', 'blocked', 'review', 'cancelled']);
@@ -146,8 +147,22 @@ exports.getTasks = async (req, res, next) => {
     const { status, priority, sort, search, category, tag, isFavorite, dueDateBefore, dueDateAfter } = req.query;
     const filter = ownedLive(req.user._id);
 
-    if (status && VALID_STATUSES.has(status)) filter.status = status;
-    if (priority && VALID_PRIORITIES.has(priority)) filter.priority = priority;
+    // Strict enums: a present-but-unlisted value is a client bug, so 400 naming
+    // the field instead of silently returning the unfiltered list. Absent
+    // params keep the current default. (sanitizeString stays below as
+    // defense-in-depth after these checks pass.)
+    if (status !== undefined && !VALID_STATUSES.has(status)) {
+      return res.status(400).json({ message: 'Invalid status filter: must be one of backlog, pending, in-progress, completed, blocked, review, cancelled' });
+    }
+    if (priority !== undefined && !VALID_PRIORITIES.has(priority)) {
+      return res.status(400).json({ message: 'Invalid priority filter: must be one of critical, high, medium, low, none' });
+    }
+    if (sort !== undefined && !ALLOWED_SORT_FIELDS.has(sort)) {
+      return res.status(400).json({ message: 'Invalid sort option: must be one of dueDate, -dueDate, priority, -priority, title, -title, status, oldest, updated' });
+    }
+
+    if (status) filter.status = status;
+    if (priority) filter.priority = priority;
     if (category && typeof category === 'string') filter.category = sanitizeString(category);
     if (tag && typeof tag === 'string') filter.tags = { $in: [sanitizeString(tag)] };
     if (isFavorite === 'true') filter.isFavorite = true;
@@ -906,6 +921,9 @@ exports.getActivityLog = async (req, res, next) => {
 exports.exportTasks = async (req, res, next) => {
   try {
     const { format = 'json' } = req.query;
+    if (format !== 'json' && format !== 'csv') {
+      return res.status(400).json({ message: 'Invalid format: must be one of json, csv' });
+    }
     const tasks = await Task.find(ownedLive(req.user._id))
       .populate('assignee', 'name email')
       .lean();

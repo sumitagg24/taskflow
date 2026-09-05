@@ -23,7 +23,14 @@ const loadOwnedTask = async (taskId, userId, res) => {
 exports.startTimer = async (req, res, next) => {
   try {
     const { taskId } = req.params;
-    const { notes } = req.body;
+    const { notes } = req.body || {};
+
+    // Strict notes: optional, but a present value must be a string within the
+    // schema cap — the express-validator chain enforces this first, this guard
+    // keeps the 400 even if the chain is ever unwired.
+    if (notes !== undefined && (typeof notes !== 'string' || notes.length > 1000)) {
+      return res.status(400).json({ message: 'Notes must be a string of at most 1000 characters' });
+    }
 
     const task = await loadOwnedTask(taskId, req.user._id, res);
     if (!task) return;
@@ -197,9 +204,19 @@ exports.getTimerHistory = async (req, res, next) => {
     const { taskId, startDate, endDate, page = 1, limit = 50 } = req.query;
     const query = { userId: req.user._id };
 
-    // Only a string ObjectId may filter by task — anything else (e.g. a
-    // NoSQL operator object) is ignored.
-    if (typeof taskId === 'string' && taskId && mongoose.Types.ObjectId.isValid(taskId)) {
+    // Strict filters: a present-but-invalid taskId or date 400s (naming the
+    // field) instead of being silently ignored. Absent keeps the default.
+    if (taskId !== undefined && !(typeof taskId === 'string' && mongoose.Types.ObjectId.isValid(taskId))) {
+      return res.status(400).json({ message: 'Invalid taskId filter: must be a task ID' });
+    }
+    if (startDate !== undefined && Number.isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate filter: must be a valid date' });
+    }
+    if (endDate !== undefined && Number.isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate filter: must be a valid date' });
+    }
+
+    if (typeof taskId === 'string' && taskId) {
       query.taskId = taskId;
     }
     if (startDate) query.start = { $gte: new Date(startDate) };
@@ -275,6 +292,13 @@ exports.exportTimeTracking = async (req, res, next) => {
     const { startDate, endDate } = req.query;
     const query = { userId: req.user._id };
 
+    if (startDate !== undefined && Number.isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate filter: must be a valid date' });
+    }
+    if (endDate !== undefined && Number.isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate filter: must be a valid date' });
+    }
+
     if (startDate) query.start = { $gte: new Date(startDate) };
     if (endDate) {
       query.start = query.start || {};
@@ -318,7 +342,21 @@ exports.exportTimeTracking = async (req, res, next) => {
 exports.getTimeReport = async (req, res, next) => {
   try {
     const { period = 'week', startDate, endDate } = req.query;
-    
+
+    // Strict period: unknown values 400 naming the field instead of silently
+    // falling back to the last-7-days default. Absent keeps 'week'. Dates are
+    // validated whenever present so a malformed value cannot widen the match.
+    const VALID_PERIODS = ['week', 'month', 'year'];
+    if (req.query.period !== undefined && !VALID_PERIODS.includes(req.query.period)) {
+      return res.status(400).json({ message: 'Invalid period filter: must be one of week, month, year' });
+    }
+    if (startDate !== undefined && Number.isNaN(new Date(startDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid startDate filter: must be a valid date' });
+    }
+    if (endDate !== undefined && Number.isNaN(new Date(endDate).getTime())) {
+      return res.status(400).json({ message: 'Invalid endDate filter: must be a valid date' });
+    }
+
     let match;
     if (startDate && endDate) {
       match = {

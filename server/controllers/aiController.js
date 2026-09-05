@@ -1,5 +1,21 @@
 const Task = require('../models/Task');
 const aiService = require('../services/aiService');
+const { validationResult } = require('express-validator');
+
+const MAX_AI_INPUT = 4000;
+
+// Route validator chains enforce shape first; these guards keep the same 400s
+// even if a chain is ever unwired.
+const rejectInvalidChain = (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({ message: errors.array().map((e) => e.msg).join(', ') });
+    return true;
+  }
+  return false;
+};
+
+const tooLong = (val) => typeof val === 'string' && val.length > MAX_AI_INPUT;
 
 /**
  * Get user's AI settings from the request.
@@ -20,9 +36,13 @@ async function getUserAiSettings(req) {
 
 exports.parseTask = async (req, res, next) => {
   try {
+    if (rejectInvalidChain(req, res)) return;
     const { input } = req.body;
-    if (!input || !input.trim()) {
+    if (typeof input !== 'string' || !input.trim()) {
       return res.status(400).json({ message: 'Input text is required' });
+    }
+    if (tooLong(input)) {
+      return res.status(400).json({ message: `Input text must be at most ${MAX_AI_INPUT} characters` });
     }
     const userSettings = await getUserAiSettings(req);
     const result = await aiService.parseTask(input, userSettings);
@@ -34,6 +54,7 @@ exports.parseTask = async (req, res, next) => {
 
 exports.breakdownTask = async (req, res, next) => {
   try {
+    if (rejectInvalidChain(req, res)) return;
     const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
     if (!task) return res.status(404).json({ message: 'Task not found' });
     const userSettings = await getUserAiSettings(req);
@@ -85,9 +106,13 @@ exports.generateDigest = async (req, res, next) => {
 
 exports.chat = async (req, res, next) => {
   try {
+    if (rejectInvalidChain(req, res)) return;
     const { message } = req.body;
-    if (!message || !message.trim()) {
+    if (typeof message !== 'string' || !message.trim()) {
       return res.status(400).json({ message: 'Message is required' });
+    }
+    if (tooLong(message)) {
+      return res.status(400).json({ message: `Message must be at most ${MAX_AI_INPUT} characters` });
     }
 
     const taskCount = await Task.countDocuments({ userId: req.user._id });
@@ -108,9 +133,13 @@ exports.chat = async (req, res, next) => {
 
 exports.generateTitle = async (req, res, next) => {
   try {
+    if (rejectInvalidChain(req, res)) return;
     const { description } = req.body;
-    if (!description || !description.trim()) {
+    if (typeof description !== 'string' || !description.trim()) {
       return res.status(400).json({ message: 'Description is required' });
+    }
+    if (tooLong(description)) {
+      return res.status(400).json({ message: `Description must be at most ${MAX_AI_INPUT} characters` });
     }
     const userSettings = await getUserAiSettings(req);
     const result = await aiService.generateTitle(description, userSettings);

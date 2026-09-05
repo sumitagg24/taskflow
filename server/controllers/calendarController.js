@@ -1,4 +1,5 @@
 const Task = require('../models/Task');
+const mongoose = require('mongoose');
 const { getCalendarDownloadInfo, getGoogleCalendarUrl, getOutlookCalendarUrl, getAppleCalendarUrl } = require('../services/icalService');
 
 // -------------------- Export Tasks as ICS --------------------
@@ -10,8 +11,17 @@ exports.exportCalendar = async (req, res, next) => {
     const VALID_STATUSES = ['backlog', 'pending', 'in-progress', 'completed', 'blocked', 'review', 'cancelled'];
     const VALID_PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'];
 
-    if (status && VALID_STATUSES.includes(status)) query.status = status;
-    if (priority && VALID_PRIORITIES.includes(priority)) query.priority = priority;
+    // Strict enums: present-but-unlisted values 400 naming the field instead
+    // of silently returning the unfiltered calendar. Absent keeps the default.
+    if (status !== undefined && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status filter: must be one of backlog, pending, in-progress, completed, blocked, review, cancelled' });
+    }
+    if (priority !== undefined && !VALID_PRIORITIES.includes(priority)) {
+      return res.status(400).json({ message: 'Invalid priority filter: must be one of critical, high, medium, low, none' });
+    }
+
+    if (status) query.status = status;
+    if (priority) query.priority = priority;
     if (category && typeof category === 'string') query.category = category;
     if (tag && typeof tag === 'string') query.tags = tag;
 
@@ -36,6 +46,10 @@ exports.getCalendarLinks = async (req, res, next) => {
 
     if (!taskId) {
       return res.status(400).json({ message: 'taskId is required' });
+    }
+
+    if (typeof taskId !== 'string' || !mongoose.Types.ObjectId.isValid(taskId)) {
+      return res.status(400).json({ message: 'Invalid taskId: must be a task ID' });
     }
 
     const task = await Task.findOne({ _id: taskId, userId: req.user._id })

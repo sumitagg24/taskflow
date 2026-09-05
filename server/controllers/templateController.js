@@ -55,6 +55,7 @@ exports.getTemplate = async (req, res, next) => {
 // -------------------- Create Template --------------------
 exports.createTemplate = async (req, res, next) => {
   try {
+    validate(req);
     const { title, description, category, priority, status, estimatedTime, subtasks, tags, isShared, sharedWith } = req.body;
 
     // Reasonable limit to prevent DoS via oversized subtask arrays.
@@ -85,6 +86,7 @@ exports.createTemplate = async (req, res, next) => {
 // -------------------- Update Template --------------------
 exports.updateTemplate = async (req, res, next) => {
   try {
+    validate(req);
     const { id } = req.params;
     const template = await TaskTemplate.findById(id);
 

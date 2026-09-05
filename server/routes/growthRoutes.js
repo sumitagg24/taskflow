@@ -3,6 +3,11 @@ const router = express.Router();
 const { getGrowth, sendInvite, revokeInvite } = require('../controllers/growthController');
 const { protect } = require('../middleware/auth');
 const { emailLimiter } = require('../middleware/rateLimiter');
+const {
+  inviteEmailValidator,
+  revokeInviteValidator,
+} = require('../validators/growthValidators');
+const validate = require('../validators/validate');
 
 /**
  * @swagger
@@ -29,7 +34,7 @@ router.get('/', protect, getGrowth);
  *       409: { description: Already invited }
  *       429: { description: Invite limit reached }
  */
-router.post('/invite', protect, emailLimiter, sendInvite);
+router.post('/invite', protect, emailLimiter, inviteEmailValidator, validate, sendInvite);
 
 /**
  * @swagger
@@ -42,6 +47,6 @@ router.post('/invite', protect, emailLimiter, sendInvite);
  *       200: { description: Invite revoked }
  *       404: { description: No pending invite for that address }
  */
-router.delete('/invite/:email', protect, revokeInvite);
+router.delete('/invite/:email', protect, revokeInviteValidator, validate, revokeInvite);
 
 module.exports = router;

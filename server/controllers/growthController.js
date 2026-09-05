@@ -3,6 +3,7 @@ const Task = require('../models/Task');
 const TaskTemplate = require('../models/TaskTemplate');
 const emailService = require('../services/emailService');
 const logger = require('../utils/logger');
+const { validationResult } = require('express-validator');
 const { PLANS, REFERRAL, getPlan, checkLimit } = require('../config/plans');
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
@@ -88,6 +89,12 @@ exports.getGrowth = async (req, res, next) => {
  */
 exports.sendInvite = async (req, res, next) => {
   try {
+    // The route's express-validator chain enforces isEmail + length first;
+    // this stays as defense-in-depth if the chain is ever unwired.
+    const chainErrors = validationResult(req);
+    if (!chainErrors.isEmpty()) {
+      return res.status(400).json({ message: chainErrors.array().map((e) => e.msg).join(', ') });
+    }
     const raw = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     if (!/^\S+@\S+\.\S+$/.test(raw) || raw.length > 254) {
       return res.status(400).json({ message: 'Provide a valid email address' });
@@ -145,6 +152,10 @@ exports.sendInvite = async (req, res, next) => {
 /** DELETE /api/growth/invite/:email — drop a pending invite from the list. */
 exports.revokeInvite = async (req, res, next) => {
   try {
+    const chainErrors = validationResult(req);
+    if (!chainErrors.isEmpty()) {
+      return res.status(400).json({ message: chainErrors.array().map((e) => e.msg).join(', ') });
+    }
     const email = String(req.params.email || '').trim().toLowerCase();
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: 'User not found' });

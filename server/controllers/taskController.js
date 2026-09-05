@@ -6,6 +6,7 @@ const { validationResult } = require('express-validator');
 const { notifyUser } = require('../services/notificationService');
 const { escapeCsvCell } = require('../utils/csv');
 const { enforceTaskLimit } = require('./growthController');
+const { getPlan } = require('../config/plans');
 const logger = require('../utils/logger');
 
 const ALLOWED_TASK_FIELDS = new Set([
@@ -139,6 +140,46 @@ const sanitizeDependencies = async (input, userId, selfId) => {
     .lean();
   const ownedIds = new Set(owned.map((t) => String(t._id)));
   return wanted.filter((w) => ownedIds.has(w.taskId));
+};
+
+// Attachments arrive as file descriptors (from POST /api/upload responses
+// the client re-sends here). Reshaped to exactly the fields the schema owns;
+// non-array input returns null so the field is left untouched. Capped at a
+// generous hard ceiling so a giant payload can't stall the save — the plan
+// quota below is what actually admits or rejects.
+const MAX_ATTACHMENTS_INPUT = 200;
+
+const sanitizeAttachments = (input) => {
+  if (!Array.isArray(input)) return null;
+  return input
+    .filter((a) => a && typeof a === 'object')
+    .slice(0, MAX_ATTACHMENTS_INPUT)
+    .map((a) => ({
+      filename: String(a.filename || a.originalName || 'file').slice(0, 255),
+      originalName: String(a.originalName || a.filename || 'file').slice(0, 255),
+      path: String(a.path || '').slice(0, 1024),
+      mimeType: String(a.mimeType || '').slice(0, 128),
+      size: Number.isFinite(Number(a.size)) ? Math.max(0, Number(a.size)) : 0,
+    }));
+};
+
+// Plan quota on attachments per task (`attachmentsPerTask` in config/plans.js,
+// null = unlimited). `existingCount` is what's already on the task,
+// `incomingCount` what's being added now. Returns a `{status, body}` pair to
+// send back, or null when within quota.
+const enforceAttachmentsLimit = (user, existingCount, incomingCount) => {
+  const planId = user.plan || 'free';
+  const limit = getPlan(planId).limits.attachmentsPerTask;
+  if (limit === null || limit === undefined) return null;
+  if (existingCount + incomingCount <= limit) return null;
+  return {
+    status: 400,
+    body: {
+      message: `The ${getPlan(planId).name} plan allows up to ${limit} attachments per task. Remove one or upgrade to add more.`,
+      limit,
+      resource: 'attachments',
+    },
+  };
 };
 
 // Get all tasks for current user with filters
@@ -304,6 +345,14 @@ exports.createTask = async (req, res, next) => {
     const newDependencies = await sanitizeDependencies(req.body.dependencies, req.user._id);
     if (newDependencies) taskData.dependencies = newDependencies;
 
+    // Attachments quota: a create starts from zero existing.
+    const newAttachments = sanitizeAttachments(req.body.attachments);
+    if (newAttachments) {
+      const over = enforceAttachmentsLimit(req.user, 0, newAttachments.length);
+      if (over) return res.status(over.status).json(over.body);
+      taskData.attachments = newAttachments;
+    }
+
     const task = await Task.create(taskData);
 
     // Log activity
@@ -391,6 +440,16 @@ exports.updateTask = async (req, res, next) => {
     if (nextSubtasks) allowedUpdates.subtasks = nextSubtasks;
     const nextDependencies = await sanitizeDependencies(req.body.dependencies, req.user._id, task._id);
     if (nextDependencies) allowedUpdates.dependencies = nextDependencies;
+
+    // Attachments are appended (each entry is one uploaded file), so the quota
+    // counts what's already on the task plus what's being added now. Sending
+    // `[]` is a no-op; omitting the field leaves attachments untouched.
+    const nextAttachments = sanitizeAttachments(req.body.attachments);
+    if (nextAttachments && nextAttachments.length > 0) {
+      const over = enforceAttachmentsLimit(req.user, (task.attachments || []).length, nextAttachments.length);
+      if (over) return res.status(over.status).json(over.body);
+      task.attachments = [...(task.attachments || []), ...nextAttachments];
+    }
 
     const oldAssigneeId = task.assignee ? task.assignee.toString() : null;
 

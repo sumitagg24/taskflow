@@ -1,6 +1,8 @@
 const Task = require('../models/Task');
 const aiService = require('../services/aiService');
 const { validationResult } = require('express-validator');
+const { checkAndIncrementAiUsage } = require('./growthController');
+const { decrypt } = require('../utils/keyCrypto');
 
 const MAX_AI_INPUT = 4000;
 
@@ -19,7 +21,8 @@ const tooLong = (val) => typeof val === 'string' && val.length > MAX_AI_INPUT;
 
 /**
  * Get user's AI settings from the request.
- * Returns the user object with aiApiKey included.
+ * Returns the user object with aiApiKey included (decrypted — the column
+ * holds `enc:v1:` ciphertext for new writes, legacy plaintext passes through).
  */
 async function getUserAiSettings(req) {
   // req.user is populated by auth middleware and contains _id, aiProvider, aiModel, aiSettings
@@ -28,14 +31,34 @@ async function getUserAiSettings(req) {
   const user = await User.findById(req.user._id).select('+aiApiKey').lean();
   return {
     aiProvider: user.aiProvider,
-    aiApiKey: user.aiApiKey,
+    aiApiKey: decrypt(user.aiApiKey || ''),
     aiModel: user.aiModel,
     aiSettings: user.aiSettings,
   };
 }
 
+/**
+ * Daily AI quota gate. Call FIRST in every usage handler (not in
+ * test-connection/settings) so exhausted plans get the same 402
+ * `PLAN_LIMIT_REACHED` shape the client already handles — before any
+ * provider resolution or network call. Returns true when the 402 was sent.
+ */
+async function enforceAiQuota(req, res) {
+  const result = await checkAndIncrementAiUsage(req.user._id);
+  if (result.allowed) return false;
+  res.status(402).json({
+    message: `Daily AI request limit reached (${result.used}/${result.limit}). Try again tomorrow or upgrade for a higher quota.`,
+    code: 'PLAN_LIMIT_REACHED',
+    limit: result.limit,
+    used: result.used,
+    resource: 'ai-requests',
+  });
+  return true;
+}
+
 exports.parseTask = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     if (rejectInvalidChain(req, res)) return;
     const { input } = req.body;
     if (typeof input !== 'string' || !input.trim()) {
@@ -54,6 +77,7 @@ exports.parseTask = async (req, res, next) => {
 
 exports.breakdownTask = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     if (rejectInvalidChain(req, res)) return;
     const task = await Task.findOne({ _id: req.params.id, userId: req.user._id });
     if (!task) return res.status(404).json({ message: 'Task not found' });
@@ -67,6 +91,7 @@ exports.breakdownTask = async (req, res, next) => {
 
 exports.suggestPriorities = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     const tasks = await Task.find({ userId: req.user._id, status: { $nin: ['completed', 'cancelled'] } })
       .limit(20)
       .select('title description dueDate priority');
@@ -80,6 +105,7 @@ exports.suggestPriorities = async (req, res, next) => {
 
 exports.generateDigest = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -106,6 +132,7 @@ exports.generateDigest = async (req, res, next) => {
 
 exports.chat = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     if (rejectInvalidChain(req, res)) return;
     const { message } = req.body;
     if (typeof message !== 'string' || !message.trim()) {
@@ -133,6 +160,7 @@ exports.chat = async (req, res, next) => {
 
 exports.generateTitle = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     if (rejectInvalidChain(req, res)) return;
     const { description } = req.body;
     if (typeof description !== 'string' || !description.trim()) {
@@ -151,6 +179,7 @@ exports.generateTitle = async (req, res, next) => {
 
 exports.suggestNextAction = async (req, res, next) => {
   try {
+    if (await enforceAiQuota(req, res)) return;
     const tasks = await Task.find({
       userId: req.user._id,
       status: { $in: ['pending', 'in-progress'] },

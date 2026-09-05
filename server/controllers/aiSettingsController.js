@@ -2,6 +2,7 @@
 
 const User = require('../models/User');
 const logger = require('../utils/logger');
+const { encrypt, decrypt } = require('../utils/keyCrypto');
 const { createProvider, getProviderMetadata, getProviderDirectory } = require('../services/aiProviders');
 const response = require('../utils/response');
 const { sanitizeErrorMessage } = require('../middleware/errorHandler');
@@ -75,10 +76,11 @@ exports.getAiSettings = async (req, res, next) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    const apiKey = decrypt(user.aiApiKey || '');
     res.json({
       aiProvider: user.aiProvider || null,
-      aiApiKey: maskApiKey(user.aiApiKey || ''),
-      hasApiKey: !!(user.aiApiKey),
+      aiApiKey: maskApiKey(apiKey),
+      hasApiKey: !!(apiKey),
       aiModel: user.aiModel || '',
       aiBaseUrl: user.aiBaseUrl || '',
       aiSettings: user.aiSettings || {
@@ -117,7 +119,9 @@ exports.updateAiSettings = async (req, res, next) => {
       if (aiApiKey !== '' && aiApiKey.length < 8) {
         return res.status(400).json({ message: 'API key must be at least 8 characters' });
       }
-      update.aiApiKey = aiApiKey;
+      // Encrypted at rest; '' clears the key. Legacy plaintext rows are
+      // re-encrypted here on the next write (reads never migrate).
+      update.aiApiKey = aiApiKey === '' ? '' : encrypt(aiApiKey);
     }
 
     if (aiModel !== undefined) {
@@ -173,11 +177,12 @@ exports.updateAiSettings = async (req, res, next) => {
     // Fetch updated user to return masked state
     const updated = await User.findById(req.user._id).select('+aiApiKey').lean();
 
+    const updatedKey = decrypt(updated.aiApiKey || '');
     res.json({
       message: 'AI settings updated successfully',
       aiProvider: updated.aiProvider || null,
-      aiApiKey: maskApiKey(updated.aiApiKey || ''),
-      hasApiKey: !!(updated.aiApiKey),
+      aiApiKey: maskApiKey(updatedKey),
+      hasApiKey: !!(updatedKey),
       aiModel: updated.aiModel || '',
       aiBaseUrl: updated.aiBaseUrl || '',
       aiSettings: updated.aiSettings || {
@@ -214,10 +219,12 @@ exports.testAiConnection = async (req, res, next) => {
       });
     }
 
-    // Use provided settings or fall back to saved
+    // Use provided settings or fall back to saved (stored key is decrypted;
+    // an incoming body key is plaintext for this one test only).
+    const savedKey = decrypt(user.aiApiKey || '');
     const testSettings = {
       aiProvider: req.body.aiProvider || user.aiProvider,
-      aiApiKey: req.body.aiApiKey || user.aiApiKey || '',
+      aiApiKey: req.body.aiApiKey || savedKey || '',
       aiModel: req.body.aiModel || user.aiModel,
       aiBaseUrl: incomingBaseUrl,
       aiSettings: {

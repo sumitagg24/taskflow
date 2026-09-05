@@ -137,6 +137,13 @@ const userSchema = new mongoose.Schema(
       timeout: { type: Number, default: 30000 },
     },
 
+    // Daily AI request quota (see config/plans.js `aiRequestsPerDay` and
+    // growthController.checkAndIncrementAiUsage). The counter belongs to the
+    // UTC calendar day named by aiUsageDate (`YYYY-MM-DD`); a new day resets
+    // it to zero on next use.
+    aiUsageCount: { type: Number, default: 0 },
+    aiUsageDate: { type: String, default: null },
+
     // ── Plan & growth ──────────────────────────────────────────────────────
     // Plan is the enforcement point for usage limits (see config/plans.js).
     // It is deliberately NOT writable through updateProfile — only billing or

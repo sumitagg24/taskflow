@@ -234,3 +234,61 @@ exports.enforceTaskLimit = async (user) => {
 };
 
 exports.countUsage = countUsage;
+
+/**
+ * Daily AI quota (`aiRequestsPerDay` in config/plans.js). The counter lives
+ * on the user (`aiUsageCount` + UTC day string `aiUsageDate`) and rolls over
+ * when the stored day isn't today.
+ *
+ * Race-safe-ish: the day rollover is an idempotent conditional `$set`, and
+ * the increment is a single-document atomic `findOneAndUpdate` whose filter
+ * only matches while the stored count is still under the limit — concurrent
+ * callers can't both win the last slot. Exhausted calls never increment.
+ *
+ * @param {string|ObjectId} userId
+ * @returns {Promise<{allowed: boolean, limit: number|null, used: number, remaining: number|null}>}
+ */
+exports.checkAndIncrementAiUsage = async (userId) => {
+  const user = await User.findById(userId).select('plan aiUsageCount').lean();
+  if (!user) {
+    const err = new Error('User not found');
+    err.statusCode = 404;
+    throw err;
+  }
+  const planId = user.plan || 'free';
+  const limit = getPlan(planId).limits.aiRequestsPerDay;
+  if (limit === null || limit === undefined) {
+    return { allowed: true, limit: null, used: user.aiUsageCount || 0, remaining: null };
+  }
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+
+  // Idempotent rollover: only touches rows whose day isn't today, so
+  // concurrent callers racing at midnight all converge on count 0.
+  await User.updateOne(
+    { _id: userId, aiUsageDate: { $ne: today } },
+    { $set: { aiUsageDate: today, aiUsageCount: 0 } }
+  );
+
+  // Atomic claim of one slot — matches only while under the limit.
+  const updated = await User.findOneAndUpdate(
+    {
+      _id: userId,
+      aiUsageDate: today,
+      $or: [{ aiUsageCount: { $lt: limit } }, { aiUsageCount: { $exists: false } }],
+    },
+    { $inc: { aiUsageCount: 1 }, $set: { aiUsageDate: today } },
+    { new: true }
+  )
+    .select('aiUsageCount')
+    .lean();
+
+  if (updated) {
+    const used = updated.aiUsageCount;
+    return { allowed: true, limit, used, remaining: Math.max(0, limit - used) };
+  }
+
+  const current = await User.findById(userId).select('aiUsageCount').lean();
+  const used = current?.aiUsageCount ?? limit;
+  return { allowed: false, limit, used, remaining: 0 };
+};

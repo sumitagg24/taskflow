@@ -69,8 +69,22 @@ if (process.env.NODE_ENV === 'production') {
       throw new Error(`${varName} environment variable is required in production`);
     }
   }
+  for (const varName of PROD_REQUIRED) {
+    if (process.env[varName].length < 32) {
+      throw new Error(`${varName} must be at least 32 characters long in production`);
+    }
+  }
   if (!process.env.CLIENT_URL) {
     throw new Error('CLIENT_URL environment variable is required in production');
+  }
+  if (!process.env.ALLOWED_ORIGINS || !process.env.ALLOWED_ORIGINS.trim()) {
+    logger.warn('WARNING: ALLOWED_ORIGINS is not set in production — all browser origins will be rejected (fail-closed). Set ALLOWED_ORIGINS to a comma-separated list of production browser origins.');
+  }
+} else {
+  for (const varName of ['JWT_SECRET', 'JWT_REFRESH_SECRET']) {
+    if (process.env[varName] && process.env[varName].length < 32) {
+      logger.warn(`WARNING: ${varName} is shorter than 32 characters. Use a secret of at least 32 characters in production.`);
+    }
   }
 }
 
@@ -175,7 +189,7 @@ const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDistPath));
 
 // ===== Health Check (rate limited) =====
-app.get('/api/health', (req, res) => {
+app.get('/api/health', apiLimiter, (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),

@@ -30,8 +30,9 @@ function isOriginAllowed(origin) {
   // No origin (non-browser / server-to-server requests) is permitted.
   if (!origin) return true;
 
-  // In development, allow any localhost variant
-  if (process.env.NODE_ENV !== 'production') {
+  // In development/test, allow any localhost variant
+  const env = process.env.NODE_ENV || 'development';
+  if (env === 'development' || env === 'test') {
     if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
       return true;
     }

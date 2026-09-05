@@ -186,18 +186,35 @@ function AppContent() {
 
   // Idle-prefetch the interaction-critical lazy chunks so the first
   // palette/create open costs ≈ steady-state (no lazy-chunk fetch on click).
-  // Fire-and-forget: warms the module cache without rendering anything.
+  // One idle slot with a timeout cap (not four separate ones — separate
+  // requestIdleCallback calls serialize across idle periods), one parallel
+  // import batch. Fire-and-forget: warms the module cache without rendering.
+  // NOTE: intentionally NOT gated on isAuthenticated — the login screen sits
+  // idle while users type credentials, which is exactly when warming is free.
   useEffect(() => {
-    if (!isAuthenticated) return;
-    const idle = (fn: () => void) =>
-      ('requestIdleCallback' in window
-        ? (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(fn)
-        : setTimeout(fn, 1500));
-    idle(() => { import('@/components/CommandPalette').catch(() => {}); });
-    idle(() => { import('@/components/TaskForm').catch(() => {}); });
-    idle(() => { import('@/components/TaskDetailDrawer').catch(() => {}); });
-    idle(() => { import('@/components/AIAssistant').catch(() => {}); });
-  }, [isAuthenticated]);
+    let cancelled = false;
+    const warm = () => {
+      if (cancelled) return;
+      void Promise.all([
+        import('@/components/CommandPalette'),
+        import('@/components/TaskForm'),
+        import('@/components/TaskDetailDrawer'),
+        import('@/components/AIAssistant'),
+      ]).catch(() => {});
+    };
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(warm, { timeout: 1200 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(id);
+      };
+    }
+    const t = setTimeout(warm, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, []);
 
   // Onboarding tracks palette discovery, so every entry point records it.
   const openPalette = useCallback(() => {

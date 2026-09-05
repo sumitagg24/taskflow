@@ -60,11 +60,13 @@ export default function Navbar({
           <p className="truncate text-xs text-gray-500 dark:text-gray-500">{dateStr}</p>
         </div>
 
-        {/* Search is a palette trigger, not an input: one search surface beats two. */}
+        {/* Search is a palette trigger, not an input: one search surface beats two.
+            min-w-0 + flex-1 (NOT w-full) so the button shrinks inside the row
+            instead of shoving the controls off-screen on narrow phones. */}
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="mx-auto flex h-9 w-full max-w-md items-center gap-2.5 rounded-lg border border-gray-200 bg-card px-3 text-left text-sm text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
+          className="mx-auto flex h-9 min-w-0 flex-1 max-w-md items-center gap-2.5 rounded-lg border border-gray-200 bg-card px-3 text-left text-sm text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
         >
           <Search size={15} className="shrink-0" aria-hidden="true" />
           <span className="flex-1 truncate">Search tasks or jump to…</span>

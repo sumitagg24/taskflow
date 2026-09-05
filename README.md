@@ -429,6 +429,8 @@ Set `NODE_ENV=production`, configure `MONGO_URI`, `JWT_SECRET`,
 
 **Docker:** `docker-compose up -d` provisions MongoDB, the API, and the client.
 
+Backup/restore runbook: `docs/ops/backup-restore.md`.
+
 ---
 
 ## License

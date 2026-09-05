@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const response = require('../utils/response');
+const errorMonitor = require('../utils/errorMonitor');
 
 // Scrub filesystem paths and connection strings from client-facing errors.
 // Server logs keep the full message/stack; only the response copy is scrubbed.
@@ -33,6 +34,11 @@ const errorHandler = (err, req, res, next) => {
   }
 
   const statusCode = err.statusCode || 500;
+  if (statusCode >= 500) {
+    // Route TEMPLATE (not raw URL) so high-cardinality ids don't fan out.
+    const template = `${req.baseUrl || ''}${req.route?.path || ''}`;
+    errorMonitor.recordError(template || req.path, statusCode);
+  }
   response.error(res, process.env.NODE_ENV === 'production' ? 'Internal Server Error' : sanitizeErrorMessage(err.message), statusCode);
 };
 

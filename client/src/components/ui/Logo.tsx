@@ -2,18 +2,18 @@ import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 /* ============================================================================
-   TaskFlow brand mark — "flow lines"
+   TaskFlow brand mark — "convergence"
    ----------------------------------------------------------------------------
-   Three staggered strokes whose left edges step rightward, with a filled node
-   terminating the middle one: a queue of work in motion, with one item in
-   focus. Drawn on a 32-unit grid so the geometry is identical here and in
-   `client/public/*.svg` (favicon / PWA icons) — edit both together.
+   Three strokes flow in from the left and meet at a single filled node:
+   scattered work converging on the one thing that matters. Drawn on a 32-unit
+   grid so the geometry is identical here and in `client/public/*.svg`
+   (favicon / PWA icons) — edit both together.
 
    Geometry (32 grid, stroke-width 3, round caps):
-     top     8 → 16.5  @ y10      visual x 6.5 → 18
-     middle 10 → 19    @ y16      visual x 8.5 → 20.5
-     node   cx 24 cy 16 r 2.25    visual x 21.75 → 26.25
-     bottom 12 → 17    @ y22      visual x 10.5 → 18.5
+     top     8,10   → 15,13
+     middle  8,16   → 19.5,16  (terminates in the node)
+     bottom  8,22   → 15,19
+     node   cx 22 cy 16 r 2.5
    Content stays inside a 12.8-unit radius of centre, so the PWA icons are
    maskable-safe.
 
@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
    at a state where the mark is fully legible.
    ========================================================================== */
 
-const STROKES = ['M8 10h8.5', 'M10 16h9', 'M12 22h5'] as const;
+const STROKES = ['M8 10L15 13', 'M8 16H19.5', 'M8 22L15 19'] as const;
 
 interface LogoMarkProps {
   size?: number;
@@ -67,16 +67,16 @@ export function LogoMark({ size = 32, animate = false, className }: LogoMarkProp
             <path key={d} d={d} />
           ))}
         </g>
-        <circle cx="24" cy="16" r="2.25" fill="#faf9f5" />
+        <circle cx="22" cy="16" r="2.5" fill="#faf9f5" />
       </Group>
 
       {/* One ping on the active node. Starts and ends fully transparent, so a
           frozen tab simply never shows it. */}
       {animate && (
         <motion.circle
-          cx="24"
+          cx="22"
           cy="16"
-          r="2.25"
+          r="2.5"
           fill="none"
           stroke="#faf9f5"
           strokeWidth="1.25"

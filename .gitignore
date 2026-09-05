@@ -31,6 +31,9 @@ logs/
 # Local database data
 .mongo-data/
 
+# Locally uploaded attachments (created at runtime; the server mkdirs it)
+server/uploads/*
+
 # IDE
 .vscode/
 .idea/

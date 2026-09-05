@@ -165,7 +165,7 @@ exports.resumeTimer = async (req, res, next) => {
     session.pauseDurations[session.pauseDurations.length - 1] = pauseDurationMinutes;
     await session.save();
 
-    res.json({ session, pauseDuration });
+    res.json({ session, pauseDuration: pauseDurationMinutes });
   } catch (error) {
     next(error);
   }

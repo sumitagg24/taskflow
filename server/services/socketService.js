@@ -2,6 +2,7 @@ const { Server } = require('socket.io');
 const { verifyAccessToken } = require('../middleware/auth');
 const { isOriginAllowed } = require('../config/cors');
 const logger = require('../utils/logger');
+const User = require('../models/User');
 
 let io = null;
 
@@ -23,13 +24,31 @@ function initializeSocket(server) {
   // Authentication middleware for socket connections
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token || socket.handshake.query.token;
+      const token = socket.handshake.auth.token;
       if (!token) {
         return next(new Error('Authentication required'));
       }
       const decoded = verifyAccessToken(token);
       if (decoded.token_type !== 'access' && decoded.type !== 'access') {
         return next(new Error('Invalid token type'));
+      }
+      const user = await User.findById(decoded.id).select('_id emailVerified passwordChangedAt');
+      if (!user) {
+        logger.warn(`Socket auth failed: user not found for id ${decoded.id}`);
+        return next(new Error('User not found'));
+      }
+      // Reject access tokens issued before the password last changed —
+      // a password change/reset revokes all previously-issued sessions.
+      if (user.passwordChangedAt && decoded.iat) {
+        const issuedAtMs = decoded.iat * 1000;
+        if (issuedAtMs < user.passwordChangedAt.getTime()) {
+          logger.warn(`Socket auth failed: stale token for user ${user._id}`);
+          return next(new Error('Session expired, please sign in again'));
+        }
+      }
+      if (!user.emailVerified) {
+        logger.warn(`Socket auth failed: email not verified for user ${user._id}`);
+        return next(new Error('Please verify your email before accessing this resource.'));
       }
       socket.userId = decoded.id;
       next();

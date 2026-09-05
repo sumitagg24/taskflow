@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { getTasks, toTaskArray, getStats, aiAPI, getNotifications } from '@/api/tasks';
+import { getStats, aiAPI, getNotifications } from '@/api/tasks';
 import {
   Card, CardHeader, StatCard, StatusBadge, PriorityBadge, PriorityDot,
   Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut,
@@ -19,6 +19,12 @@ import Categories from '@/components/widgets/Categories';
 import Notes from '@/components/widgets/Notes';
 
 interface DashboardProps {
+  /** Canonical task list owned by the App shell — Dashboard never fetches it. */
+  tasks: any[];
+  /** Parent fetch state; the skeleton renders from this. */
+  loading?: boolean;
+  /** Ask the shell to refetch tasks after a cross-page mutation. */
+  onRefresh?: () => void;
   onEditTask: (task: any) => void;
   onDeleteTask: (task: any) => void;
   onNewTask: () => void;
@@ -86,27 +92,27 @@ function dueTime(date: string): string {
 const statusCount = (stats: any, id: string): number =>
   stats?.byStatus?.find((s: any) => s._id === id)?.count || 0;
 
-export default function Dashboard({ onEditTask, onDeleteTask, onNewTask, onNavigate }: DashboardProps) {
+export default function Dashboard({ tasks, loading = false, onRefresh, onEditTask, onDeleteTask, onNewTask, onNavigate }: DashboardProps) {
+  // Reserved for future Dashboard-owned mutations; edits/deletes currently
+  // flow through the parent callbacks, which already keep shell state in sync.
+  void onRefresh;
   const { user } = useAuth();
-  const [tasks, setTasks] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [digest, setDigest] = useState<any>(null);
   const [recentNotifications, setRecentNotifications] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [onboardingHidden, setOnboardingHidden] = useState(
     () => localStorage.getItem(ONBOARDING_DISMISSED) === '1'
   );
 
+  // Tasks come from the App shell (single GET /tasks there). This loader
+  // covers the Dashboard-owned endpoints only: stats + decoration.
   const load = useCallback(async () => {
     try {
-      const [tasksRes, statsRes] = await Promise.all([getTasks({ sort: 'updated' }), getStats()]);
-      setTasks(toTaskArray(tasksRes.data));
+      const statsRes = await getStats();
       setStats(statsRes.data);
     } catch {
       // Read-only surface: a failed fetch falls through to empty states rather
       // than replacing the whole page with an error.
-    } finally {
-      setLoading(false);
     }
 
     // Both of these are decoration — never let them gate the main render.

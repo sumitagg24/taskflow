@@ -41,6 +41,10 @@ const TASKS = [
 ];
 
 function mockAll() {
+  apiMocks.getTasks.mockClear();
+  apiMocks.getStats.mockClear();
+  apiMocks.generateDigest.mockClear();
+  apiMocks.getNotifications.mockClear();
   apiMocks.getTasks.mockResolvedValue({ data: TASKS });
   apiMocks.getStats.mockResolvedValue({ data: { total: 2, byStatus: [], overdue: 0, completedToday: 0 } });
   apiMocks.generateDigest.mockRejectedValue(new Error('no ai'));
@@ -52,7 +56,11 @@ describe('Dashboard task rows', () => {
     mockAll();
     const onEdit = vi.fn();
     const onDelete = vi.fn();
-    render(<Dashboard onEditTask={onEdit} onDeleteTask={onDelete} onNewTask={() => {}} onNavigate={() => {}} />);
+    const onRefresh = vi.fn();
+    render(<Dashboard tasks={TASKS} loading={false} onRefresh={onRefresh} onEditTask={onEdit} onDeleteTask={onDelete} onNewTask={() => {}} onNavigate={() => {}} />);
+
+    // Tasks are owned by the shell: Dashboard must NOT fetch them itself.
+    expect(apiMocks.getTasks).not.toHaveBeenCalled();
 
     const editBtns = await screen.findAllByRole('button', { name: 'Edit Timed task' });
     expect(editBtns.length).toBeGreaterThanOrEqual(2); // Today's priority + Coming up
@@ -75,7 +83,8 @@ describe('Dashboard task rows', () => {
 
   it('shows the stamp under Coming up deadlines', async () => {
     mockAll();
-    render(<Dashboard onEditTask={() => {}} onDeleteTask={() => {}} onNewTask={() => {}} onNavigate={() => {}} />);
+    render(<Dashboard tasks={TASKS} loading={false} onRefresh={() => {}} onEditTask={() => {}} onDeleteTask={() => {}} onNewTask={() => {}} onNavigate={() => {}} />);
+    expect(apiMocks.getTasks).not.toHaveBeenCalled();
     const expectedDay = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     expect(await screen.findByText(new RegExp(expectedDay.replace(/[^A-Za-z0-9]/g, '.')))).toBeInTheDocument();
   });

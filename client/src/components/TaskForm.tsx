@@ -303,6 +303,7 @@ export default function TaskForm({ existingTask, onSuccess, onCancel }: TaskForm
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     const title = form.title.trim();
     if (!title) {
       setTitleError('Give the task a title first.');

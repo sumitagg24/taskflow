@@ -317,7 +317,7 @@ export default function CommandPalette({
     listRef.current
       ?.querySelector<HTMLElement>('[data-active="true"]')
       ?.scrollIntoView({ block: 'nearest' });
-  }, [activeIndex, rows]);
+  }, [activeIndex]);
 
   let cursor = -1;
 
@@ -398,7 +398,7 @@ export default function CommandPalette({
                         key={`t-${row.task._id}`}
                         type="button"
                         data-active={isActive}
-                        onMouseMove={() => setActiveIndex(index)}
+                        onMouseMove={() => setActiveIndex((p) => (p === index ? p : index))}
                         onClick={() => runRow(row)}
                         className={cn(
                           'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
@@ -436,7 +436,7 @@ export default function CommandPalette({
                       key={`c-${row.command.id}`}
                       type="button"
                       data-active={isActive}
-                      onMouseMove={() => setActiveIndex(index)}
+                      onMouseMove={() => setActiveIndex((p) => (p === index ? p : index))}
                       onClick={() => runRow(row)}
                       className={cn(
                         'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',

@@ -184,6 +184,21 @@ function AppContent() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isAuthenticated]);
 
+  // Idle-prefetch the interaction-critical lazy chunks so the first
+  // palette/create open costs ≈ steady-state (no lazy-chunk fetch on click).
+  // Fire-and-forget: warms the module cache without rendering anything.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const idle = (fn: () => void) =>
+      ('requestIdleCallback' in window
+        ? (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(fn)
+        : setTimeout(fn, 1500));
+    idle(() => { import('@/components/CommandPalette').catch(() => {}); });
+    idle(() => { import('@/components/TaskForm').catch(() => {}); });
+    idle(() => { import('@/components/TaskDetailDrawer').catch(() => {}); });
+    idle(() => { import('@/components/AIAssistant').catch(() => {}); });
+  }, [isAuthenticated]);
+
   // Onboarding tracks palette discovery, so every entry point records it.
   const openPalette = useCallback(() => {
     localStorage.setItem(PALETTE_USED_KEY, '1');
@@ -195,32 +210,36 @@ function AppContent() {
   };
 
   // Delete is a soft delete on the server, so the honest affordance is an
-  // instant Undo rather than a scarier confirmation dialog.
+  // instant Undo rather than a scarier confirmation dialog. Optimistic: the
+  // row disappears the moment Delete is confirmed; the API call follows and
+  // rolls back only on failure.
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     const task = deleteTarget;
+    const snapshot = tasks;
+    setTasks((prev) => prev.filter((t) => t._id !== task._id));
+    setDeleteTarget(null);
+    toast.success(`“${task.title}” moved to Trash`, {
+      action: {
+        label: 'Undo',
+        onClick: async () => {
+          try {
+            const { data } = await restoreTask(task._id);
+            setTasks((prev) =>
+              prev.some((t) => t._id === data._id) ? prev : [data, ...prev]
+            );
+            toast.success('Restored');
+          } catch {
+            toast.error('Could not restore — it is still in Trash');
+          }
+        },
+      },
+    });
     setDeleting(true);
     try {
       await deleteTask(task._id);
-      setTasks((prev) => prev.filter((t) => t._id !== task._id));
-      setDeleteTarget(null);
-      toast.success(`“${task.title}” moved to Trash`, {
-        action: {
-          label: 'Undo',
-          onClick: async () => {
-            try {
-              const { data } = await restoreTask(task._id);
-              setTasks((prev) =>
-                prev.some((t) => t._id === data._id) ? prev : [data, ...prev]
-              );
-              toast.success('Restored');
-            } catch {
-              toast.error('Could not restore — it is still in Trash');
-            }
-          },
-        },
-      });
     } catch {
+      setTasks(snapshot);
       toast.error('Failed to delete task');
     } finally {
       setDeleting(false);
@@ -393,7 +412,7 @@ function AppContent() {
 
       case 'dashboard':
       default:
-        return <Dashboard onEditTask={handleEdit} onDeleteTask={handleDeleteRequest} onNewTask={handleNewTask} onNavigate={handleNavigate} />;
+        return <Dashboard tasks={tasks} loading={loading} onRefresh={fetchTasks} onEditTask={handleEdit} onDeleteTask={handleDeleteRequest} onNewTask={handleNewTask} onNavigate={handleNavigate} />;
     }
   };
 

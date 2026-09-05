@@ -1,7 +1,9 @@
 import { ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, CheckCircle2, Eye, EyeOff, Loader2, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/Feedback';
 
 /* ============================================================================
    Shared bits of the auth surface
@@ -25,7 +27,7 @@ export function AuthHeading({
   return (
     <header className="mb-7">
       {eyebrow && <p className="caption-upper mb-2.5">{eyebrow}</p>}
-      <h2 className="font-display text-[1.75rem] leading-tight tracking-tight text-gray-900 dark:text-gray-50">
+      <h2 className="font-display text-2xl leading-tight tracking-tight text-gray-900 dark:text-gray-100">
         {title}
       </h2>
       {children && (
@@ -80,7 +82,7 @@ export function AuthAlert({
 const STATUS_RING = {
   success: 'bg-green-100 text-green-600 dark:bg-green-500/12 dark:text-green-400',
   error: 'bg-red-100 text-red-600 dark:bg-red-500/12 dark:text-red-400',
-  neutral: 'bg-surface text-clay',
+  neutral: 'bg-surface text-clay dark:bg-clay/12 dark:text-clay',
 } as const;
 
 /** Full-panel outcome: icon, serif title, prose, and one way onward. */
@@ -98,28 +100,14 @@ export function AuthStatus({
   action?: ReactNode;
 }) {
   return (
-    <div className="text-center">
-      <motion.div
-        initial={{ scale: 0.6, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 320, damping: 20 }}
-        className={cn(
-          'mb-5 inline-flex h-14 w-14 items-center justify-center rounded-full',
-          STATUS_RING[tone]
-        )}
-      >
-        {icon}
-      </motion.div>
-      <h2 className="font-display text-[1.6rem] leading-tight tracking-tight text-gray-900 dark:text-gray-50">
-        {title}
-      </h2>
-      {children && (
-        <p className="mx-auto mt-2.5 max-w-[22rem] text-[14px] leading-relaxed text-gray-600 dark:text-gray-400">
-          {children}
-        </p>
-      )}
-      {action && <div className="mt-7">{action}</div>}
-    </div>
+    <EmptyState
+      icon={icon}
+      title={title}
+      description={children}
+      action={action}
+      iconClassName={STATUS_RING[tone]}
+      className="px-0 py-0"
+    />
   );
 }
 
@@ -138,8 +126,8 @@ export function AuthLinkButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'rounded-sm font-medium text-clay underline decoration-clay/30 decoration-1 underline-offset-[3px]',
-        'transition-colors hover:decoration-clay focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25',
+        'rounded-md font-medium text-clay underline decoration-clay/30 decoration-1 underline-offset-[3px]',
+        'transition-colors hover:decoration-clay focus-visible:ring-[3px] focus-visible:ring-yellow-400/15',
         className
       )}
     >
@@ -156,7 +144,7 @@ export function RevealToggle({ shown, onToggle }: { shown: boolean; onToggle: ()
       onClick={onToggle}
       tabIndex={-1}
       aria-label={shown ? 'Hide password' : 'Show password'}
-      className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-surface hover:text-gray-700 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25 dark:hover:text-gray-200"
+      className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-surface hover:text-gray-700 focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:hover:text-gray-200"
     >
       {shown ? <EyeOff size={16} /> : <Eye size={16} />}
     </button>
@@ -176,17 +164,8 @@ export function AuthSubmit({
   disabled?: boolean;
 }) {
   return (
-    <button
-      type="submit"
-      disabled={disabled || loading}
-      className={cn(
-        'btn-primary flex h-11 w-full items-center justify-center gap-2 text-[14px]',
-        'focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/30',
-        'disabled:cursor-not-allowed disabled:opacity-60'
-      )}
-    >
-      {loading && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+    <Button type="submit" variant="primary" fullWidth loading={loading} disabled={disabled}>
       {loading ? loadingLabel ?? 'Working…' : children}
-    </button>
+    </Button>
   );
 }

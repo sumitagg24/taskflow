@@ -161,7 +161,7 @@ export default function ResetPasswordPage({ token, onSuccess }: ResetPasswordPag
         </div>
       </form>
 
-      <p className="mt-7 text-[13px] leading-relaxed text-gray-500 dark:text-gray-500">
+      <p className="mt-7 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
         Changed your mind?{' '}
         <AuthLinkButton onClick={onSuccess}>Go back to sign in</AuthLinkButton> — this link stays
         valid until it expires.

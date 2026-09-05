@@ -91,6 +91,19 @@ function setCachedUser(user: User | null) {
   }
 }
 
+// Readable session flag set by the server alongside the httpOnly cookies.
+// Absent on fresh visits (no session → skip the boot profile fetch entirely,
+// zero requests, straight to login). Present-but-stale still hits the 401
+// path below, so expiry/logout flows are unchanged.
+function hasSessionFlag(): boolean {
+  try {
+    if (typeof document === 'undefined' || !document.cookie) return false;
+    return document.cookie.split(';').some((part) => part.trim() === 'tf_session=1');
+  } catch {
+    return false;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Hydrate from cache immediately — synchronous, no waiting.
   // This lets us render the dashboard instantly on refresh while
@@ -120,6 +133,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const pass = ++passRef.current;  // unique per effect invocation
 
     const init = async () => {
+      // Fresh visitor (no readable session flag) → skip the profile fetch
+      // entirely: zero requests, straight to login. Stale flags still fetch
+      // and fall through to the 401 path below.
+      if (!hasSessionFlag()) {
+        if (pass === passRef.current && mountedRef.current) {
+          clearAllTokens();
+          setUser(null);
+          setIsInitializing(false);
+        }
+        return;
+      }
       // Cookie-only boot: the httpOnly session cookie rides automatically
       // via withCredentials — no token lookup, always validate with the server.
       const controller = new AbortController();

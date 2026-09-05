@@ -1,6 +1,6 @@
 import { useState, FormEvent, useRef, useEffect, useMemo, useCallback } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Mail, Lock, User, AtSign, Gift } from 'lucide-react';
+import { Mail, Lock, User, AtSign } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { authAPI } from '@/api/tasks';
@@ -232,18 +232,18 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
             aria-selected={mode === m}
             onClick={() => switchMode(m)}
             className={cn(
-              'relative rounded-[6px] px-4 py-1.5 text-[13px] font-medium transition-colors duration-200',
-              'focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25',
+              'relative rounded-md px-4 py-1.5 text-[13px] font-medium transition-colors duration-200',
+              'focus-visible:ring-[3px] focus-visible:ring-yellow-400/15',
               mode === m
-                ? 'text-gray-900 dark:text-gray-50'
+                ? 'text-gray-900 dark:text-gray-100'
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             )}
           >
             {mode === m && (
               <motion.span
                 layoutId="auth-mode-pill"
-                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                className="absolute inset-0 rounded-[6px] bg-card shadow-sm"
+                transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                className="absolute inset-0 rounded-md bg-card shadow-sm"
               />
             )}
             <span className="relative">{m === 'login' ? 'Sign in' : 'Sign up'}</span>
@@ -260,17 +260,13 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
 
         {/* Referral attribution — reassure the invitee their link worked. */}
         {referralCode && mode === 'register' && (
-          <div
-            role="status"
-            className="mb-5 flex items-start gap-2.5 rounded-lg border border-yellow-200 bg-yellow-50/80 px-3.5 py-3 text-[13px] leading-snug text-yellow-800 dark:border-yellow-500/25 dark:bg-yellow-500/10 dark:text-yellow-200"
-          >
-            <Gift size={16} className="mt-px shrink-0" aria-hidden="true" />
+          <AuthAlert tone="warning">
             <span>
               You were invited. Your code{' '}
               <span className="font-mono font-semibold">{referralCode}</span> is applied when you
               sign up.
             </span>
-          </div>
+          </AuthAlert>
         )}
 
         <AnimatePresence>{error && <AuthAlert key={error}>{error}</AuthAlert>}</AnimatePresence>
@@ -389,7 +385,7 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
               <button
                 type="button"
                 onClick={onForgotPassword}
-                className="rounded-sm text-[13px] text-gray-500 transition-colors hover:text-clay focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25 dark:text-gray-400"
+                className="rounded-md text-[13px] text-gray-500 transition-colors hover:text-clay focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:text-gray-400"
               >
                 Forgot your password?
               </button>
@@ -409,12 +405,12 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
           busy={loading || socialLoading}
         />
 
-        <p className="mt-8 text-[13px] text-gray-500 dark:text-gray-400">
+        <p className="mt-7 text-[13px] text-gray-500 dark:text-gray-400">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button
             type="button"
             onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
-            className="rounded-sm font-medium text-clay underline decoration-clay/30 decoration-1 underline-offset-[3px] transition-colors hover:decoration-clay focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25"
+            className="rounded-md font-medium text-clay underline decoration-clay/30 decoration-1 underline-offset-[3px] transition-colors hover:decoration-clay focus-visible:ring-[3px] focus-visible:ring-yellow-400/15"
           >
             {mode === 'login' ? 'Create one' : 'Sign in'}
           </button>

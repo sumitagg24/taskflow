@@ -62,11 +62,23 @@ const cookieOptions = (maxAge) => ({
 const setAuthCookies = (res, accessToken, refreshToken) => {
   res.cookie('accessToken', accessToken, cookieOptions(ACCESS_COOKIE_MAX_AGE));
   res.cookie('refreshToken', refreshToken, cookieOptions(REFRESH_COOKIE_MAX_AGE));
+  // Readable session flag (NOT httpOnly) so the SPA can skip the boot
+  // GET /auth/profile when no session exists — kills the expected-401 noise
+  // on public screens. Stale flags still hit the 401 path, so expiry/logout
+  // flows are unchanged. Bodies stay byte-identical (cookie-only signal).
+  res.cookie('tf_session', '1', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: REFRESH_COOKIE_MAX_AGE,
+    path: '/',
+  });
 };
 
 const clearAuthCookies = (res) => {
   res.clearCookie('accessToken', { path: '/' });
   res.clearCookie('refreshToken', { path: '/' });
+  res.clearCookie('tf_session', { path: '/' });
 };
 
 const generateAccessToken = (userId) => {

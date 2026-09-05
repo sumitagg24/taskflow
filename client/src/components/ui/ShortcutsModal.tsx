@@ -45,7 +45,7 @@ export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
             transition={{ duration: 0.15, ease: 'easeOut' }}
             className={cn(
               'relative w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-800',
-              'bg-white dark:bg-[#1a1a23] shadow-2xl overflow-hidden'
+              'bg-card shadow-2xl overflow-hidden'
             )}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">

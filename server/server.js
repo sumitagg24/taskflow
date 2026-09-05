@@ -118,14 +118,18 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "https://accounts.google.com"],
+      // Hash allows ONLY Google's GSI inline bootstrap snippet. If Google ever
+      // changes that snippet the hash stops matching and behavior degrades to
+      // today (blocked snippet, button still renders) — no broadening needed.
+      scriptSrc: ["'self'", "https://accounts.google.com", "'sha256-GV3MzgrEm/WOEDkhHKYcrl36TKzqNh3EhZo4thC6H7k='"],
       frameSrc: ["'self'", "https://accounts.google.com"],
       connectSrc: ["'self'", "https://accounts.google.com"],
       imgSrc: ["'self'", "data:", "https:"],
       // Google Fonts serves the stylesheet from googleapis and the woff2 files
       // from gstatic; without both, the Newsreader display face silently falls
       // back to a system serif in production.
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      // accounts.google.com serves the GSI button stylesheet.
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       // GitHub sign-in is a top-level redirect to github.com and back.
       formAction: ["'self'", "https://github.com"],

@@ -13,6 +13,8 @@ export function EmptyState({
   secondaryAction,
   size = 'md',
   className,
+  iconClassName,
+  titleClassName,
 }: {
   icon?: ReactNode;
   title: string;
@@ -21,6 +23,10 @@ export function EmptyState({
   secondaryAction?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  /** Tone override for the icon well (e.g. auth status rings). */
+  iconClassName?: string;
+  /** Extra classes for the serif title. */
+  titleClassName?: string;
 }) {
   const pad = size === 'sm' ? 'py-8' : size === 'lg' ? 'py-20' : 'py-14';
 
@@ -31,7 +37,8 @@ export function EmptyState({
           aria-hidden="true"
           className={cn(
             'mb-4 flex items-center justify-center rounded-2xl bg-gray-100 text-gray-400 dark:bg-gray-800/70 dark:text-gray-500',
-            size === 'sm' ? 'h-10 w-10' : 'h-14 w-14'
+            size === 'sm' ? 'h-10 w-10' : 'h-14 w-14',
+            iconClassName
           )}
         >
           {icon}
@@ -40,7 +47,8 @@ export function EmptyState({
       <h3
         className={cn(
           'font-display text-gray-900 dark:text-gray-100',
-          size === 'sm' ? 'text-base' : 'text-xl'
+          size === 'sm' ? 'text-base' : 'text-xl',
+          titleClassName
         )}
       >
         {title}

@@ -49,7 +49,7 @@ export default function Navbar({
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-gray-200/70 backdrop-blur-xl dark:border-gray-800"
+      className="sticky top-0 z-30 border-b border-hairline backdrop-blur-xl"
       style={{ backgroundColor: 'color-mix(in srgb, var(--bg-primary) 82%, transparent)' }}
     >
       <div className="flex h-16 items-center gap-3 px-4 lg:px-6">

@@ -22,7 +22,7 @@ const reveal = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, delay: 0.1 + i * 0.07, ease: [0.22, 1, 0.36, 1] as const },
+    transition: { duration: 0.25, delay: 0.1 + i * 0.07, ease: [0.22, 1, 0.36, 1] as const },
   }),
 };
 
@@ -51,7 +51,7 @@ export default function AuthShell({
             animate="visible"
             variants={reveal}
             custom={1}
-            className="font-display text-[2.6rem] leading-[1.12] tracking-tight text-gray-900 dark:text-gray-50"
+            className="font-display text-4xl leading-[1.12] tracking-tight text-gray-900 dark:text-gray-100"
           >
             {headline}
           </motion.h1>
@@ -59,7 +59,7 @@ export default function AuthShell({
           <motion.hr
             initial={{ opacity: 0, scaleX: 0 }}
             animate={{ opacity: 1, scaleX: 1 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.25, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
             className="rule mt-8 mb-7 origin-left"
           />
 
@@ -87,7 +87,7 @@ export default function AuthShell({
           animate="visible"
           variants={reveal}
           custom={7}
-          className="text-xs text-gray-500 dark:text-gray-500"
+          className="text-xs text-gray-500 dark:text-gray-400"
         >
           Your workspace, your data. Nothing shared without you asking.
         </motion.p>

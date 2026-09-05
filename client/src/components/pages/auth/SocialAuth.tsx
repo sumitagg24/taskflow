@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { authAPI } from '@/api/tasks';
+import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 
 /* ============================================================================
@@ -169,13 +169,6 @@ export default function SocialAuth({
     window.location.assign('/api/auth/github');
   };
 
-  const buttonClass =
-    'flex h-11 items-center justify-center gap-2.5 rounded-lg border border-hairline bg-card ' +
-    'text-[13.5px] font-medium text-gray-700 transition-[background-color,border-color,transform] duration-200 ' +
-    'hover:border-hairline-strong hover:bg-card-hover active:translate-y-px ' +
-    'focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25 ' +
-    'disabled:cursor-not-allowed disabled:opacity-55 dark:text-gray-200';
-
   return (
     <div className={cn('mt-7', className)}>
       <div className="mb-5 flex items-center gap-4" aria-hidden="true">
@@ -186,29 +179,33 @@ export default function SocialAuth({
 
       <div className={cn('grid gap-3', showGoogle && showGithub ? 'grid-cols-2' : 'grid-cols-1')}>
         {showGoogle && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            fullWidth
+            loading={googleBusy}
+            icon={!googleBusy ? <GoogleGlyph /> : undefined}
             onClick={handleGoogle}
             disabled={disabled || !googleReady}
-            className={buttonClass}
             aria-label={`${verb} with Google`}
           >
-            {googleBusy ? <Loader2 size={16} className="animate-spin" /> : <GoogleGlyph />}
             Google
-          </button>
+          </Button>
         )}
 
         {showGithub && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            fullWidth
+            loading={githubRedirecting}
+            icon={!githubRedirecting ? <GitHubGlyph /> : undefined}
             onClick={handleGithub}
             disabled={disabled}
-            className={buttonClass}
             aria-label={`${verb} with GitHub`}
           >
-            {githubRedirecting ? <Loader2 size={16} className="animate-spin" /> : <GitHubGlyph />}
             GitHub
-          </button>
+          </Button>
         )}
       </div>
     </div>

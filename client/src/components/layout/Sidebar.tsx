@@ -76,7 +76,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
       {navItems.map((entry, i) => {
         if (entry.type === 'section') {
           if (isCollapsed) {
-            return <div key={`sec-${i}`} className="mx-2 my-2 h-px bg-gray-200/70 dark:bg-gray-800" />;
+            return <div key={`sec-${i}`} className="mx-2 my-2 h-px bg-hairline" />;
           }
           return (
             <p key={`sec-${i}`} className="caption-upper mt-5 mb-1.5 px-3 first:mt-1">
@@ -154,7 +154,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
   const brand = (isCollapsed: boolean) => (
     <div
       className={cn(
-        'flex h-16 shrink-0 items-center border-b border-gray-200/70 px-4 dark:border-gray-800',
+        'flex h-16 shrink-0 items-center border-b border-hairline px-4',
         isCollapsed ? 'justify-center' : 'justify-between'
       )}
     >
@@ -183,7 +183,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
 
   const footer = (isCollapsed: boolean) =>
     user && (
-      <div className="shrink-0 border-t border-gray-200/70 p-3 dark:border-gray-800">
+      <div className="shrink-0 border-t border-hairline p-3">
         {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
             <Tooltip content="Expand sidebar" side="right" delay={120}>
@@ -230,7 +230,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
     <>
       <aside
         className={cn(
-          'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-gray-200/70 md:flex dark:border-gray-800',
+          'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-hairline md:flex',
           'transition-[width] duration-300',
           collapsed ? 'w-[64px]' : 'w-[248px]'
         )}

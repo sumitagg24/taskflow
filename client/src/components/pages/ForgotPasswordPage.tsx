@@ -54,7 +54,7 @@ export default function ForgotPasswordPage({ onBack }: ForgotPasswordPageProps) 
           <button
             type="button"
             onClick={onBack}
-            className="mb-7 inline-flex items-center gap-1.5 rounded-sm text-[13px] text-gray-500 transition-colors hover:text-clay focus:outline-none focus-visible:ring-[3px] focus-visible:ring-clay/25 dark:text-gray-400"
+            className="mb-7 inline-flex items-center gap-1.5 rounded-md text-[13px] text-gray-500 transition-colors hover:text-clay focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:text-gray-400"
           >
             <ArrowLeft size={14} />
             Back to sign in
@@ -66,7 +66,7 @@ export default function ForgotPasswordPage({ onBack }: ForgotPasswordPageProps) 
 
           {error && <AuthAlert>{error}</AuthAlert>}
 
-          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <Input
               label="Email"
               type="email"
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage({ onBack }: ForgotPasswordPageProps) 
             </AuthSubmit>
           </form>
 
-          <p className="mt-7 text-[13px] leading-relaxed text-gray-500 dark:text-gray-500">
+          <p className="mt-7 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
             We send the same response either way, so this page never reveals whether an address has
             an account.
           </p>

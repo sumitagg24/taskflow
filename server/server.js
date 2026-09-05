@@ -113,6 +113,9 @@ app.use(helmet({
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       // GitHub sign-in is a top-level redirect to github.com and back.
       formAction: ["'self'", "https://github.com"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      upgradeInsecureRequests: [],
     },
   },
   // Google Identity Services opens a popup that posts the credential back to

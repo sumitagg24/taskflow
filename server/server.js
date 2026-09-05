@@ -22,6 +22,8 @@ const { apiLimiter, aiLimiter, uploadLimiter } = require('./middleware/rateLimit
 const { setupGracefulShutdown } = require('./utils/shutdown');
 const { initializeSocket } = require('./services/socketService');
 const upload = require('./config/upload');
+const { validateFileSignature } = require('./config/upload');
+const fs = require('fs');
 const User = require('./models/User');
 const logger = require('./utils/logger');
 
@@ -223,6 +225,15 @@ const { protect } = require('./middleware/auth');
 app.post('/api/upload', protect, uploadLimiter, upload.single('file'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'No file uploaded' });
+  }
+  const ext = path.extname(req.file.filename).toLowerCase();
+  if (!validateFileSignature(req.file.path, ext)) {
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch {
+      // Best-effort cleanup; the rejection below is what matters.
+    }
+    return res.status(400).json({ message: 'File content does not match its type' });
   }
   res.json({
     filename: req.file.filename,

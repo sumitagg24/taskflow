@@ -54,6 +54,68 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Magic-number sniffing: ext and mime are both client-supplied, so verify the
+// actual bytes on disk after multer writes the file. Returns true when the
+// content matches the claimed extension, false otherwise (fail closed).
+// TXT/CSV/DOC/XLS (legacy OLE/plain-text) have no reliable magic numbers, so
+// sniffing is skipped for them.
+function validateFileSignature(filepath, ext) {
+  const e = String(ext || '').toLowerCase();
+  if (['.txt', '.csv', '.doc', '.xls'].includes(e)) return true;
+
+  let buf;
+  try {
+    const fd = fs.openSync(filepath, 'r');
+    try {
+      const tmp = Buffer.alloc(12);
+      const bytesRead = fs.readSync(fd, tmp, 0, 12, 0);
+      buf = tmp.subarray(0, bytesRead);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+
+  switch (e) {
+    case '.png':
+      return (
+        buf.length >= 8 &&
+        buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+        buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+      );
+    case '.jpg':
+    case '.jpeg':
+      return buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    case '.gif':
+      return (
+        buf.length >= 6 &&
+        (buf.subarray(0, 6).toString('ascii') === 'GIF87a' ||
+          buf.subarray(0, 6).toString('ascii') === 'GIF89a')
+      );
+    case '.pdf':
+      return buf.length >= 4 && buf.subarray(0, 4).toString('ascii') === '%PDF';
+    case '.zip':
+    case '.docx':
+    case '.xlsx':
+      // OOXML (.docx/.xlsx) are ZIP containers, so one signature covers all three.
+      return (
+        buf.length >= 4 &&
+        buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04
+      );
+    case '.mp4':
+      return buf.length >= 8 && buf.subarray(4, 8).toString('ascii') === 'ftyp';
+    case '.mp3':
+      return (
+        buf.length >= 3 &&
+        (buf.subarray(0, 3).toString('ascii') === 'ID3' ||
+          (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0))
+      );
+    default:
+      return false;
+  }
+}
+
 const upload = multer({
   storage,
   fileFilter,
@@ -61,3 +123,4 @@ const upload = multer({
 });
 
 module.exports = upload;
+module.exports.validateFileSignature = validateFileSignature;

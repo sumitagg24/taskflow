@@ -48,7 +48,7 @@ describe('POST /api/auth/register', () => {
       .post('/api/auth/register')
       .send({ ...validRegister, email: 'dupe@example.com' });
     expect(res.status).toBe(400);
-    expect(res.body.message).toMatch(/already registered/i);
+    expect(res.body.message).toBe('An account with this email or username already exists');
   });
 
   it('rejects missing name', async () => {

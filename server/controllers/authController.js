@@ -34,6 +34,21 @@ const validate = (req) => {
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
+// bcrypt truncates at 72 bytes, and a password built from the account's own
+// identity is trivially guessable. Case-insensitive: equals the email, equals
+// the username, or contains the email local-part (before @) when it is ≥4 chars.
+const passwordMatchesIdentity = (password, email, username) => {
+  if (!password) return false;
+  const pw = String(password).toLowerCase();
+  const em = String(email || '').toLowerCase().trim();
+  const un = String(username || '').toLowerCase().trim();
+  if (em && pw === em) return true;
+  if (un && pw === un) return true;
+  const local = em.split('@')[0] || '';
+  if (local.length >= 4 && pw.includes(local)) return true;
+  return false;
+};
+
 const createAuthResponse = async (user) => {
   const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
@@ -79,10 +94,11 @@ exports.register = async (req, res, next) => {
       $or: [{ email: normalizedEmail }, { username: normalizedUsername }],
     });
     if (existingUser) {
-      if (existingUser.email === normalizedEmail) {
-        return res.status(400).json({ message: 'Email already registered' });
-      }
-      return res.status(400).json({ message: 'Username is already taken' });
+      return res.status(400).json({ message: 'An account with this email or username already exists' });
+    }
+
+    if (passwordMatchesIdentity(password, normalizedEmail, normalizedUsername)) {
+      return res.status(400).json({ message: 'Password must not contain your email or username' });
     }
 
     if (isCommonPassword(password)) {
@@ -349,6 +365,10 @@ exports.resetPassword = async (req, res, next) => {
       return res.status(400).json({ message: 'This password is too common. Please choose a stronger password.' });
     }
 
+    if (passwordMatchesIdentity(password, user.email, user.username)) {
+      return res.status(400).json({ message: 'Password must not contain your email or username' });
+    }
+
     user.password = password;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
@@ -446,6 +466,10 @@ exports.changePassword = async (req, res, next) => {
 
     if (isCommonPassword(newPassword)) {
       return res.status(400).json({ message: 'This password is too common. Please choose a stronger password.' });
+    }
+
+    if (passwordMatchesIdentity(newPassword, user.email, user.username)) {
+      return res.status(400).json({ message: 'Password must not contain your email or username' });
     }
 
     user.password = newPassword;

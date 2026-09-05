@@ -3,13 +3,14 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const { isConfigured: isEmailConfigured } = require('../services/emailService');
+const { sanitizeErrorMessage } = require('../middleware/errorHandler');
 
 function ok(status, latency, configuration) {
   return { status, error: null, latency, configuration };
 }
 
 function err(status, error, latency, configuration) {
-  return { status, error: String(error), latency: latency ?? null, configuration };
+  return { status, error: sanitizeErrorMessage(String(error)), latency: latency ?? null, configuration };
 }
 
 async function withTimeout(promise, ms) {

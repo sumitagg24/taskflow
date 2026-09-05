@@ -1,8 +1,17 @@
 const request = require('supertest');
 const { createApp } = require('./setup');
 const { createTestUserWithTokens } = require('./helpers');
+const { sanitizeErrorMessage } = require('../middleware/errorHandler');
+const errorHandler = require('../middleware/errorHandler');
 
 const app = createApp();
+// Probe route that throws a path/URI-laden error through the real errorHandler.
+// NOTE: createApp() already mounts errorHandler last, so re-mount it after the
+// probe — otherwise next(err) from the probe has no handler downstream.
+app.get('/api/__sanitizer-probe', (req, res, next) => {
+  next(new Error('boom C:\\Users\\svc\\app\\secret.js and /app/server/config.js mongodb+srv://user:pass@cluster.mongodb.net/db'));
+});
+app.use(errorHandler);
 const TaskTemplate = require('../models/TaskTemplate');
 
 async function createTemplate(userId, overrides = {}) {
@@ -215,6 +224,33 @@ describe('Security fixes', () => {
         .send({ title: 'My Task', description: 'Task description', priority: 'high' });
 
       expect(res.status).toBe(201);
+    });
+  });
+
+  describe('error sanitizer', () => {
+    it('redacts Windows paths and mongo URIs', () => {
+      const out = sanitizeErrorMessage(
+        'failed at C:\\Users\\svc\\app\\server.js with mongodb+srv://user:pass@cluster.mongodb.net/db'
+      );
+      expect(out).not.toMatch(/C:\\/);
+      expect(out).not.toMatch(/mongodb\+srv:\/\//);
+      expect(out).toContain('[redacted-path]');
+      expect(out).toContain('[redacted-uri]');
+    });
+
+    it('redacts POSIX app paths', () => {
+      const out = sanitizeErrorMessage('ENOENT /app/server/config.js');
+      expect(out).not.toContain('/app/server/config.js');
+      expect(out).toContain('[redacted-path]');
+    });
+
+    it('scrubs path fragments from client-facing 500 responses', async () => {
+      const res = await request(app).get('/api/__sanitizer-probe');
+      expect(res.status).toBe(500);
+      const body = JSON.stringify(res.body);
+      expect(body).not.toMatch(/C:\\/);
+      expect(body).not.toContain('/app/server/config.js');
+      expect(body).not.toMatch(/mongodb\+srv:\/\//);
     });
   });
 });

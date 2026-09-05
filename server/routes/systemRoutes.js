@@ -3,6 +3,7 @@ const router = express.Router();
 const { getSystemHealth } = require('../controllers/systemController');
 const { getEmailStatus, isConfigured } = require('../services/emailService');
 const { protect } = require('../middleware/auth');
+const { sanitizeErrorMessage } = require('../middleware/errorHandler');
 
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
@@ -34,7 +35,7 @@ router.post('/email-test', protect, async (req, res) => {
     const result = await emailService.sendEmail(to, 'TaskFlow Test Email', '<p>This is a test email from TaskFlow.</p>');
     res.json({ success: true, result });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: sanitizeErrorMessage(err.message) });
   }
 });
 

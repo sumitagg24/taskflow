@@ -182,7 +182,13 @@ app.set('io', io);
 // MIME sniffing so a stray HTML/SVG file can't run in the browser.
 // Served as attachments under a sandboxed (opaque-origin) CSP so even a
 // smuggled HTML/SVG file downloads instead of executing in our origin.
+// Uploads stay under the app dir (instead of outside the web root) because
+// random unguessable names + attachment disposition + sandbox + no-execute
+// (express.static never executes) is the isolated equivalent; moving paths
+// would break stored `/uploads/...` URLs (migration cost).
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  dotfiles: 'deny',
+  index: false,
   setHeaders: (res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', 'attachment');

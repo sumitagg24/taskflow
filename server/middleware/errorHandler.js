@@ -1,6 +1,16 @@
 const logger = require('../utils/logger');
 const response = require('../utils/response');
 
+// Scrub filesystem paths and connection strings from client-facing errors.
+// Server logs keep the full message/stack; only the response copy is scrubbed.
+function sanitizeErrorMessage(msg) {
+  if (typeof msg !== 'string') return msg;
+  return msg
+    .replace(/mongodb(\+srv)?:\/\/\S+/gi, '[redacted-uri]')
+    .replace(/[A-Za-z]:\\[^\s"'`]*/g, '[redacted-path]')
+    .replace(/\/(app|home|root|tmp|var|usr|opt)\/\S*/g, '[redacted-path]');
+}
+
 const errorHandler = (err, req, res, next) => {
   const requestId = req.requestId || 'unknown';
   logger.error(`Error: ${err.message}`, { requestId, stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined });
@@ -23,7 +33,8 @@ const errorHandler = (err, req, res, next) => {
   }
 
   const statusCode = err.statusCode || 500;
-  response.error(res, process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message, statusCode);
+  response.error(res, process.env.NODE_ENV === 'production' ? 'Internal Server Error' : sanitizeErrorMessage(err.message), statusCode);
 };
 
 module.exports = errorHandler;
+module.exports.sanitizeErrorMessage = sanitizeErrorMessage;

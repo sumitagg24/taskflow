@@ -1,5 +1,7 @@
 'use strict';
 
+const { sanitizeErrorMessage } = require('../../middleware/errorHandler');
+
 /**
  * Base class for all AI providers.
  * Subclasses must implement the chat() method.
@@ -52,7 +54,7 @@ class BaseProvider {
       );
       return { success: true, message: result || 'Connection successful!' };
     } catch (error) {
-      return { success: false, message: error.message || 'Connection failed' };
+      return { success: false, message: sanitizeErrorMessage(error.message) || 'Connection failed' };
     }
   }
 }

@@ -4,6 +4,7 @@ const User = require('../models/User');
 const logger = require('../utils/logger');
 const { createProvider, getProviderMetadata, getProviderDirectory } = require('../services/aiProviders');
 const response = require('../utils/response');
+const { sanitizeErrorMessage } = require('../middleware/errorHandler');
 
 // Built-in providers have a fixed baseURL set in PROVIDER_METADATA, so any
 // user-supplied baseURL override must point to an allowlisted hostname.
@@ -240,10 +241,13 @@ exports.testAiConnection = async (req, res, next) => {
     }
 
     const result = await provider.testConnection();
+    if (result && typeof result.message === 'string') {
+      result.message = sanitizeErrorMessage(result.message);
+    }
     res.json(result);
   } catch (error) {
     logger.error('AI connection test error:', error.message);
-    res.json({ success: false, message: error.message || 'Connection test failed' });
+    res.json({ success: false, message: sanitizeErrorMessage(error.message) || 'Connection test failed' });
   }
 };
 

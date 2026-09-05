@@ -27,7 +27,8 @@ exports.exportCalendar = async (req, res, next) => {
 
     const tasks = await Task.find(query)
       .sort({ dueDate: 1, createdAt: -1 })
-      .select('title description status category priority dueDate createdAt updatedAt tags assignee');
+      .select('title description status category priority dueDate createdAt updatedAt tags assignee')
+      .lean();
 
     const downloadInfo = getCalendarDownloadInfo(tasks, req.user);
 

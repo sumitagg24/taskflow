@@ -17,7 +17,8 @@ exports.getNotifications = async (req, res, next) => {
       Notification.find(query)
         .sort({ createdAt: -1 })
         .skip((safePage - 1) * safeLimit)
-        .limit(safeLimit),
+        .limit(safeLimit)
+        .lean(),
       Notification.countDocuments(query),
       Notification.countDocuments({ userId: req.user._id, isRead: false }),
     ]);

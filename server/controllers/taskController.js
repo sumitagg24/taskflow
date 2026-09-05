@@ -969,7 +969,8 @@ exports.getActivityLog = async (req, res, next) => {
 
     const activities = await ActivityLog.find(filter)
       .sort({ createdAt: -1 })
-      .limit(limit);
+      .limit(limit)
+      .lean();
     res.json(activities);
   } catch (error) {
     next(error);

@@ -21,7 +21,8 @@ exports.getTemplates = async (req, res, next) => {
 
     const templates = await TaskTemplate.find(query)
       .sort({ usageCount: -1, createdAt: -1 })
-      .select('-__v');
+      .select('-__v')
+      .lean();
 
     res.json({ templates });
   } catch (error) {

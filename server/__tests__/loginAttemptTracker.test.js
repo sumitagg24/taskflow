@@ -43,14 +43,18 @@ describe('loginAttemptTracker', () => {
     expect(tracker.isBlocked('10.0.0.99', { threshold: 3, windowMs: 60000 })).toBe(false);
   });
 
-  it('unblocks after the window expires (lazy eviction)', async () => {
+  it('unblocks after the block expires (lazy eviction)', async () => {
+    // With exponential backoff the unblock point is the block expiry
+    // (BASE * 2^(L-1)), not the counting window — so pass a tiny baseMs
+    // override to keep this deterministic without real 15m waits.
     const ip = '10.0.0.4';
-    tracker.recordFail(ip, { windowMs: 50 });
-    tracker.recordFail(ip, { windowMs: 50 });
-    tracker.recordFail(ip, { windowMs: 50 });
-    expect(tracker.isBlocked(ip, { threshold: 3, windowMs: 50 })).toBe(true);
+    const opts = { windowMs: 60000, threshold: 3, baseMs: 50, capMs: 1000 };
+    tracker.recordFail(ip, opts);
+    tracker.recordFail(ip, opts);
+    tracker.recordFail(ip, opts);
+    expect(tracker.isBlocked(ip, opts)).toBe(true);
     await sleep(80);
-    expect(tracker.isBlocked(ip, { threshold: 3, windowMs: 50 })).toBe(false);
+    expect(tracker.isBlocked(ip, opts)).toBe(false);
   });
 
   it('_reset clears all counters', () => {
@@ -70,5 +74,40 @@ describe('loginAttemptTracker', () => {
       tracker.recordFail(ip, { windowMs: 60000 });
     }
     expect(tracker.isBlocked(ip, { threshold: 30, windowMs: 60000 })).toBe(false);
+  });
+
+  it('backoffDelayMs grows exponentially and caps', () => {
+    expect(tracker.backoffDelayMs(1, 60000, 900000)).toBe(60000);
+    expect(tracker.backoffDelayMs(2, 60000, 900000)).toBe(120000);
+    expect(tracker.backoffDelayMs(3, 60000, 900000)).toBe(240000);
+    expect(tracker.backoffDelayMs(10, 60000, 900000)).toBe(900000);
+  });
+
+  it('second consecutive block lasts longer than the first (ms precision)', async () => {
+    const ip = '10.0.0.7';
+    const opts = { windowMs: 60000, threshold: 3, baseMs: 60, capMs: 10000 };
+    for (let i = 0; i < 3; i += 1) tracker.recordFail(ip, opts);
+    expect(tracker.isBlocked(ip, opts)).toBe(true);
+    const firstMs = tracker.getRetryAfterMs(ip);
+    expect(firstMs).toBeGreaterThan(0);
+    expect(firstMs).toBeLessThanOrEqual(60);
+    await sleep(90);
+    expect(tracker.isBlocked(ip, opts)).toBe(false);
+    for (let i = 0; i < 3; i += 1) tracker.recordFail(ip, opts);
+    expect(tracker.isBlocked(ip, opts)).toBe(true);
+    const secondMs = tracker.getRetryAfterMs(ip);
+    expect(secondMs).toBeGreaterThan(firstMs);
+  });
+
+  it('exposes retryAfter seconds while blocked and 0 when clear', () => {
+    const ip = '10.0.0.8';
+    expect(tracker.getRetryAfterSec(ip)).toBe(0);
+    const opts = { windowMs: 60000, threshold: 2, baseMs: 60000, capMs: 900000 };
+    tracker.recordFail(ip, opts);
+    tracker.recordFail(ip, opts);
+    expect(tracker.isBlocked(ip, opts)).toBe(true);
+    const retryAfter = tracker.getRetryAfterSec(ip);
+    expect(typeof retryAfter).toBe('number');
+    expect(retryAfter).toBeGreaterThan(0);
   });
 });

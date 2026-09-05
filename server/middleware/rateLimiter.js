@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
+const rateLimitConfig = require('../config/rateLimit');
 
 const isTest = process.env.NODE_ENV === 'test';
 const isProduction = process.env.NODE_ENV === 'production';
@@ -35,7 +36,7 @@ async function ensureRedisStore() {
 const createLimiter = (windowMs, max, message) => {
   const limiter = rateLimit({
     windowMs,
-    max: isTest ? 1000 : max,
+    max: isTest ? rateLimitConfig.testMax : max,
     standardHeaders: true,
     legacyHeaders: false,
     store,
@@ -51,18 +52,21 @@ const createLimiter = (windowMs, max, message) => {
   return limiter;
 };
 
-exports.apiLimiter = createLimiter(60 * 1000, 100, 'Too many requests, please try again later.');
+// Windows/maxima come from config/rateLimit.js (env-overridable, defaults
+// preserve the previous hardcoded values). Exported limiter names and call
+// signatures are unchanged.
+exports.apiLimiter = createLimiter(rateLimitConfig.api.windowMs, rateLimitConfig.api.max, 'Too many requests, please try again later.');
 
 // Tighter cap on AI connection tests since they make outbound HTTPS calls.
 exports.aiTestLimiter = createLimiter(60 * 1000, 10, 'Too many AI test attempts, please slow down.');
 
-exports.authLimiter = createLimiter(60 * 1000, 10, 'Too many authentication attempts, please try again later.');
+exports.authLimiter = createLimiter(rateLimitConfig.auth.windowMs, rateLimitConfig.auth.max, 'Too many authentication attempts, please try again later.');
 
-exports.emailLimiter = createLimiter(60 * 1000, 3, 'Too many email requests. Please wait before trying again.');
+exports.emailLimiter = createLimiter(rateLimitConfig.reset.windowMs, rateLimitConfig.reset.max, 'Too many email requests. Please wait before trying again.');
 
-exports.passwordResetLimiter = createLimiter(60 * 1000, 3, 'Too many password reset attempts. Please try again later.');
+exports.passwordResetLimiter = createLimiter(rateLimitConfig.reset.windowMs, rateLimitConfig.reset.max, 'Too many password reset attempts. Please try again later.');
 
-exports.aiLimiter = createLimiter(60 * 1000, 20, 'Too many AI requests, please slow down.');
+exports.aiLimiter = createLimiter(rateLimitConfig.ai.windowMs, rateLimitConfig.ai.max, 'Too many AI requests, please slow down.');
 
 exports.uploadLimiter = createLimiter(60 * 1000, 5, 'Too many uploads, please try again later.');
 

@@ -104,9 +104,13 @@ const userSchema = new mongoose.Schema(
     // Refresh token (hashed)
     refreshToken: { type: String, default: undefined },
 
-    // Account lockout
+    // Account lockout with exponential backoff (see config/rateLimit.js).
+    // loginAttempts counts consecutive failures inside the current streak;
+    // lockoutLevel counts consecutive blocks (L in BASE * 2^(L-1)), reset on
+    // successful login so legit users recover immediately.
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date, default: null },
+    lockoutLevel: { type: Number, default: 0 },
 
     // AI provider settings (per-user, stored securely)
     aiProvider: {

@@ -12,12 +12,16 @@ const {
   getEmailStatus,
 } = require('../services/emailService');
 const { attributeReferral } = require('./growthController');
-const { isBlocked, recordFail } = require('../utils/loginAttemptTracker');
+const { isBlocked, recordFail, getRetryAfterSec } = require('../utils/loginAttemptTracker');
+const { resolveRateLimitConfig, backoffDelayMs } = require('../config/rateLimit');
 const tokenDenylist = require('../utils/tokenDenylist');
 
-// Account lockout configuration
-const MAX_LOGIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MINUTES = 15;
+// Per-account lockout uses exponential backoff (see config/rateLimit.js):
+// after LOGIN_BACKOFF_AFTER consecutive failures the account is blocked for
+//   min(LOGIN_BACKOFF_BASE_MS * 2^(L-1), LOGIN_BACKOFF_CAP_MS)
+// where L is the consecutive-block count (user.lockoutLevel). Resolved per
+// request so tests can override via env without require-cache hacks.
+const loginAccountConfig = () => resolveRateLimitConfig(process.env).loginAccount;
 
 const googleClient = process.env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
@@ -153,9 +157,12 @@ exports.login = async (req, res, next) => {
     // indistinguishable from a locked account (no new oracle).
     const ip = req.ip;
     if (isBlocked(ip)) {
+      const retryAfter = getRetryAfterSec(ip);
+      const retryMinutes = Math.max(1, Math.ceil(retryAfter / 60));
       return res.status(429).json({
-        message: `Account temporarily locked. Try again in ${LOCKOUT_DURATION_MINUTES} minute(s).`,
+        message: `Account temporarily locked. Try again in ${retryMinutes} minute(s).`,
         code: 'ACCOUNT_LOCKED',
+        retryAfter,
       });
     }
 
@@ -175,38 +182,49 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid email/username or password' });
     }
 
-    // Check account lockout
+    // Check account backoff lock
     if (user.lockUntil && user.lockUntil > new Date()) {
-      const remainingMinutes = Math.ceil((user.lockUntil - new Date()) / 60000);
+      const retryAfter = Math.ceil((user.lockUntil - new Date()) / 1000);
+      const remainingMinutes = Math.max(1, Math.ceil(retryAfter / 60));
       return res.status(429).json({
         message: `Account temporarily locked. Try again in ${remainingMinutes} minute(s).`,
         code: 'ACCOUNT_LOCKED',
+        retryAfter,
       });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       recordFail(ip);
-      // Increment failed login attempts
+      // Increment failed login attempts; on reaching the threshold, block
+      // with an exponentially growing duration driven by lockoutLevel (L).
+      const { after, baseMs, capMs } = loginAccountConfig();
       user.loginAttempts = (user.loginAttempts || 0) + 1;
-      if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
-        user.lockUntil = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000);
+      if (user.loginAttempts >= after) {
+        const level = (user.lockoutLevel || 0) + 1;
+        const delayMs = backoffDelayMs(level, baseMs, capMs);
+        user.lockUntil = new Date(Date.now() + delayMs);
         user.loginAttempts = 0;
+        user.lockoutLevel = level;
         await user.save();
-        logger.warn(`Account locked for ${user.email} due to ${MAX_LOGIN_ATTEMPTS} failed attempts`);
+        logger.warn(`Account locked for ${user.email} due to ${after} failed attempts (backoff level ${level})`);
+        const retryAfter = Math.ceil(delayMs / 1000);
+        const retryMinutes = Math.max(1, Math.ceil(retryAfter / 60));
         return res.status(429).json({
-          message: `Account temporarily locked. Try again in ${LOCKOUT_DURATION_MINUTES} minute(s).`,
+          message: `Account temporarily locked. Try again in ${retryMinutes} minute(s).`,
           code: 'ACCOUNT_LOCKED',
+          retryAfter,
         });
       }
       await user.save();
       return res.status(401).json({ message: 'Invalid email/username or password' });
     }
 
-    // Reset lockout on successful login
-    if (user.loginAttempts > 0 || user.lockUntil) {
+    // Reset backoff on successful login
+    if (user.loginAttempts > 0 || user.lockUntil || (user.lockoutLevel || 0) > 0) {
       user.loginAttempts = 0;
       user.lockUntil = null;
+      user.lockoutLevel = 0;
     }
 
     if (!user.emailVerified) {

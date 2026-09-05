@@ -82,6 +82,13 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
 
   const start = async () => {
     if (!taskId || busy) return;
+    // Optimistic: show the running timer immediately; the server call
+    // reconciles in the background and replaces this provisional session.
+    const optimisticStart = Date.now();
+    startedAtRef.current = optimisticStart;
+    setElapsedSeconds(0);
+    setIsPaused(false);
+    setSession({ _id: 'pending', start: new Date(optimisticStart).toISOString() });
     setBusy(true);
     try {
       const { data } = await timeTrackingAPI.start(taskId, notes || undefined);
@@ -101,9 +108,19 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
             setIsPaused(!!active.data.session.isPaused);
             startedAtRef.current = new Date(active.data.session.start).getTime();
             setElapsedSeconds(Math.round((Date.now() - new Date(active.data.session.start).getTime()) / 1000));
+          } else {
+            setSession(null);
+            startedAtRef.current = null;
           }
-        } catch { /* ignore */ }
+        } catch {
+          setSession(null);
+          startedAtRef.current = null;
+        }
       } else {
+        // Nothing was persisted — roll back the provisional session.
+        setSession(null);
+        startedAtRef.current = null;
+        setElapsedSeconds(0);
         toast.error(msg);
       }
     } finally {
@@ -113,6 +130,9 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
 
   const pause = async () => {
     if (!taskId || busy) return;
+    // Optimistic: freezing the tick is synchronous (the interval effect keys
+    // off isPaused); the server confirms in the background.
+    setIsPaused(true);
     setBusy(true);
     try {
       const { data } = await timeTrackingAPI.pause(taskId);
@@ -125,6 +145,8 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
         setElapsedSeconds(serverElapsed);
       }
     } catch (err: any) {
+      // Server never paused — resume the local tick.
+      setIsPaused(false);
       toast.error(err?.response?.data?.message || 'Could not pause timer');
     } finally {
       setBusy(false);
@@ -133,6 +155,10 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
 
   const resume = async () => {
     if (!taskId || busy) return;
+    // Optimistic: restart the local tick baseline now, reconcile on success.
+    const prevStartedAt = startedAtRef.current;
+    startedAtRef.current = Date.now();
+    setIsPaused(false);
     setBusy(true);
     try {
       const { data } = await timeTrackingAPI.resume(taskId);
@@ -142,6 +168,8 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
         startedAtRef.current = new Date(data.session.start).getTime();
       }
     } catch (err: any) {
+      setIsPaused(true);
+      startedAtRef.current = prevStartedAt;
       toast.error(err?.response?.data?.message || 'Could not resume timer');
     } finally {
       setBusy(false);
@@ -150,16 +178,26 @@ export function TimeTrackingModal({ isOpen, onClose, taskId, taskTitle, theme = 
 
   const stop = async () => {
     if (!taskId || busy) return;
+    // Optimistic: clear the display now; the save lands in the background.
+    // Snapshot everything so a failed save can restore the live view.
+    const snapshot = { session, isPaused, elapsedSeconds, startedAt: startedAtRef.current };
+    setSession(null);
+    setIsPaused(false);
+    setElapsedSeconds(0);
+    startedAtRef.current = null;
     setBusy(true);
     try {
       const { data } = await timeTrackingAPI.stop(taskId);
       const minutes = data.duration ?? 0;
-      setSession(null);
-      setIsPaused(false);
-      setElapsedSeconds(0);
-      startedAtRef.current = null;
       toast.success(`Session saved — ${minutes} min`);
     } catch (err: any) {
+      // Nothing was saved — restore the live session view.
+      if (snapshot.session && snapshot.session._id !== 'pending') {
+        setSession(snapshot.session);
+        setIsPaused(snapshot.isPaused);
+        setElapsedSeconds(snapshot.elapsedSeconds);
+        startedAtRef.current = snapshot.startedAt;
+      }
       toast.error(err?.response?.data?.message || 'Could not stop timer');
     } finally {
       setBusy(false);

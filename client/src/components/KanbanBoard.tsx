@@ -6,7 +6,7 @@ import { reportCreateError } from '@/lib/planLimit';
 import { PriorityBadge } from './ui/Badge';
 import { Button } from './ui/Button';
 import { DeleteConfirmModal } from './ui/DeleteConfirmModal';
-import { updateTask, deleteTask, createTask, batchUpdate, restoreTask } from '@/api/tasks';
+import { updateTask, deleteTask, createTask, batchUpdate, restoreTask, updateOrder } from '@/api/tasks';
 import { BulkActionsBar } from './BulkActionsBar';
 import { TimeTrackingModal } from './TimeTrackingModal';
 import { toast } from 'sonner';
@@ -67,6 +67,15 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
   const [timeTrackTask, setTimeTrackTask] = useState<CardType | null>(null);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Trailing-edge coalescing for drop-order persistence: rapid successive
+  // drops cancel the pending save and only the latest column order is sent.
+  // This is request coalescing, not a UI delay — the drop itself is instant.
+  const orderPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Flush any pending order save on unmount so no setState/toast fires late.
+  useEffect(() => () => {
+    if (orderPersistTimer.current) clearTimeout(orderPersistTimer.current);
+  }, []);
 
   // Keep cards in sync with parent task list — useEffect prevents the
   // double-render caused by calling setState during render.
@@ -80,17 +89,47 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
     });
   }, [tasks]);
 
+  const scheduleOrderPersist = useCallback((orders: { _id: string; order: number; status: string }[]) => {
+    if (orderPersistTimer.current) clearTimeout(orderPersistTimer.current);
+    const snapshot = orders;
+    orderPersistTimer.current = setTimeout(() => {
+      orderPersistTimer.current = null;
+      // Silent on success (order is cosmetic); local state is already
+      // correct so no rollback is needed on failure — just surface a toast.
+      updateOrder(snapshot).catch(() => {
+        toast.error('Could not save card order');
+      });
+    }, 600);
+  }, []);
+
   const updateCardStatus = useCallback(async (cardId: string, newStatus: string) => {
+    // Snapshot the moved card so a failed persist can restore it locally
+    // without a full GET /tasks refetch.
+    const prev = cards.find(c => c._id === cardId);
+    const prevStatus = prev?.status;
+    const prevOrder = prev?.order;
     // Optimistic UI update
-    setCards(prev => prev.map(c => c._id === cardId ? { ...c, status: newStatus } : c));
+    setCards(prevCards => prevCards.map(c => c._id === cardId ? { ...c, status: newStatus } : c));
     try {
       await updateTask(cardId, { status: newStatus });
-      toast.success(`Task moved to ${columns.find(c => c.id === newStatus)?.title}`);
+      // Stable id collapses rapid-move bursts into a single toast.
+      toast.success(`Task moved to ${columns.find(c => c.id === newStatus)?.title}`, { id: 'kanban-move' });
+      // Persist the destination column's visible order in the background.
+      // Fire-and-forget: never blocks the drop animation.
+      const nextColumnOrder = cards
+        .map(c => (c._id === cardId ? { ...c, status: newStatus } : c))
+        .filter(c => c.status === newStatus)
+        .map((c, order) => ({ _id: c._id, order, status: newStatus }));
+      scheduleOrderPersist(nextColumnOrder);
     } catch {
+      if (prevStatus !== undefined) {
+        setCards(prevCards => prevCards.map(c => c._id === cardId
+          ? { ...c, status: prevStatus, ...(prevOrder !== undefined ? { order: prevOrder } : {}) }
+          : c));
+      }
       toast.error('Failed to update task');
-      onRefresh();
     }
-  }, [onRefresh]);
+  }, [cards, scheduleOrderPersist]);
 
   const dropFromSelection = useCallback((cardId: string) => {
     setSelected(prev => {
@@ -171,7 +210,7 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
     try {
       await batchUpdate(ids, { status });
       setCards(prev => prev.map(c => selected.has(c._id) ? { ...c, status } : c));
-      toast.success(`${ids.length} task${ids.length === 1 ? '' : 's'} updated`);
+      toast.success(`${ids.length} task${ids.length === 1 ? '' : 's'} updated`, { id: 'kanban-move' });
       clearSelection();
     } catch {
       toast.error('Bulk update failed');
@@ -196,6 +235,9 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
   const handleBulkDelete = useCallback(async () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
+    // Local snapshot: the list only changes after the deletes succeed, so a
+    // failure restores this instead of refetching GET /tasks.
+    const snapshot = cards;
     setBulkDeleting(true);
     try {
       await Promise.all(ids.map(id => deleteTask(id)));
@@ -220,12 +262,12 @@ export default function KanbanBoard({ tasks, onRefresh, onDelete }: KanbanBoardP
       });
       clearSelection();
     } catch {
+      setCards(snapshot);
       toast.error('Bulk delete failed');
-      onRefresh();
     } finally {
       setBulkDeleting(false);
     }
-  }, [selected, clearSelection, onRefresh]);
+  }, [selected, clearSelection, cards]);
 
   // Collect unique existing tags from selected cards for tag-picker suggestions
   const selectedTags = useMemo(() => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
@@ -47,17 +47,22 @@ export default function CalendarPage() {
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
   const goToday = () => setCurrentDate(new Date());
 
-  const tasksByDay: Record<number, any[]> = {};
-  tasks.forEach(task => {
-    if (task.dueDate) {
-      const d = new Date(task.dueDate);
-      if (d.getFullYear() === year && d.getMonth() === month) {
-        const day = d.getDate();
-        if (!tasksByDay[day]) tasksByDay[day] = [];
-        tasksByDay[day].push(task);
+  // Same grouping cost as the widget, plus per-cell filtering below reads it
+  // on every render — memoize on the actual inputs.
+  const tasksByDay: Record<number, any[]> = useMemo(() => {
+    const map: Record<number, any[]> = {};
+    tasks.forEach(task => {
+      if (task.dueDate) {
+        const d = new Date(task.dueDate);
+        if (d.getFullYear() === year && d.getMonth() === month) {
+          const day = d.getDate();
+          if (!map[day]) map[day] = [];
+          map[day].push(task);
+        }
       }
-    }
-  });
+    });
+    return map;
+  }, [tasks, year, month]);
 
   const selectedTasks = selectedDay ? tasksByDay[selectedDay] || [] : [];
 

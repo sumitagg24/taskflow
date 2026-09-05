@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
@@ -21,16 +21,20 @@ export default function CalendarWidget({ tasks }: CalendarWidgetProps) {
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
 
-  // Get task count per day
-  const taskCountByDay: Record<number, number> = {};
-  tasks.forEach(task => {
-    if (task.dueDate) {
-      const d = new Date(task.dueDate);
-      if (d.getFullYear() === year && d.getMonth() === month) {
-        taskCountByDay[d.getDate()] = (taskCountByDay[d.getDate()] || 0) + 1;
+  // Derived per-day counts re-run on every parent render without this;
+  // the per-task Date parse is the only non-trivial work in this widget.
+  const taskCountByDay: Record<number, number> = useMemo(() => {
+    const counts: Record<number, number> = {};
+    tasks.forEach(task => {
+      if (task.dueDate) {
+        const d = new Date(task.dueDate);
+        if (d.getFullYear() === year && d.getMonth() === month) {
+          counts[d.getDate()] = (counts[d.getDate()] || 0) + 1;
+        }
       }
-    }
-  });
+    });
+    return counts;
+  }, [tasks, year, month]);
 
   const hasDeadlines = Object.keys(taskCountByDay).length > 0;
 

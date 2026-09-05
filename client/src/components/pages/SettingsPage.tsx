@@ -4,7 +4,6 @@ import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
 import { toast } from 'sonner';
 import { authAPI, aiSettingsAPI, growthAPI, type GrowthState } from '@/api/tasks';
-import api from '@/api/tasks';
 import { Settings, User, Lock, Bell, Clock, Loader2, Save, Eye, EyeOff, Sparkles, TestTube, Trash2, RefreshCw, ExternalLink, CheckCircle2, XCircle, Globe, BookOpen, Zap, Shield, DollarSign, Cpu, Moon, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -232,14 +231,9 @@ export default function SettingsPage() {
     }
     setChangingPassword(true);
     try {
-      const { data } = await authAPI.changePassword(passwords.current, passwords.newPass);
-      // Password change rotates the session — persist the fresh token pair so
-      // the current session survives while all pre-change sessions are revoked.
-      if (data?.accessToken && data?.refreshToken) {
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
-      }
+      await authAPI.changePassword(passwords.current, passwords.newPass);
+      // Password change rotates the session server-side into fresh httpOnly
+      // cookies — nothing to persist client-side; the session just continues.
       toast.success('Password changed successfully');
       setPasswords({ current: '', newPass: '', confirm: '' });
     } catch (err: any) {

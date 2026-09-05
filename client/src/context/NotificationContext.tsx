@@ -46,11 +46,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isAuthenticated || !userId) return;
-    const token = localStorage.getItem('accessToken');
-    if (!token) return;
 
+    // Cookie-only: the httpOnly `accessToken` cookie rides the ws upgrade via
+    // withCredentials — no auth.token needed (server reads the cookie).
     const socket = io(SOCKET_URL, {
-      auth: { token },
+      withCredentials: true,
       transports: ['websocket', 'polling'],
     });
     socketRef.current = socket;

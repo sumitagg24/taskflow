@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken } = require('../middleware/auth');
+const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken, getCookie, setAuthCookies, clearAuthCookies } = require('../middleware/auth');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
@@ -113,6 +113,7 @@ exports.register = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
 
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.status(201).json({
       ...auth,
       message: 'Account created! Please check your email to verify your account.',
@@ -211,6 +212,7 @@ exports.login = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
 
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.json(auth);
   } catch (error) {
     next(error);
@@ -358,6 +360,7 @@ exports.resetPassword = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
 
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.json({
       message: 'Password reset successful. You can now sign in with your new password.',
       ...auth,
@@ -372,7 +375,11 @@ exports.refreshToken = async (req, res, next) => {
   try {
     validate(req);
 
-    const { refreshToken } = req.body;
+    // Cookie-first, body fallback (keeps rotation/reuse tests green).
+    const refreshToken = getCookie(req, 'refreshToken') || (req.body && req.body.refreshToken);
+    if (!refreshToken) {
+      return res.status(401).json({ message: 'Invalid or expired refresh token', code: 'REFRESH_INVALID' });
+    }
     const hashedToken = hashToken(refreshToken);
 
     let decoded;
@@ -402,6 +409,7 @@ exports.refreshToken = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
 
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.json({
       accessToken: auth.accessToken,
       refreshToken: auth.refreshToken,
@@ -447,6 +455,7 @@ exports.changePassword = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
 
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.json({
       message: 'Password changed successfully',
       ...auth,
@@ -573,6 +582,7 @@ exports.googleAuth = async (req, res, next) => {
     }
 
     const auth = await createAuthResponse(user);
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.json(auth);
   } catch (error) {
     next(error);
@@ -894,6 +904,7 @@ exports.exchangeOAuthCode = async (req, res, next) => {
     user.oauthExchangeExpires = undefined;
 
     const auth = await createAuthResponse(user);
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
     res.json(auth);
   } catch (error) {
     next(error);
@@ -911,7 +922,8 @@ exports.getAuthProviders = (req, res) => {
 // -------------------- Logout --------------------
 exports.logout = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body;
+    // Body-first, cookie fallback (cookie-only clients send no body).
+    const refreshToken = (req.body && req.body.refreshToken) || getCookie(req, 'refreshToken');
 
     // Deny the presented access token for its remaining lifetime so a
     // logged-out JWT cannot be reused until its natural expiry. This route
@@ -919,17 +931,17 @@ exports.logout = async (req, res, next) => {
     // invalid, or already-expired token simply skips denylisting while the
     // refresh-token invalidation below still proceeds.
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const accessToken = authHeader.split(' ')[1];
-      if (accessToken) {
-        try {
-          const decoded = verifyAccessToken(accessToken);
-          if (decoded && Number.isFinite(decoded.exp)) {
-            tokenDenylist.add(accessToken, decoded.exp * 1000);
-          }
-        } catch {
-          // Invalid/expired access token — nothing to deny; still 200.
+    const cookieAccess = getCookie(req, 'accessToken');
+    const candidate =
+      authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : cookieAccess;
+    if (candidate) {
+      try {
+        const decoded = verifyAccessToken(candidate);
+        if (decoded && Number.isFinite(decoded.exp)) {
+          tokenDenylist.add(candidate, decoded.exp * 1000);
         }
+      } catch {
+        // Invalid/expired access token — nothing to deny; still 200.
       }
     }
 
@@ -941,6 +953,7 @@ exports.logout = async (req, res, next) => {
       );
     }
 
+    clearAuthCookies(res);
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     next(error);

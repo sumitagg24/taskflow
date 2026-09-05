@@ -112,7 +112,10 @@ const googleAuthValidator = [
 ];
 
 const refreshTokenValidator = [
+  // Optional so cookie-only refresh (no body) passes validation; the handler
+  // falls back to the `refreshToken` cookie, while body clients still validate.
   body('refreshToken')
+    .optional()
     .trim()
     .notEmpty()
     .withMessage('Refresh token is required'),

@@ -27,6 +27,48 @@ const ACCESS_TOKEN_EXPIRY = '15m';
 const REFRESH_TOKEN_EXPIRY = '7d';
 const CLOCK_SKEW_SECONDS = 30;
 
+// Cookie lifetimes mirror the JWT lifetimes above (ms for `maxAge`).
+const ACCESS_COOKIE_MAX_AGE = 15 * 60 * 1000;
+const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+
+// Minimal cookie parser (~8 lines, no new dependencies).
+const parseCookies = (req) => {
+  const header = req.headers && req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=');
+    if (eq === -1) continue;
+    try {
+      out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
+    } catch { /* ignore malformed pair */ }
+  }
+  return out;
+};
+
+const getCookie = (req, name) => parseCookies(req)[name] || null;
+
+// Single-process same-origin deploy per README, so `lax` suffices in dev;
+// cross-site production frontends need `none` + `secure`. Bearer fallback
+// is retained for native/API consumers that cannot use cookies.
+const cookieOptions = (maxAge) => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  maxAge,
+  path: '/',
+});
+
+const setAuthCookies = (res, accessToken, refreshToken) => {
+  res.cookie('accessToken', accessToken, cookieOptions(ACCESS_COOKIE_MAX_AGE));
+  res.cookie('refreshToken', refreshToken, cookieOptions(REFRESH_COOKIE_MAX_AGE));
+};
+
+const clearAuthCookies = (res) => {
+  res.clearCookie('accessToken', { path: '/' });
+  res.clearCookie('refreshToken', { path: '/' });
+};
+
 const generateAccessToken = (userId) => {
   return jwt.sign(
     {
@@ -71,9 +113,10 @@ const verifyRefreshToken = (token) => {
 };
 
 const protect = async (req, res, next) => {
-  let token;
+  // Cookie-first, Bearer fallback (keeps header-based API clients working).
+  let token = getCookie(req, 'accessToken');
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   }
 
@@ -122,4 +165,11 @@ module.exports = {
   generateRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  parseCookies,
+  getCookie,
+  cookieOptions,
+  setAuthCookies,
+  clearAuthCookies,
+  ACCESS_COOKIE_MAX_AGE,
+  REFRESH_COOKIE_MAX_AGE,
 };

@@ -1,5 +1,5 @@
 const { Server } = require('socket.io');
-const { verifyAccessToken } = require('../middleware/auth');
+const { verifyAccessToken, parseCookies } = require('../middleware/auth');
 const { isOriginAllowed } = require('../config/cors');
 const logger = require('../utils/logger');
 const User = require('../models/User');
@@ -24,7 +24,10 @@ function initializeSocket(server) {
   // Authentication middleware for socket connections
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token;
+      // Cookie-first (`accessToken=...` on the handshake headers), Bearer-style
+      // `handshake.auth.token` fallback for native/API consumers.
+      const cookies = parseCookies({ headers: { cookie: socket.handshake.headers.cookie } });
+      const token = cookies.accessToken || socket.handshake.auth.token;
       if (!token) {
         return next(new Error('Authentication required'));
       }

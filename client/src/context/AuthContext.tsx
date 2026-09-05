@@ -58,8 +58,12 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const clearAllTokens = () => {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
+  // Cookie flow: server clears httpOnly cookies. Drop any legacy Bearer
+  // leftovers plus the cached user snapshot.
+  try {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+  } catch { /* storage unavailable — ignore */ }
   localStorage.removeItem('cachedUser');
   delete api.defaults.headers.common['Authorization'];
 };
@@ -88,14 +92,10 @@ function setCachedUser(user: User | null) {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const accessToken = localStorage.getItem('accessToken');
-
   // Hydrate from cache immediately — synchronous, no waiting.
   // This lets us render the dashboard instantly on refresh while
-  // the profile API refreshes in the background.
-  const [user, setUser] = useState<User | null>(() =>
-    accessToken ? getCachedUser() : null
-  );
+  // the profile API refreshes in the background (cookie-authenticated).
+  const [user, setUser] = useState<User | null>(() => getCachedUser());
 
   const [isInitializing, setIsInitializing] = useState(true);
   const fetchUserRef = useRef<AbortController | null>(null);
@@ -120,34 +120,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const pass = ++passRef.current;  // unique per effect invocation
 
     const init = async () => {
-      const access = localStorage.getItem('accessToken');
+      // Cookie-only boot: the httpOnly session cookie rides automatically
+      // via withCredentials — no token lookup, always validate with the server.
+      const controller = new AbortController();
+      fetchUserRef.current = controller;
 
-      if (access) {
-        const controller = new AbortController();
-        fetchUserRef.current = controller;
-        api.defaults.headers.common['Authorization'] = `Bearer ${access}`;
-
-        try {
-          const { data } = await api.get('/auth/profile', { signal: controller.signal });
-          // Only apply side-effects from the latest effect pass.
-          if (pass === passRef.current && mountedRef.current) {
-            setUser(data.user);
-            setCachedUser(data.user);
-            if (syncThemeFromUser) syncThemeFromUser(data.user?.preferences);
-          }
-        } catch (err: any) {
-          // Genuine error (not AbortError from StrictMode cleanup).
-          if (pass === passRef.current && mountedRef.current &&
-              err.name !== 'CanceledError' && err.name !== 'AbortError') {
-            clearAllTokens();
-            setUser(null);
-          }
-        } finally {
-          if (pass === passRef.current && mountedRef.current) {
-            setIsInitializing(false);
-          }
+      try {
+        const { data } = await api.get('/auth/profile', { signal: controller.signal });
+        // Only apply side-effects from the latest effect pass.
+        if (pass === passRef.current && mountedRef.current) {
+          setUser(data.user);
+          setCachedUser(data.user);
+          if (syncThemeFromUser) syncThemeFromUser(data.user?.preferences);
         }
-      } else {
+      } catch (err: any) {
+        // Genuine error (not AbortError from StrictMode cleanup).
+        if (pass === passRef.current && mountedRef.current &&
+            err.name !== 'CanceledError' && err.name !== 'AbortError') {
+          clearAllTokens();
+          setUser(null);
+        }
+      } finally {
         if (pass === passRef.current && mountedRef.current) {
           setIsInitializing(false);
         }
@@ -185,10 +178,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Cookie flow: the server sets httpOnly access/refresh cookies on every
+  // issuance path. The JSON body still carries the pair (byte-identical, for
+  // native/API consumers) but the SPA ignores it — user state only.
   const setAuth = (response: AuthResponse) => {
-    localStorage.setItem('accessToken', response.accessToken);
-    localStorage.setItem('refreshToken', response.refreshToken);
-    api.defaults.headers.common['Authorization'] = `Bearer ${response.accessToken}`;
     if (mountedRef.current) {
       setUser(response.user);
       setCachedUser(response.user);

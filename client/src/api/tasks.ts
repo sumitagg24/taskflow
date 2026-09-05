@@ -47,6 +47,8 @@ interface ProfileData {
 const api: AxiosInstance = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  // Cookies (httpOnly access/refresh) ride every same-origin request.
+  withCredentials: true,
 });
 
 const REFRESH_URL = '/api/auth/refresh-token';
@@ -54,21 +56,28 @@ const REFRESH_URL = '/api/auth/refresh-token';
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
 
-const processQueue = (error: any, token: string | null = null) => {
+const processQueue = (error: any) => {
   failedQueue.forEach(({ resolve, reject }) => {
     if (error) {
       reject(error);
     } else {
-      resolve(token);
+      resolve(null);
     }
   });
   failedQueue = [];
 };
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Cookie-first: httpOnly cookies ride via withCredentials, so no token
+  // handling is needed here. Legacy Bearer fallback for native/API consumers
+  // (and existing header-based tests) that still hold a token in storage.
+  try {
+    const token = localStorage.getItem('accessToken');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    // storage unavailable (private mode) — cookies still ride.
   }
   return config;
 });
@@ -94,8 +103,8 @@ api.interceptors.response.use(
         return new Promise((resolve, rejectFn) => {
           failedQueue.push({ resolve, reject: rejectFn });
         })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
+          .then(() => {
+            // Cookies were rotated by the in-flight refresh — just retry.
             return api(originalRequest);
           })
           .catch((err) => {
@@ -105,29 +114,14 @@ api.interceptors.response.use(
 
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
-      if (!refreshToken) {
-        isRefreshing = false;
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        delete api.defaults.headers.common['Authorization'];
-        window.location.reload();
-        return Promise.reject(error);
-      }
-
       try {
-        const { data } = await axios.post(REFRESH_URL, { refreshToken });
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
-        processQueue(null, data.accessToken);
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+        // Cookie-only refresh: httpOnly `refreshToken` cookie rides via
+        // withCredentials, no body, no token juggling — just retry.
+        await axios.post(REFRESH_URL, {}, { withCredentials: true });
+        processQueue(null);
         return api(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        delete api.defaults.headers.common['Authorization'];
+        processQueue(refreshError);
         window.location.reload();
         return Promise.reject(refreshError);
       } finally {

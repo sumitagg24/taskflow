@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const tokenDenylist = require('../utils/tokenDenylist');
 
 const ACCESS_SECRET = process.env.JWT_SECRET;
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
@@ -84,6 +85,9 @@ const protect = async (req, res, next) => {
     const decoded = verifyAccessToken(token);
     if (decoded.token_type !== 'access' && decoded.type !== 'access') {
       return res.status(401).json({ message: 'Invalid token type' });
+    }
+    if (tokenDenylist.has(token)) {
+      return res.status(401).json({ message: 'Not authorized, token invalid' });
     }
     req.user = await User.findById(decoded.id);
     if (!req.user) {

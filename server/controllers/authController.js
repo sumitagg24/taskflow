@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../middleware/auth');
+const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken } = require('../middleware/auth');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
@@ -12,6 +12,8 @@ const {
   getEmailStatus,
 } = require('../services/emailService');
 const { attributeReferral } = require('./growthController');
+const { isBlocked, recordFail } = require('../utils/loginAttemptTracker');
+const tokenDenylist = require('../utils/tokenDenylist');
 
 // Account lockout configuration
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -129,6 +131,17 @@ exports.login = async (req, res, next) => {
     const trimmed = identifier.trim();
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 
+    // Per-IP brute-force backoff (complements per-account lockout below).
+    // Same 429 shape as an account lockout so a blocked IP is
+    // indistinguishable from a locked account (no new oracle).
+    const ip = req.ip;
+    if (isBlocked(ip)) {
+      return res.status(429).json({
+        message: `Account temporarily locked. Try again in ${LOCKOUT_DURATION_MINUTES} minute(s).`,
+        code: 'ACCOUNT_LOCKED',
+      });
+    }
+
     let user;
     if (isEmail) {
       user = await User.findOne({ email: trimmed.toLowerCase() }).select('+password');
@@ -137,6 +150,7 @@ exports.login = async (req, res, next) => {
     }
 
     if (!user) {
+      recordFail(ip);
       return res.status(401).json({ message: 'Invalid email/username or password' });
     }
 
@@ -155,6 +169,7 @@ exports.login = async (req, res, next) => {
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      recordFail(ip);
       // Increment failed login attempts
       user.loginAttempts = (user.loginAttempts || 0) + 1;
       if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
@@ -897,6 +912,26 @@ exports.getAuthProviders = (req, res) => {
 exports.logout = async (req, res, next) => {
   try {
     const { refreshToken } = req.body;
+
+    // Deny the presented access token for its remaining lifetime so a
+    // logged-out JWT cannot be reused until its natural expiry. This route
+    // is public (no `protect`), so verify the Bearer token here; a missing,
+    // invalid, or already-expired token simply skips denylisting while the
+    // refresh-token invalidation below still proceeds.
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const accessToken = authHeader.split(' ')[1];
+      if (accessToken) {
+        try {
+          const decoded = verifyAccessToken(accessToken);
+          if (decoded && Number.isFinite(decoded.exp)) {
+            tokenDenylist.add(accessToken, decoded.exp * 1000);
+          }
+        } catch {
+          // Invalid/expired access token — nothing to deny; still 200.
+        }
+      }
+    }
 
     if (refreshToken) {
       const hashedToken = hashToken(refreshToken);

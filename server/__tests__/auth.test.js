@@ -773,6 +773,42 @@ describe('POST /api/auth/logout', () => {
     const updatedUser = await User.findById(user._id);
     expect(updatedUser.refreshToken).toBeUndefined();
   });
+
+  it('denies a logged-out access token on next use', async () => {
+    const { accessToken, refreshToken } = await createTestUserWithTokens({ email: 'logout-deny@example.com' });
+    const before = await request(app)
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(before.status).toBe(200);
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ refreshToken });
+    expect(logoutRes.status).toBe(200);
+    const after = await request(app)
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(after.status).toBe(401);
+  });
+
+  it('a fresh login pair still works after an unrelated logout', async () => {
+    const first = await createTestUserWithTokens({ email: 'logout-first@example.com', username: 'logoutfirst' });
+    const second = await createTestUserWithTokens({ email: 'logout-second@example.com', username: 'logoutsecond' });
+    const logoutRes = await request(app)
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${first.accessToken}`)
+      .send({ refreshToken: first.refreshToken });
+    expect(logoutRes.status).toBe(200);
+    const profile = await request(app)
+      .get('/api/auth/profile')
+      .set('Authorization', `Bearer ${second.accessToken}`);
+    expect(profile.status).toBe(200);
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh-token')
+      .send({ refreshToken: second.refreshToken });
+    expect(refreshRes.status).toBe(200);
+    expect(refreshRes.body).toHaveProperty('accessToken');
+  });
 });
 
 // ========================================================================

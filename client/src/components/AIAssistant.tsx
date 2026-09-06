@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { routeFor } from '@/routes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Send, X, Bot, User, Loader2, Lightbulb, Settings, ExternalLink } from 'lucide-react';
 import { aiAPI, aiSettingsAPI } from '@/api/tasks';
@@ -35,6 +37,7 @@ export default function AIAssistant({ isOpen, onClose }: { isOpen: boolean; onCl
   const [checkingConfig, setCheckingConfig] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   useFocusTrap(panelRef, isOpen, onClose);
 
   useEffect(() => {
@@ -105,8 +108,7 @@ export default function AIAssistant({ isOpen, onClose }: { isOpen: boolean; onCl
   };
 
   const handleNavigateToSettings = () => {
-    // Navigate to settings by dispatching a custom event that AppContent listens to
-    window.dispatchEvent(new CustomEvent('navigate', { detail: { section: 'settings' } }));
+    navigate(routeFor('settings'));
     onClose();
   };
 

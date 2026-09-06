@@ -5,6 +5,12 @@ import { notifyPlanLimit, reportCreateError } from './planLimit';
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
+vi.mock('@/routes', () => ({
+  router: { navigate: vi.fn() },
+  routeFor: (section: string) => (section === 'team' ? '/team' : '/'),
+}));
+
+import { router } from '@/routes';
 
 const planLimit = (overrides: Record<string, unknown> = {}) => ({
   response: {
@@ -23,6 +29,7 @@ const planLimit = (overrides: Record<string, unknown> = {}) => ({
 describe('notifyPlanLimit', () => {
   beforeEach(() => {
     vi.mocked(toast.error).mockClear();
+    vi.mocked(router.navigate).mockClear();
   });
 
   it('reports a 402 plan limit and says so', () => {
@@ -36,16 +43,12 @@ describe('notifyPlanLimit', () => {
   });
 
   it('routes the action to the plan surface', () => {
-    const listener = vi.fn();
-    window.addEventListener('navigate', listener as EventListener);
-
     notifyPlanLimit(planLimit());
     const [, opts] = vi.mocked(toast.error).mock.calls[0] as [string, any];
     opts.action.onClick();
 
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ section: 'team' });
-    window.removeEventListener('navigate', listener as EventListener);
+    expect(vi.mocked(router.navigate)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(router.navigate)).toHaveBeenCalledWith('/team');
   });
 
   it('ignores a 402 without the plan-limit code', () => {

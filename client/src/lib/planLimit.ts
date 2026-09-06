@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import { asPlanLimitError } from '@/api/tasks';
+import { router, routeFor } from '@/routes';
 
 /**
  * Turns the server's 402 `PLAN_LIMIT_REACHED` into an actionable prompt instead
@@ -18,8 +19,9 @@ export function notifyPlanLimit(error: unknown): boolean {
     duration: 8000,
     action: {
       label: 'See plans',
+      // Plain lib (no hooks): use the shared static router.
       onClick: () => {
-        window.dispatchEvent(new CustomEvent('navigate', { detail: { section: 'team' } }));
+        void router.navigate(routeFor('team'));
       },
     },
   });

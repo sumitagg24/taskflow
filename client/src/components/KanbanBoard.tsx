@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
 import { PriorityBadge } from './ui/Badge';
 import { Button } from './ui/Button';
+import { router } from '@/routes';
 import { DeleteConfirmModal } from './ui/DeleteConfirmModal';
 import { updateTask, deleteTask, createTask, batchUpdate, restoreTask, updateOrder } from '@/api/tasks';
 import { BulkActionsBar } from './BulkActionsBar';
@@ -643,16 +644,15 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
               >
                 <Timer size={14} aria-hidden="true" />
               </button>
-              {/* Opens the detail drawer. Dispatched rather than threaded as a
-                  prop: `open-task` is already the app's channel for this (the
-                  notification click-through uses it), and the alternative is
-                  passing a handler down through Column into every Card. */}
+              {/* Opens the detail drawer via the same `?task=` deep link the
+                  palette uses (ProtectedShell opens the drawer from the URL).
+                  Static router: this board also renders in tests without a
+                  <RouterProvider>, where hooks would throw. */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.dispatchEvent(
-                    new CustomEvent('open-task', { detail: { id: card._id } })
-                  );
+                  const pathname = router.state.location.pathname;
+                  void router.navigate(`${pathname}?task=${encodeURIComponent(card._id)}`);
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 className="hover:bg-surface-strong rounded p-1 text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"

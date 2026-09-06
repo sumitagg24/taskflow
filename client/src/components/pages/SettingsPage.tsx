@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { routeFor } from '@/routes';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/context/ThemeContext';
@@ -13,6 +15,7 @@ import { PlanCard } from '@/components/widgets/PlanCard';
 export default function SettingsPage() {
   const { user, updateProfile } = useAuth();
   const { theme } = useTheme();
+  const navigate = useNavigate();
 
   const [profile, setProfile] = useState({
     name: user?.name || '',
@@ -314,11 +317,7 @@ export default function SettingsPage() {
               variant="secondary"
               size="sm"
               iconRight={<ArrowRight size={13} />}
-              onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent('navigate', { detail: { section: 'team' } })
-                )
-              }
+              onClick={() => navigate(routeFor('team'))}
             >
               Manage plan &amp; invites
             </Button>

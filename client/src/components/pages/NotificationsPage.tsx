@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from '@/api/tasks';
 import { useNotifications } from '@/context/NotificationContext';
@@ -41,6 +42,8 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const { refreshKey, refreshCount } = useNotifications();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => { load(); }, [refreshKey]);
 
@@ -80,7 +83,8 @@ export default function NotificationsPage() {
   const handleOpen = (notif: any) => {
     if (!notif.isRead) handleMarkRead(notif._id);
     if (notif.relatedType === 'task' && notif.relatedId) {
-      window.dispatchEvent(new CustomEvent('open-task', { detail: { id: notif.relatedId } }));
+      // Same `?task=` deep link the palette uses; ProtectedShell opens the drawer.
+      navigate(`${location.pathname}?task=${encodeURIComponent(String(notif.relatedId))}`);
     }
   };
 

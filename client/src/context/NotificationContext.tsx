@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode,
 import { io, Socket } from 'socket.io-client';
 import { toast } from 'sonner';
 import { getNotifications, default as api } from '@/api/tasks';
+import { router } from '@/routes';
 import { useAuth } from './AuthContext';
 
 const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin;
@@ -85,7 +86,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             action: {
               label: 'View',
               onClick: () => {
-                window.dispatchEvent(new CustomEvent('open-task', { detail: { id: notification.relatedId } }));
+                // Outside <RouterProvider> (this provider wraps it in App), so
+                // hooks are unavailable: use the shared static router. Mirrors
+                // the palette's `?task=` deep link on the current list route.
+                if (!notification.relatedId) return;
+                const id = String(notification.relatedId);
+                const pathname = router.state.location.pathname;
+                void router.navigate(`${pathname}?task=${encodeURIComponent(id)}`);
               },
             },
           });

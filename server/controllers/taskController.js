@@ -1,5 +1,6 @@
 const Task = require('../models/Task');
 const ActivityLog = require('../models/ActivityLog');
+const TimeSession = require('../models/TimeSession');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
@@ -611,6 +612,10 @@ exports.purgeTask = async (req, res, next) => {
     });
     if (!task) return res.status(404).json({ message: 'Task not found in Trash' });
 
+    // Standalone TimeSessions are meaningless without their task; remove them
+    // so a purge never leaves orphaned rows behind.
+    await TimeSession.deleteMany({ taskId: task._id, userId: req.user._id });
+
     await logActivity(
       req.user._id, req.user.name, 'task_purged',
       task._id, task.title, 'Task permanently deleted'
@@ -624,6 +629,13 @@ exports.purgeTask = async (req, res, next) => {
 
 exports.emptyTrash = async (req, res, next) => {
   try {
+    // Collect the doomed ids first so their standalone TimeSessions can go
+    // with them instead of becoming orphans.
+    const trashed = await Task.find({ userId: req.user._id, deletedAt: { $ne: null } }).select('_id');
+    const ids = trashed.map((t) => t._id);
+    if (ids.length > 0) {
+      await TimeSession.deleteMany({ taskId: { $in: ids }, userId: req.user._id });
+    }
     const result = await Task.deleteMany({ userId: req.user._id, deletedAt: { $ne: null } });
 
     await logActivity(
@@ -642,6 +654,13 @@ exports.emptyTrash = async (req, res, next) => {
 exports.purgeExpiredTrash = async () => {
   try {
     const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    // Same orphan rule as the user-driven purge paths: the sessions die with
+    // their tasks.
+    const expired = await Task.find({ deletedAt: { $ne: null, $lte: cutoff } }).select('_id');
+    const ids = expired.map((t) => t._id);
+    if (ids.length > 0) {
+      await TimeSession.deleteMany({ taskId: { $in: ids } });
+    }
     const result = await Task.deleteMany({ deletedAt: { $ne: null, $lte: cutoff } });
     if (result.deletedCount) {
       logger.info('Purged expired trash', { deletedCount: result.deletedCount, cutoff });
@@ -1217,7 +1236,20 @@ exports.processRecurringTasks = async () => {
       }
 
       const nextRecurrence = calculateNextRecurringDate(task.recurringInterval, task.recurringNextDate);
-      
+
+      // Idempotency guard: advance `recurringNextDate` atomically, predicated
+      // on the exact date this sweep saw, BEFORE creating the child. A second
+      // sweep — overlapping tick, concurrent replica, or a restart that lands
+      // between the old create-then-advance steps — finds a different
+      // `recurringNextDate` and skips, so each recurrence yields exactly one
+      // child. (A crash between the claim and the child insert can skip one
+      // recurrence; that is preferred over forking duplicates on every retry.)
+      const claimed = await Task.findOneAndUpdate(
+        { _id: task._id, recurringNextDate: task.recurringNextDate },
+        { $set: { recurringNextDate: nextRecurrence } }
+      );
+      if (!claimed) continue;
+
       const newTask = new Task({
         ...task.toObject(),
         _id: undefined,
@@ -1236,9 +1268,6 @@ exports.processRecurringTasks = async () => {
         recurringNextDate: nextRecurrence,
       });
       await newTask.save();
-
-      task.recurringNextDate = nextRecurrence;
-      await task.save();
     }
   } catch (err) {
     logger.error('Failed to process recurring tasks:', err.message);

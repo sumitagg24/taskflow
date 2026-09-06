@@ -11,6 +11,7 @@ import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { fuzzyFilter, highlightChunks, type FuzzyResult } from '@/lib/fuzzy';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { isEnabled } from '@/lib/flags';
 import { Kbd, PriorityDot, STATUS_LABELS } from '@/components/ui';
 
 export interface PaletteTask {
@@ -173,7 +174,7 @@ export default function CommandPalette({
       },
     });
 
-    if (onOpenAIAssistant) {
+    if (onOpenAIAssistant && isEnabled('ai')) {
       list.push({
         id: 'action:ai',
         label: 'Ask AI assistant',

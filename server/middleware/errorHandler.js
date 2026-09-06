@@ -1,6 +1,7 @@
 const logger = require('../utils/logger');
 const response = require('../utils/response');
 const errorMonitor = require('../utils/errorMonitor');
+const { reportError } = require('../utils/errorTelemetry');
 
 // Scrub filesystem paths and connection strings from client-facing errors.
 // Server logs keep the full message/stack; only the response copy is scrubbed.
@@ -38,6 +39,9 @@ const errorHandler = (err, req, res, next) => {
     // Route TEMPLATE (not raw URL) so high-cardinality ids don't fan out.
     const template = `${req.baseUrl || ''}${req.route?.path || ''}`;
     errorMonitor.recordError(template || req.path, statusCode);
+    // Additive: redacted logger + opt-in Sentry forward. Sanitise + response
+    // behaviour below is unchanged.
+    reportError(err, { requestId, route: template || req.path, statusCode });
   }
   response.error(res, process.env.NODE_ENV === 'production' ? 'Internal Server Error' : sanitizeErrorMessage(err.message), statusCode);
 };

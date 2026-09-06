@@ -1,4 +1,21 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import type { GrowthState, Task } from '@/lib/domain';
+
+// Single source of truth lives in `@/lib/domain` — re-exported here so
+// existing `import type { … } from '@/api/tasks'` call sites keep working.
+export type {
+  ApiError,
+  AppNotification,
+  GrowthState,
+  Invite,
+  Plan,
+  PlanLimits,
+  Task,
+  TaskComment,
+  TaskDependency,
+  UsageCheck,
+} from '@/lib/domain';
+export { isApiError, toTaskArray, unwrapList } from '@/lib/domain';
 
 interface TaskParams {
   status?: string;
@@ -151,23 +168,11 @@ export const authAPI = {
   changePassword: (currentPassword: string, newPassword: string): Promise<AxiosResponse> => api.post('/auth/change-password', { currentPassword, newPassword }),
 };
 
-export const getTasks = (params?: TaskParams): Promise<AxiosResponse> => api.get('/tasks', { params });
+export const getTasks = (params?: TaskParams): Promise<AxiosResponse<unknown>> => api.get('/tasks', { params });
 
-/**
- * `GET /tasks` returns `{ data, page, limit, total, totalPages }` unless
- * `?paginate=false` was sent (legacy bare array). Every list caller unwraps
- * through here so neither shape can crash a `.map`/`.filter`.
- */
-export const toTaskArray = (data: unknown): any[] => {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray((data as { data?: unknown }).data)) {
-    return (data as { data: any[] }).data;
-  }
-  return [];
-};
-export const getTask = (id: string): Promise<AxiosResponse> => api.get(`/tasks/${id}`);
-export const createTask = (data: any): Promise<AxiosResponse> => api.post('/tasks', data);
-export const updateTask = (id: string, data: any): Promise<AxiosResponse> => api.put(`/tasks/${id}`, data);
+export const getTask = (id: string): Promise<AxiosResponse<Task>> => api.get(`/tasks/${id}`);
+export const createTask = (data: Record<string, unknown>): Promise<AxiosResponse<Task>> => api.post('/tasks', data);
+export const updateTask = (id: string, data: Record<string, unknown>): Promise<AxiosResponse<Task>> => api.put(`/tasks/${id}`, data);
 export const deleteTask = (id: string): Promise<AxiosResponse> => api.delete(`/tasks/${id}`);
 
 export const addSubtask = (taskId: string, subtaskTitle: string): Promise<AxiosResponse> => api.post(`/tasks/${taskId}/subtasks`, { title: subtaskTitle });
@@ -183,7 +188,7 @@ export const stopTimer = (taskId: string): Promise<AxiosResponse> => api.post(`/
 export const toggleFavorite = (taskId: string): Promise<AxiosResponse> => api.post(`/tasks/${taskId}/favorite`);
 
 export const updateOrder = (orders: { _id: string; order: number; status: string }[]): Promise<AxiosResponse> => api.put('/tasks/order', { orders });
-export const batchUpdate = (taskIds: string[], updates: any): Promise<AxiosResponse> => api.post('/tasks/batch', { taskIds, updates });
+export const batchUpdate = (taskIds: string[], updates: Record<string, unknown>): Promise<AxiosResponse> => api.post('/tasks/batch', { taskIds, updates });
 
 export const getStats = (params?: { timeframe?: string }): Promise<AxiosResponse> => api.get('/tasks/stats', { params });
 // Omitting `taskId` returns the account-wide feed (the Dashboard's activity
@@ -200,7 +205,7 @@ export const getInsights = (days = 30): Promise<AxiosResponse> =>
 // Trash. `deleteTask` is a soft delete, so it pairs with `restoreTask` for the
 // undo affordance; `purgeTask`/`emptyTrash` are the only irreversible calls.
 export const getTrash = (): Promise<AxiosResponse> => api.get('/tasks/trash');
-export const restoreTask = (id: string): Promise<AxiosResponse> => api.post(`/tasks/${id}/restore`);
+export const restoreTask = (id: string): Promise<AxiosResponse<Task>> => api.post(`/tasks/${id}/restore`);
 export const purgeTask = (id: string): Promise<AxiosResponse> => api.delete(`/tasks/${id}/purge`);
 export const emptyTrash = (): Promise<AxiosResponse> => api.delete('/tasks/trash');
 
@@ -301,53 +306,8 @@ export const aiSettingsAPI = {
 
 // ── Growth: plan tiers, usage limits, referrals and invites ────────────────
 // One GET backs the whole surface so the plan shown and the plan enforced come
-// from the same source (server/config/plans.js).
-
-export interface PlanLimits {
-  activeTasks: number | null;
-  templates: number | null;
-  savedViews: number | null;
-  aiRequestsPerDay: number | null;
-  attachmentsPerTask: number | null;
-}
-
-export interface Plan {
-  id: 'free' | 'pro' | 'team';
-  name: string;
-  price: number;
-  blurb?: string;
-  features?: string[];
-  limits: PlanLimits;
-}
-
-/** `limit: null` means unlimited — render it as such rather than as a meter. */
-export interface UsageCheck {
-  allowed: boolean;
-  limit: number | null;
-  used: number;
-  remaining: number | null;
-}
-
-export interface Invite {
-  email: string;
-  invitedAt: string;
-  acceptedAt: string | null;
-  status: 'pending' | 'accepted';
-}
-
-export interface GrowthState {
-  plan: Plan;
-  plans: Plan[];
-  usage: { activeTasks: UsageCheck; templates: UsageCheck };
-  referral: {
-    code: string;
-    link: string;
-    credits: number;
-    maxCredits: number;
-    signups: number;
-  };
-  invites: Invite[];
-}
+// from the same source (server/config/plans.js). Shapes live in
+// `@/lib/domain` and are re-exported at the top of this file.
 
 export const growthAPI = {
   get: (): Promise<AxiosResponse<GrowthState>> => api.get('/growth'),

@@ -37,6 +37,7 @@ interface TaskData {
   isRecurring?: boolean;
   recurringInterval?: string;
   recurringEndDate?: string;
+  recurringNextDate?: string;
   subtasks?: any[];
   dependencies?: any[];
   [key: string]: any;
@@ -732,6 +733,26 @@ export default function TaskForm({ existingTask, onSuccess, onCancel }: TaskForm
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400">Optional — leave blank to repeat forever.</p>
                 </div>
+                {/* Computed server-side and idempotent: read-only here so the
+                    edit form shows when the next copy is due without implying
+                    it can be hand-edited. */}
+                {existingTask && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Next run:{' '}
+                    {existingTask.recurringNextDate &&
+                    !Number.isNaN(new Date(existingTask.recurringNextDate).getTime()) ? (
+                      <span className="font-medium text-gray-700 dark:text-gray-300">
+                        {new Date(existingTask.recurringNextDate).toLocaleDateString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    ) : (
+                      'Not scheduled yet'
+                    )}
+                  </p>
+                )}
               </div>
             )}
           </RailSection>

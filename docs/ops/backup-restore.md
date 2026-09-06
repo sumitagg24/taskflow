@@ -58,3 +58,20 @@ Scoped to the caller's tasks only — not a full-database backup.
 - **Weekly:** `mongodump` to offsite storage (separate account/region).
 - **Pre-deploy:** per-user `GET /api/tasks/export?format=json` for any
   account touched by a risky migration, plus a fresh Atlas snapshot.
+
+## 7. Backup smoke check (read-only)
+
+`scripts/backup-smoke.cjs` proves the backup source is reachable before you
+depend on it. It connects with `MONGO_URI` from the environment, runs an
+admin `ping`, and counts collections — no writes, no dumps, and the URI is
+never printed (failures are scrubbed).
+
+```bash
+node scripts/backup-smoke.cjs
+```
+
+Run it from the repo root on any host that already has `MONGO_URI` set
+(same env as `server/.env`). Exit `0` prints a JSON summary
+(`ping`, database, collection count/names); exit `1` is a reachability
+failure; exit `2` is misconfiguration (`MONGO_URI` unset or mongoose
+unresolvable). Run it before weekly offsite copies and pre-deploy snapshots.

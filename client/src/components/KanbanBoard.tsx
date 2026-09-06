@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo, useEffect, memo, DragEvent, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, MoreHorizontal, GripVertical, Trash2, Flame, MessageSquare, CheckSquare, Clock, Paperclip, Timer } from 'lucide-react';
+import { Plus, MoreHorizontal, GripVertical, Trash2, Flame, MessageSquare, CheckSquare, Clock, Paperclip, Timer, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
 import { PriorityBadge } from './ui/Badge';
@@ -578,6 +578,30 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
 
   const isOverdue = card.dueDate && new Date(card.dueDate) < new Date() && card.status !== 'completed';
 
+  // Dependencies arrive bare (ids only) from list endpoints and populated
+  // ({_id, title, status}) from the detail endpoint — read both shapes without
+  // fetching anything. Purely presentational: non-interactive badges.
+  const depEntries: { type: string; title?: string }[] = Array.isArray(card.dependencies)
+    ? card.dependencies.flatMap((d: unknown) => {
+        if (d === null || typeof d !== 'object') return [];
+        const entry = d as { type?: unknown; title?: unknown; taskId?: unknown };
+        const ref = entry.taskId as { title?: unknown } | string | null | undefined;
+        const title =
+          typeof entry.title === 'string'
+            ? entry.title
+            : ref !== null && typeof ref === 'object' && typeof ref.title === 'string'
+              ? ref.title
+              : undefined;
+        return [{ type: entry.type === 'blocks' ? 'blocks' : 'blocked-by', ...(title ? { title } : {}) }];
+      })
+    : [];
+  const blockedBy = depEntries.filter((d) => d.type === 'blocked-by');
+  const blocking = depEntries.filter((d) => d.type === 'blocks');
+  const depTooltip = (deps: { title?: string }[], fallback: string) => {
+    const titles = deps.map((d) => d.title).filter((t): t is string => !!t);
+    return titles.length > 0 ? titles.join(', ') : fallback;
+  };
+
   return (
     <>
       <DropIndicator beforeId={card._id} column={card.status} />
@@ -697,6 +721,24 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
                   <Clock size={10} aria-hidden="true" />
                   {new Date(card.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   {isOverdue && <span className="sr-only"> (overdue)</span>}
+                </span>
+              )}
+              {blockedBy.length > 0 && (
+                <span
+                  className="flex items-center gap-0.5 rounded-md bg-red-50 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/12 dark:text-red-300"
+                  title={depTooltip(blockedBy, `Blocked by ${blockedBy.length} task${blockedBy.length === 1 ? '' : 's'}`)}
+                >
+                  <Link2 size={10} aria-hidden="true" />
+                  Blocked{blockedBy.length > 1 ? ` ${blockedBy.length}` : ''}
+                </span>
+              )}
+              {blocking.length > 0 && (
+                <span
+                  className="flex items-center gap-0.5 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-500/12 dark:text-blue-300"
+                  title={depTooltip(blocking, `Blocking ${blocking.length} task${blocking.length === 1 ? '' : 's'}`)}
+                >
+                  <Link2 size={10} aria-hidden="true" />
+                  Blocking {blocking.length}
                 </span>
               )}
             </div>

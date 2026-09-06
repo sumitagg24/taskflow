@@ -337,11 +337,11 @@ export default function TeamPage() {
       <Card padding="lg" variant="quiet">
         <CardHeader
           eyebrow="Roadmap"
-          title="Shared workspaces"
-          subtitle="Invites reserve a seat today. Shared boards, assignees and a team digest land next."
+          title="Coming next"
+          subtitle="Invites reserve a seat today. Member roles and a team digest land next."
         />
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-          {['Shared boards', 'Member roles', 'Team digest'].map((title) => (
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          {['Member roles', 'Team digest'].map((title) => (
             <div
               key={title}
               className="border-hairline flex items-center gap-2 rounded-lg border bg-surface p-3"

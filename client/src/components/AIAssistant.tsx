@@ -208,6 +208,9 @@ export default function AIAssistant({ isOpen, onClose }: { isOpen: boolean; onCl
                     <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">
                       Connect your preferred AI provider to unlock task parsing, priority suggestions, daily digests, and chat assistance.
                     </p>
+                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mb-3">
+                      Prompts stay between you and your chosen provider.
+                    </p>
                     <button
                       onClick={handleNavigateToSettings}
                       className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 transition-colors shadow-sm"

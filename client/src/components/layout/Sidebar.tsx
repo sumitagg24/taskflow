@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { ShellContext } from '@/routes';
+import BottomNav from '@/components/layout/BottomNav';
+import MoreSheet from '@/components/layout/MoreSheet';
 import { Avatar, Logo, LogoMark, Tooltip } from '@/components/ui';
 import {
   LayoutDashboard, ListTodo, ClipboardList, ArrowRightCircle,
@@ -55,7 +58,10 @@ function sectionToPath(section: string): string {
   }
 }
 
-function sectionFromPath(pathname: string): string {
+// Exported so phone surfaces (BottomNav/MoreSheet) can share the exact same
+// URL→section matching instead of each re-implementing it. BottomNav takes
+// the resolved id as a prop; this export covers any future direct importer.
+export function sectionFromPath(pathname: string): string {
   if (pathname === '/') return 'dashboard';
   if (pathname === '/tasks') return 'all';
   const taskMatch = pathname.match(/^\/tasks\/(pending|in-progress|completed|backlog)\/?$/);
@@ -123,8 +129,20 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
     () => typeof localStorage !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1'
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  // Nullable on purpose: Sidebar must not crash if ever rendered outside the
+  // shell provider (login screen, isolated tests). Palette then falls back to
+  // the documented Ctrl/⌘+K shortcut the App shell listens for on window.
+  const shell = useContext(ShellContext);
+  const openPalette = () => {
+    if (shell) {
+      shell.openPalette();
+    } else {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }));
+    }
+  };
   const go = (section: string) => {
     onNavigate?.(section);
     navigate(sectionToPath(section));
@@ -317,14 +335,37 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
         {footer(collapsed)}
       </aside>
 
+      {/* Phone trigger for the full drawer. It used to sit at bottom-5, which
+          is now the bottom tab bar's strip — float it just above the bar. */}
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
         aria-label="Open navigation menu"
-        className="fixed bottom-5 left-5 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-gray-900 text-gray-50 shadow-lg md:hidden dark:bg-gray-100 dark:text-gray-900"
+        className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-gray-900 text-gray-50 shadow-lg md:hidden dark:bg-gray-100 dark:text-gray-900"
       >
         <Menu size={20} aria-hidden="true" />
       </button>
+
+      {/* Phone bottom workflow: tab bar + overflow sheet. `md:hidden` lives
+          inside both components; this wrapper only groups the mount point.
+          Mounted here (not in the shell) because routes.tsx is owned by the
+          router worker — see BottomNav's header comment for the FAB note. */}
+      <BottomNav
+        current={currentSection}
+        onNavigate={go}
+        onOpenPalette={openPalette}
+        onMore={() => setMoreOpen(true)}
+        moreOpen={moreOpen}
+        moreBadge={unreadCount}
+      />
+      <MoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        current={currentSection}
+        onNavigate={go}
+        onSignOut={logout}
+        unreadCount={unreadCount}
+      />
 
       <AnimatePresence>
         {mobileOpen && (

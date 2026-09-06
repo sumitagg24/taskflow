@@ -12,12 +12,30 @@ import {
   ExternalLink, CalendarPlus, Loader2, AlertCircle, RefreshCw,
 } from 'lucide-react';
 
+/** Minimal shape of a task as this page uses it (typed; no `any` below). */
+interface CalendarTask {
+  _id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority?: string;
+  dueDate?: string;
+}
+
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<CalendarTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  // Phones open directly on today's agenda (the selected-day panel below)
+  // instead of a bare month grid; desktop keeps the previous null default.
+  // No shared `useMediaQuery` hook exists, so this one read of the Tailwind
+  // `md:` breakpoint at init is deliberately local.
+  const [selectedDay, setSelectedDay] = useState<number | null>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
+    if (!window.matchMedia('(max-width: 767px)').matches) return null;
+    return new Date().getDate();
+  });
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
 
@@ -49,8 +67,8 @@ export default function CalendarPage() {
 
   // Same grouping cost as the widget, plus per-cell filtering below reads it
   // on every render — memoize on the actual inputs.
-  const tasksByDay: Record<number, any[]> = useMemo(() => {
-    const map: Record<number, any[]> = {};
+  const tasksByDay: Record<number, CalendarTask[]> = useMemo(() => {
+    const map: Record<number, CalendarTask[]> = {};
     tasks.forEach(task => {
       if (task.dueDate) {
         const d = new Date(task.dueDate);
@@ -85,6 +103,10 @@ export default function CalendarPage() {
   };
 
   const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const prevMonthName = new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const nextMonthName = new Date(year, month + 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const todayLong = today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const monthTaskCount = Object.values(tasksByDay).reduce((n, list) => n + list.length, 0);
 
   if (loading) {
     return (
@@ -114,8 +136,14 @@ export default function CalendarPage() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="p-4 lg:p-6"
+      className="p-4 pb-24 md:p-6"
     >
+      {/* Screen-reader agenda summary: month controls below only announce
+          their own target, so the date + counts live here in a live region. */}
+      <p className="sr-only" role="status">
+        {monthName}: {monthTaskCount} dated {monthTaskCount === 1 ? 'task' : 'tasks'}
+        {selectedDay ? `, ${selectedTasks.length} on day ${selectedDay}` : ''}
+      </p>
       <div className="card p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -135,14 +163,26 @@ export default function CalendarPage() {
               <Download size={14} />
               Export .ics
             </a>
-            <button onClick={goToday} className="btn-secondary text-xs px-3 py-1.5">
+            <button
+              onClick={goToday}
+              aria-label={`Go to today, ${todayLong}`}
+              className="btn-secondary text-xs px-3 py-1.5"
+            >
               Today
             </button>
-            <button onClick={prevMonth} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <ChevronLeft size={18} />
+            <button
+              onClick={prevMonth}
+              aria-label={`Previous month, ${prevMonthName}`}
+              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <ChevronLeft size={18} aria-hidden="true" />
             </button>
-            <button onClick={nextMonth} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-              <ChevronRight size={18} />
+            <button
+              onClick={nextMonth}
+              aria-label={`Next month, ${nextMonthName}`}
+              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <ChevronRight size={18} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -169,7 +209,7 @@ export default function CalendarPage() {
             const isSelected = day === selectedDay;
             const dayTasks = tasksByDay[day] || [];
             const overdueCount = dayTasks.filter(t => {
-              if (t.status === 'completed') return false;
+              if (t.status === 'completed' || !t.dueDate) return false;
               const d = new Date(t.dueDate);
               return d < new Date() && d.toDateString() !== today.toDateString();
             }).length;
@@ -178,6 +218,7 @@ export default function CalendarPage() {
               <button
                 key={day}
                 onClick={() => setSelectedDay(isSelected ? null : day)}
+                aria-label={`${monthName} ${day}: ${dayTasks.length} ${dayTasks.length === 1 ? 'task' : 'tasks'}`}
                 className={cn(
                   'relative flex flex-col items-center rounded-xl p-2 min-h-[80px] transition-all text-left',
                   isToday
@@ -197,6 +238,7 @@ export default function CalendarPage() {
                   {dayTasks.slice(0, 3).map(task => (
                     <div
                       key={task._id}
+                      aria-hidden="true"
                       className={cn(
                         'h-1.5 rounded-full',
                         task.status === 'completed' ? 'bg-green-400' :
@@ -206,9 +248,23 @@ export default function CalendarPage() {
                       )}
                     />
                   ))}
+                  {/* Phone cells show real titles (not just dots) where space
+                      allows: two truncated lines, then a +n overflow. The
+                      desktop dots above stay exactly as they were. */}
+                  {dayTasks.slice(0, 2).map(task => (
+                    <p
+                      key={`title-${task._id}`}
+                      className="truncate text-[10px] leading-tight text-gray-600 md:hidden dark:text-gray-300"
+                    >
+                      {task.title}
+                    </p>
+                  ))}
+                  {dayTasks.length > 2 && (
+                    <span className="text-[10px] text-gray-400 md:hidden">+{dayTasks.length - 2}</span>
+                  )}
                 </div>
                 {dayTasks.length > 3 && (
-                  <span className="text-[10px] text-gray-400 mt-0.5">+{dayTasks.length - 3}</span>
+                  <span className="text-[10px] text-gray-400 mt-0.5 hidden md:inline">+{dayTasks.length - 3}</span>
                 )}
               </button>
             );
@@ -283,7 +339,7 @@ export default function CalendarPage() {
 
 // Per-task row with Google / Outlook / Apple "add to calendar" links.
 // Links are fetched lazily when the user clicks the calendar icon.
-function TaskCalendarRow({ task }: { task: any }) {
+function TaskCalendarRow({ task }: { task: CalendarTask }) {
   const [links, setLinks] = useState<{ google?: string; outlook?: string; apple?: string } | null>(null);
 
   const openLinks = async () => {
@@ -317,7 +373,7 @@ function TaskCalendarRow({ task }: { task: any }) {
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <StatusBadge status={task.status} />
-        <PriorityBadge priority={task.priority} />
+        <PriorityBadge priority={task.priority ?? 'none'} />
         <button
           onClick={openLinks}
           className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"

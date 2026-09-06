@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Flame, Target, TrendingUp, Timer, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { getInsights } from '@/api/tasks';
+import { Flame, Target, TrendingUp, Timer, AlertTriangle, CheckCircle2, PieChart } from 'lucide-react';
+import { getInsights, getStats } from '@/api/tasks';
 import {
   Card, CardHeader, StatCard, SegmentedControl, EmptyState,
-  SkeletonCard, LoadingRegion, Progress, ProgressRing, Badge,
+  SkeletonCard, LoadingRegion, Progress, ProgressRing, Badge, Button,
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +41,32 @@ const RANGES = [
   { id: '90', label: '90d' },
 ];
 
+/**
+ * Folded in from the old Analytics page (now a redirect to /insights):
+ * the stats-backend timeframe switcher and the priority/category mix. The
+ * rest of Analytics — key metrics, completion rate, status overview, quick
+ * stats — already exists here as score/throughput/backlog/streak, so it was
+ * intentionally not duplicated.
+ */
+const SCOPES = [
+  { id: 'week', label: 'Week' },
+  { id: 'month', label: 'Month' },
+  { id: 'all', label: 'All time' },
+];
+
+const PRIORITY_ORDER = ['critical', 'high', 'medium', 'low', 'none'];
+
+const CATEGORY_TONES = [
+  'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-yellow-500',
+  'bg-orange-500', 'bg-pink-500', 'bg-emerald-500', 'bg-indigo-500',
+];
+
+interface WorkMix {
+  total?: number;
+  byPriority?: { _id: string; count: number }[];
+  byCategory?: { _id: string; count: number }[];
+}
+
 function formatMinutes(min: number): string {
   if (!min) return '0m';
   const h = Math.floor(min / 60);
@@ -64,6 +90,9 @@ export default function InsightsPage() {
   const [data, setData] = useState<Insights | null>(null);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState('30');
+  const [scope, setScope] = useState('all');
+  const [mix, setMix] = useState<WorkMix | null>(null);
+  const [mixLoading, setMixLoading] = useState(true);
 
   const load = useCallback(async (days: number) => {
     setLoading(true);
@@ -77,9 +106,25 @@ export default function InsightsPage() {
     }
   }, []);
 
+  const loadMix = useCallback(async (timeframe: string) => {
+    setMixLoading(true);
+    try {
+      const res = await getStats({ timeframe });
+      setMix(res.data as WorkMix);
+    } catch {
+      setMix(null);
+    } finally {
+      setMixLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     load(Number(range));
   }, [range, load]);
+
+  useEffect(() => {
+    loadMix(scope);
+  }, [scope, loadMix]);
 
   const maxVelocity = data
     ? Math.max(1, ...data.velocity.map((d) => Math.max(d.created, d.completed)))
@@ -295,6 +340,94 @@ export default function InsightsPage() {
               </ul>
             </Card>
           </div>
+
+          {/* Work mix — priority + category distribution, scoped by the
+              stats-backend timeframe (Week / Month / All time). Folded in
+              from the retired Analytics page. */}
+          <Card padding="md">
+            <CardHeader
+              eyebrow="Work mix"
+              title="Where the tasks sit"
+              subtitle={
+                mix
+                  ? `${mix.total ?? 0} ${(mix.total ?? 0) === 1 ? 'task' : 'tasks'} in scope`
+                  : 'Priority and category breakdown'
+              }
+              action={
+                <SegmentedControl
+                  items={SCOPES}
+                  value={scope}
+                  onChange={setScope}
+                  aria-label="Work mix scope"
+                />
+              }
+            />
+            {mixLoading && !mix ? (
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <SkeletonCard lines={3} />
+                <SkeletonCard lines={3} />
+              </div>
+            ) : !mix ? (
+              <EmptyState
+                size="sm"
+                icon={<PieChart size={20} />}
+                title="No work mix yet"
+                description="Task counts by priority and category will appear here."
+                action={<Button size="sm" variant="secondary" onClick={() => loadMix(scope)}>Retry</Button>}
+              />
+            ) : (
+              <div
+                className={cn('mt-4 grid gap-6 sm:grid-cols-2', mixLoading && 'opacity-60 transition-opacity')}
+                aria-busy={mixLoading}
+              >
+                <div>
+                  <p className="caption-upper mb-3 text-gray-500 dark:text-gray-400">By priority</p>
+                  <ul className="space-y-2.5">
+                    {PRIORITY_ORDER.map((priority) => {
+                      const count = mix.byPriority?.find((p) => p._id === priority)?.count || 0;
+                      const total = mix.total || 0;
+                      return (
+                        <li key={priority} className="flex items-center gap-3">
+                          <span className="w-16 text-xs capitalize text-gray-500 dark:text-gray-400">{priority}</span>
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                            <div
+                              className={cn('h-full rounded-full transition-all', PRIORITY_TONE[priority])}
+                              style={{ width: `${total ? (count / total) * 100 : 0}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right text-xs font-medium text-gray-700 dark:text-gray-300">{count}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+                <div>
+                  <p className="caption-upper mb-3 text-gray-500 dark:text-gray-400">By category</p>
+                  {(mix.byCategory?.length ?? 0) === 0 ? (
+                    <p className="py-4 text-center text-sm text-gray-400 dark:text-gray-500">No category data yet</p>
+                  ) : (
+                    <ul className="space-y-2.5">
+                      {(mix.byCategory ?? []).map((cat, i) => {
+                        const total = mix.total || 0;
+                        return (
+                          <li key={cat._id} className="flex items-center gap-3">
+                            <span className="w-20 truncate text-xs capitalize text-gray-500 dark:text-gray-400">{cat._id}</span>
+                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                              <div
+                                className={cn('h-full rounded-full transition-all', CATEGORY_TONES[i % CATEGORY_TONES.length])}
+                                style={{ width: `${total ? Math.round((cat.count / total) * 100) : 0}%` }}
+                              />
+                            </div>
+                            <span className="w-8 text-right text-xs font-medium text-gray-700 dark:text-gray-300">{cat.count}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </Card>
 
           {/* Time report */}
           <Card padding="md">

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const { apiMocks } = vi.hoisted(() => ({
   apiMocks: {
@@ -7,15 +7,17 @@ const { apiMocks } = vi.hoisted(() => ({
     getStats: vi.fn(),
     generateDigest: vi.fn(),
     getNotifications: vi.fn(),
+    createTask: vi.fn(),
   },
 }));
 
 vi.mock('@/api/tasks', () => ({
   getTasks: apiMocks.getTasks,
-  toTaskArray: (d: any) => (Array.isArray(d) ? d : (d?.data ?? [])),
+  toTaskArray: (d: unknown) => (Array.isArray(d) ? d : []),
   getStats: apiMocks.getStats,
   aiAPI: { generateDigest: apiMocks.generateDigest },
   getNotifications: apiMocks.getNotifications,
+  createTask: apiMocks.createTask,
 }));
 
 vi.mock('@/context/AuthContext', () => ({
@@ -23,11 +25,6 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 vi.mock('@/components/widgets/CalendarWidget', () => ({ default: () => <div /> }));
-vi.mock('@/components/widgets/FocusTimer', () => ({ default: () => <div /> }));
-vi.mock('@/components/widgets/ActivityTimeline', () => ({ default: () => <div /> }));
-vi.mock('@/components/widgets/Analytics', () => ({ default: () => <div /> }));
-vi.mock('@/components/widgets/Categories', () => ({ default: () => <div /> }));
-vi.mock('@/components/widgets/Notes', () => ({ default: () => <div /> }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import Dashboard from './Dashboard';
@@ -45,10 +42,12 @@ function mockAll() {
   apiMocks.getStats.mockClear();
   apiMocks.generateDigest.mockClear();
   apiMocks.getNotifications.mockClear();
+  apiMocks.createTask.mockClear();
   apiMocks.getTasks.mockResolvedValue({ data: TASKS });
   apiMocks.getStats.mockResolvedValue({ data: { total: 2, byStatus: [], overdue: 0, completedToday: 0 } });
   apiMocks.generateDigest.mockRejectedValue(new Error('no ai'));
   apiMocks.getNotifications.mockResolvedValue({ data: [] });
+  apiMocks.createTask.mockResolvedValue({ data: { _id: 't3', title: 'Captured task', status: 'pending' } });
 }
 
 describe('Dashboard task rows', () => {
@@ -63,7 +62,7 @@ describe('Dashboard task rows', () => {
     expect(apiMocks.getTasks).not.toHaveBeenCalled();
 
     const editBtns = await screen.findAllByRole('button', { name: 'Edit Timed task' });
-    expect(editBtns.length).toBeGreaterThanOrEqual(2); // Today's priority + Coming up
+    expect(editBtns.length).toBeGreaterThanOrEqual(2); // Up next + Coming up
     const editBtn = editBtns[0];
     expect(screen.getAllByRole('button', { name: 'Delete Timed task' }).length).toBeGreaterThanOrEqual(2);
 
@@ -87,5 +86,23 @@ describe('Dashboard task rows', () => {
     expect(apiMocks.getTasks).not.toHaveBeenCalled();
     const expectedDay = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     expect(await screen.findByText(new RegExp(expectedDay.replace(/[^A-Za-z0-9]/g, '.')))).toBeInTheDocument();
+  });
+
+  it('quick capture creates immediately and background-syncs', async () => {
+    mockAll();
+    const onRefresh = vi.fn();
+    render(<Dashboard tasks={TASKS} loading={false} onRefresh={onRefresh} onEditTask={() => {}} onDeleteTask={() => {}} onNewTask={() => {}} onNavigate={() => {}} />);
+
+    const input = await screen.findByLabelText('Quick capture');
+    fireEvent.change(input, { target: { value: 'Captured task' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    await waitFor(() => {
+      expect(apiMocks.createTask).toHaveBeenCalledWith({ title: 'Captured task', status: 'pending' });
+    });
+    // Optimistic prepend: visible before any parent refetch lands...
+    expect(await screen.findByText('Captured task')).toBeInTheDocument();
+    // ...then the shell is asked to background-sync its canonical list.
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });

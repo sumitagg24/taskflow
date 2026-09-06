@@ -94,6 +94,28 @@ const timeAgo = (iso: string) => {
 const activeSession = (task: AnyTask | null) =>
   (task?.timeSessions || []).some((s: AnyTask) => s.start && !s.end);
 
+/**
+ * Phone detection without new deps. There is no shared `useMediaQuery` hook
+ * in the codebase, so this tiny local one listens to the Tailwind `md:`
+ * breakpoint directly (`max-width: 767px`) and re-renders on change.
+ */
+function useIsPhone(): boolean {
+  const query = '(max-width: 767px)';
+  const matches = () =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(query).matches;
+  const [isPhone, setIsPhone] = useState<boolean>(matches);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mq = window.matchMedia(query);
+    const onChange = () => setIsPhone(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return isPhone;
+}
+
 /** Section shell: a labelled block with an icon, used for every panel below. */
 function Section({
   icon,
@@ -139,6 +161,9 @@ export default function TaskDetailDrawer({
   const [busy, setBusy] = useState<string | null>(null);
   const [subtaskTitle, setSubtaskTitle] = useState('');
   const [commentText, setCommentText] = useState('');
+  // Phones get the bottom-sheet placement (slide-up, 92dvh, safe-area);
+  // tablets/desktops keep the right-side drawer.
+  const isPhone = useIsPhone();
 
   // Mutation endpoints answer with the task *unpopulated*, which would blank
   // out dependency titles and comment authors. Re-reading costs one round trip
@@ -283,7 +308,7 @@ export default function TaskDetailDrawer({
     <Modal
       isOpen={taskId !== null}
       onClose={onClose}
-      placement="right"
+      placement={isPhone ? 'bottom' : 'right'}
       size="xl"
       title={task?.title || 'Task'}
       subtitle={task ? `Created ${formatDate(task.createdAt)}` : undefined}

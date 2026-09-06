@@ -19,8 +19,11 @@ interface ModalProps {
    * `right` turns the panel into a full-height side drawer. It reuses every bit
    * of dialog machinery below (focus trap, Escape, scroll lock, focus restore)
    * — only the framing and the entry animation differ.
+   * `bottom` turns it into a phone bottom sheet: full-width, slide-up, capped
+   * at 92dvh with rounded top corners and safe-area padding. On `sm:` screens
+   * and up it falls back to a centred dialog so desktop callers stay unchanged.
    */
-  placement?: 'center' | 'right';
+  placement?: 'center' | 'right' | 'bottom';
 }
 
 const sizeClasses = {
@@ -32,15 +35,22 @@ const sizeClasses = {
 };
 
 // A centred dialog floats and is capped in height; a drawer is flush to the
-// right edge and owns the full viewport height.
+// right edge and owns the full viewport height; a bottom sheet is flush to
+// the bottom edge, full-width, and capped at 92dvh. `dvh` units keep sheets
+// clear of the mobile browser chrome as it expands/collapses.
 const placementClasses = {
   center: {
     container: 'items-center justify-center p-4 sm:p-6',
-    panel: 'max-h-[calc(100vh-3rem)] rounded-2xl border border-gray-200 dark:border-gray-800',
+    panel: 'max-h-[calc(100dvh-3rem)] rounded-2xl border border-gray-200 dark:border-gray-800',
   },
   right: {
     container: 'justify-end',
-    panel: 'h-full rounded-none border-l border-gray-200 dark:border-gray-800',
+    panel: 'h-dvh rounded-none border-l border-gray-200 dark:border-gray-800',
+  },
+  bottom: {
+    container: 'items-end justify-center sm:items-center sm:p-6',
+    panel:
+      'max-h-[92dvh] rounded-t-3xl border-x border-t border-gray-200 pb-[env(safe-area-inset-bottom)] sm:rounded-2xl sm:border dark:border-gray-800',
   },
 };
 
@@ -54,6 +64,11 @@ const panelMotion = {
     initial: { opacity: 0, x: 28 },
     animate: { opacity: 1, x: 0 },
     exit: { opacity: 0, x: 24 },
+  },
+  bottom: {
+    initial: { opacity: 0, y: 56 },
+    animate: { opacity: 1, y: 0 },
+    exit: { opacity: 0, y: 40 },
   },
 };
 

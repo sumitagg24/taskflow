@@ -1,35 +1,64 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ListTodo, ArrowRightCircle, CheckCircle2, AlertTriangle,
   Calendar, Clock, Quote, Bell, Flame, Check, X, Plus, Pencil, Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { getStats, aiAPI, getNotifications } from '@/api/tasks';
+import { getStats, aiAPI, getNotifications, createTask } from '@/api/tasks';
 import {
-  Card, CardHeader, StatCard, StatusBadge, PriorityBadge, PriorityDot,
-  Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut,
+  Card, CardHeader, StatusBadge, PriorityBadge, PriorityDot,
+  Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut, Input,
 } from '@/components/ui';
 import CalendarWidget from '@/components/widgets/CalendarWidget';
-import FocusTimer from '@/components/widgets/FocusTimer';
-import ActivityTimeline from '@/components/widgets/ActivityTimeline';
-import Analytics from '@/components/widgets/Analytics';
-import Categories from '@/components/widgets/Categories';
-import Notes from '@/components/widgets/Notes';
+
+/** Task shape as this page reads it — the shell owns the canonical list. */
+export interface DashboardTask {
+  _id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority?: string;
+  dueDate?: string;
+  subtasks?: unknown[];
+  timeSpent?: number;
+  timeSessions?: unknown[];
+  [key: string]: unknown;
+}
 
 interface DashboardProps {
   /** Canonical task list owned by the App shell — Dashboard never fetches it. */
-  tasks: any[];
+  tasks: DashboardTask[];
   /** Parent fetch state; the skeleton renders from this. */
   loading?: boolean;
   /** Ask the shell to refetch tasks after a cross-page mutation. */
   onRefresh?: () => void;
-  onEditTask: (task: any) => void;
-  onDeleteTask: (task: any) => void;
+  onEditTask: (task: DashboardTask) => void;
+  onDeleteTask: (task: DashboardTask) => void;
   onNewTask: () => void;
-  /** Section ids match the Sidebar/App router so tiles can link into a real view. */
+  /** Section ids match the Sidebar/App router so rows can link into a real view. */
   onNavigate: (section: string) => void;
+}
+
+interface DashboardStats {
+  total?: number;
+  overdue?: number;
+  completedToday?: number;
+  trashed?: number;
+  byStatus?: { _id: string; count: number }[];
+}
+
+interface DayDigest {
+  greeting?: string;
+  quote?: string;
+}
+
+interface DashboardNotification {
+  _id: string;
+  title?: string;
+  message?: string;
+  createdAt: string;
 }
 
 type OnboardingStep = {
@@ -89,27 +118,129 @@ function dueTime(date: string): string {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
-const statusCount = (stats: any, id: string): number =>
-  stats?.byStatus?.find((s: any) => s._id === id)?.count || 0;
+const statusCount = (stats: DashboardStats | null, id: string): number =>
+  stats?.byStatus?.find((s) => s._id === id)?.count || 0;
+
+const PRIORITY_WEIGHT: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, none: 4 };
+
+function byDueThenPriority(a: DashboardTask, b: DashboardTask): number {
+  const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+  const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+  if (ad !== bd) return ad - bd;
+  return (PRIORITY_WEIGHT[a.priority ?? 'none'] ?? 4) - (PRIORITY_WEIGHT[b.priority ?? 'none'] ?? 4);
+}
+
+/** One task row: title + due stamp on the left, edit/delete on the right. */
+function TaskRow({
+  task,
+  onEdit,
+  onDelete,
+  meta,
+  badge,
+}: {
+  task: DashboardTask;
+  onEdit: (task: DashboardTask) => void;
+  onDelete: (task: DashboardTask) => void;
+  meta: ReactNode;
+  badge?: ReactNode;
+}) {
+  return (
+    <li>
+      <div className="group hover:bg-card-hover flex w-full items-center gap-1.5 rounded-lg p-1.5 transition-colors">
+        <button
+          onClick={() => onEdit(task)}
+          aria-label={`Open ${task.title}`}
+          className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
+        >
+          <PriorityDot priority={task.priority ?? 'none'} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+              {task.title}
+            </span>
+            {task.description && (
+              <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                {task.description}
+              </span>
+            )}
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {meta}
+            {badge}
+          </span>
+        </button>
+        <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => onEdit(task)}
+            aria-label={`Edit ${task.title}`}
+            title="Edit task"
+            className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-900 dark:hover:bg-gray-700/60 dark:hover:text-gray-100"
+          >
+            <Pencil size={14} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(task)}
+            aria-label={`Delete ${task.title}`}
+            title="Delete task"
+            className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400"
+          >
+            <Trash2 size={14} aria-hidden="true" />
+          </button>
+        </span>
+      </div>
+    </li>
+  );
+}
 
 export default function Dashboard({ tasks, loading = false, onRefresh, onEditTask, onDeleteTask, onNewTask, onNavigate }: DashboardProps) {
-  // Reserved for future Dashboard-owned mutations; edits/deletes currently
-  // flow through the parent callbacks, which already keep shell state in sync.
-  void onRefresh;
   const { user } = useAuth();
-  const [stats, setStats] = useState<any>(null);
-  const [digest, setDigest] = useState<any>(null);
-  const [recentNotifications, setRecentNotifications] = useState<any[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [digest, setDigest] = useState<DayDigest | null>(null);
+  const [recentNotifications, setRecentNotifications] = useState<DashboardNotification[]>([]);
   const [onboardingHidden, setOnboardingHidden] = useState(
     () => localStorage.getItem(ONBOARDING_DISMISSED) === '1'
   );
+
+  // Quick capture: one-line create. The new task prepends locally for an
+  // instant update, then `onRefresh` background-syncs the shell's canonical
+  // list (which dedupes by id via `visibleTasks` below).
+  const [quickTitle, setQuickTitle] = useState('');
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+  const [captured, setCaptured] = useState<DashboardTask[]>([]);
+
+  const visibleTasks = useMemo(() => {
+    const ids = new Set(tasks.map((t) => t._id));
+    return [...captured.filter((c) => !ids.has(c._id)), ...tasks];
+  }, [captured, tasks]);
+
+  const submitQuickCapture = async (e: FormEvent) => {
+    e.preventDefault();
+    const title = quickTitle.trim();
+    if (!title || quickBusy) return;
+    setQuickBusy(true);
+    setQuickError(null);
+    try {
+      const { data } = await createTask({ title, status: 'pending' });
+      const created = data as DashboardTask;
+      setCaptured((prev) => [created, ...prev]);
+      setQuickTitle('');
+      toast.success('Task captured');
+      onRefresh?.();
+    } catch {
+      setQuickError('Could not create that task — try again.');
+    } finally {
+      setQuickBusy(false);
+    }
+  };
 
   // Tasks come from the App shell (single GET /tasks there). This loader
   // covers the Dashboard-owned endpoints only: stats + decoration.
   const load = useCallback(async () => {
     try {
       const statsRes = await getStats();
-      setStats(statsRes.data);
+      setStats(statsRes.data as DashboardStats);
     } catch {
       // Read-only surface: a failed fetch falls through to empty states rather
       // than replacing the whole page with an error.
@@ -118,41 +249,59 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
     // Both of these are decoration — never let them gate the main render.
     try {
       const { data } = await aiAPI.generateDigest();
-      setDigest(data);
+      setDigest(data as DayDigest);
     } catch {}
     try {
       const { data } = await getNotifications({ limit: 3 });
-      setRecentNotifications((Array.isArray(data) ? data : (data?.items ?? [])).slice(0, 3));
+      const items: DashboardNotification[] = Array.isArray(data)
+        ? (data as DashboardNotification[])
+        : (((data as { items?: DashboardNotification[] } | null)?.items) ?? []);
+      setRecentNotifications(items.slice(0, 3));
     } catch {}
   }, []);
 
   useEffect(() => { load(); }, [load]);
   const openTasks = useMemo(
-    () => tasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled'),
-    [tasks]
+    () => visibleTasks.filter((t) => t.status !== 'completed' && t.status !== 'cancelled'),
+    [visibleTasks]
   );
 
-  // "What should I touch next" ordering: soonest due date wins, priority breaks
-  // ties, undated work sinks to the bottom.
-  const todayTasks = useMemo(() => {
-    const weight: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, none: 4 };
-    return [...openTasks]
-      .sort((a, b) => {
-        const ad = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
-        const bd = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
-        if (ad !== bd) return ad - bd;
-        return (weight[a.priority] ?? 4) - (weight[b.priority] ?? 4);
+  /**
+   * "What do I do today" ordering: every overdue task (oldest first), then
+   * everything due today (earliest time first), then the next 3 open tasks by
+   * deadline (undated work sinks last but still shows — including the item
+   * just filed through Quick capture, so creates update immediately).
+   */
+  const upNext = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+    const overdue = openTasks
+      .filter((t) => t.dueDate && new Date(t.dueDate) < startOfToday)
+      .sort(byDueThenPriority);
+    const dueToday = openTasks
+      .filter((t) => {
+        if (!t.dueDate) return false;
+        const d = new Date(t.dueDate);
+        return d >= startOfToday && d < startOfTomorrow;
       })
-      .slice(0, 5);
+      .sort(byDueThenPriority);
+    const shown = new Set([...overdue, ...dueToday].map((t) => t._id));
+    const next = openTasks
+      .filter((t) => !shown.has(t._id))
+      .sort(byDueThenPriority)
+      .slice(0, 3);
+    return [...overdue, ...dueToday, ...next];
   }, [openTasks]);
 
   const upcomingDeadlines = useMemo(
     () =>
-      tasks
+      visibleTasks
         .filter((t) => t.dueDate && t.status !== 'completed')
-        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+        .sort((a, b) => new Date(a.dueDate as string).getTime() - new Date(b.dueDate as string).getTime())
         .slice(0, 5),
-    [tasks]
+    [visibleTasks]
   );
 
   const dueToday = openTasks.filter(
@@ -162,16 +311,16 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
   // Activation checklist. Every step is derived from real data rather than a
   // stored flag, so it stays honest if a user deletes the thing they just made.
   const steps = useMemo<OnboardingStep[]>(() => {
-    const has = (fn: (t: any) => boolean) => tasks.some(fn);
+    const has = (fn: (t: DashboardTask) => boolean) => visibleTasks.some(fn);
     return [
-      { id: 'create', label: 'Create your first task', done: tasks.length > 0, cta: 'New task', run: onNewTask },
+      { id: 'create', label: 'Create your first task', done: visibleTasks.length > 0, cta: 'New task', run: onNewTask },
       { id: 'due', label: 'Give a task a due date', done: has((t) => !!t.dueDate) },
       { id: 'subtasks', label: 'Break one into subtasks', done: has((t) => (t.subtasks?.length ?? 0) > 0) },
       { id: 'timer', label: 'Track time on a task', done: has((t) => (t.timeSpent ?? 0) > 0 || (t.timeSessions?.length ?? 0) > 0) },
       { id: 'complete', label: 'Finish something', done: statusCount(stats, 'completed') > 0 },
       { id: 'palette', label: 'Open the command palette', done: localStorage.getItem(PALETTE_USED_KEY) === '1', shortcut: 'mod+K' },
     ];
-  }, [tasks, stats, onNewTask]);
+  }, [visibleTasks, stats, onNewTask]);
 
   const stepsDone = steps.filter((s) => s.done).length;
   const showOnboarding = !onboardingHidden && stepsDone < steps.length;
@@ -196,7 +345,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
   const overdue: number = stats?.overdue || 0;
 
   return (
-    <motion.div variants={container} initial="hidden" animate="show" className="space-y-5 p-4 lg:p-6">
+    <motion.div variants={container} initial="hidden" animate="show" className="space-y-5 p-4 pb-24 md:p-6">
       {/* Hero — the date, a greeting, and the three numbers worth knowing on sight. */}
       <motion.div variants={item}>
         <Card
@@ -256,6 +405,97 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
           )}
         </Card>
       </motion.div>
+
+      {/* Quick capture — one line, Enter to file it, no modal round-trip. */}
+      <motion.div variants={item}>
+        <Card padding="md">
+          <form onSubmit={submitQuickCapture}>
+            <label htmlFor="dashboard-quick-capture" className="caption-upper mb-2 block">
+              Quick capture
+            </label>
+            <div className="flex gap-2">
+              <Input
+                id="dashboard-quick-capture"
+                wrapperClassName="flex-1"
+                placeholder="Type a task and press Enter…"
+                autoComplete="off"
+                maxLength={500}
+                value={quickTitle}
+                onChange={(e) => setQuickTitle(e.target.value)}
+                className="min-h-[44px]"
+              />
+              <Button
+                type="submit"
+                loading={quickBusy}
+                disabled={!quickTitle.trim()}
+                icon={<Plus size={16} aria-hidden="true" />}
+                className="min-h-[44px] shrink-0"
+              >
+                Add
+              </Button>
+            </div>
+            {quickError && (
+              <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+                {quickError}
+              </p>
+            )}
+          </form>
+        </Card>
+      </motion.div>
+
+      {/* Up next — overdue first, then today, then the next 3 dated tasks. */}
+      <motion.div variants={item}>
+        <Card padding="md">
+          <CardHeader
+            eyebrow="Up next"
+            title={upNext.length ? `${upNext.length} need${upNext.length === 1 ? 's' : ''} you` : 'Today is clear'}
+            subtitle="Overdue first, then due today, then what's next."
+            action={
+              <Button variant="ghost" size="sm" onClick={() => onNavigate('all')}>
+                View all
+              </Button>
+            }
+          />
+          {upNext.length === 0 ? (
+            <EmptyState
+              size="sm"
+              icon={<Clock size={20} />}
+              title="Nothing queued up"
+              description="Every open task is either done or has no deadline pressure."
+              action={<Button size="sm" icon={<Plus size={14} />} onClick={onNewTask}>New task</Button>}
+            />
+          ) : (
+            <ul className="space-y-1">
+              {upNext.map((task) => (
+                <TaskRow
+                  key={task._id}
+                  task={task}
+                  onEdit={onEditTask}
+                  onDelete={onDeleteTask}
+                  meta={
+                    task.dueDate ? (
+                      <span
+                        className={cn(
+                          'text-xs font-medium',
+                          new Date(task.dueDate) < new Date()
+                            ? 'text-red-600 dark:text-red-400'
+                            : 'text-gray-500 dark:text-gray-400'
+                        )}
+                        title={`Due ${dueStamp(task.dueDate)}`}
+                      >
+                        {dueLabel(task.dueDate)}
+                        {dueTime(task.dueDate) ? ` · ${dueTime(task.dueDate)}` : ''}
+                      </span>
+                    ) : null
+                  }
+                  badge={<StatusBadge status={task.status} />}
+                />
+              ))}
+            </ul>
+          )}
+        </Card>
+      </motion.div>
+
       {showOnboarding && (
         <motion.div variants={item}>
           <Card padding="md">
@@ -306,165 +546,13 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
           </Card>
         </motion.div>
       )}
-      {/* Status tiles double as navigation into the matching list view. */}
-      <motion.div variants={item} className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label="To Do" value={statusCount(stats, 'pending')} icon={<ListTodo size={16} />}
-          hint="Waiting to be started" onClick={() => onNavigate('pending')}
-        />
-        <StatCard
-          label="In Progress" value={statusCount(stats, 'in-progress')} icon={<ArrowRightCircle size={16} />}
-          hint="Actively being worked" onClick={() => onNavigate('in-progress')}
-        />
-        <StatCard
-          label="Completed" value={statusCount(stats, 'completed')} icon={<CheckCircle2 size={16} />}
-          hint={`${stats?.completedToday || 0} finished today`} onClick={() => onNavigate('completed')}
-        />
-        <StatCard
-          label="Overdue" value={overdue} icon={<AlertTriangle size={16} />}
-          hint={overdue ? 'Past their due date' : 'Nothing late'} onClick={() => onNavigate('all')}
-        />
-      </motion.div>
 
+      {/* NOTE: the old status-tile grid and the "Where the work sits"
+          distribution panel lived here. Both duplicated the Insights page
+          (status overview / priority mix), so they were cut — this page now
+          answers only "what do I do today". The stats hook stays: the hero
+          strip and the onboarding checklist still read from it. */}
       <motion.div variants={item} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <CalendarWidget tasks={tasks} />
-
-        <Card padding="md">
-          <CardHeader
-            eyebrow="Up next"
-            title="Today's priority"
-            subtitle="Soonest deadline first, then by priority."
-            action={
-              <Button variant="ghost" size="sm" onClick={() => onNavigate('all')}>
-                View all
-              </Button>
-            }
-          />
-          {todayTasks.length === 0 ? (
-            <EmptyState
-              size="sm"
-              icon={<Clock size={20} />}
-              title="Nothing queued up"
-              description="Every open task is either done or has no deadline pressure."
-              action={<Button size="sm" icon={<Plus size={14} />} onClick={onNewTask}>New task</Button>}
-            />
-          ) : (
-            <ul className="space-y-1">
-              {todayTasks.map((task) => (
-                <li key={task._id}>
-                  <div className="group hover:bg-card-hover flex w-full items-center gap-1.5 rounded-lg p-1.5 transition-colors">
-                    <button
-                      onClick={() => onEditTask(task)}
-                      aria-label={`Open ${task.title}`}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
-                    >
-                      <PriorityDot priority={task.priority ?? 'none'} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {task.title}
-                        </span>
-                        {task.description && (
-                          <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                            {task.description}
-                          </span>
-                        )}
-                      </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {task.dueDate && (
-                          <span
-                            className={cn(
-                              'text-xs font-medium',
-                              new Date(task.dueDate) < new Date()
-                                ? 'text-red-600 dark:text-red-400'
-                                : 'text-gray-500 dark:text-gray-400'
-                            )}
-                            title={`Due ${dueStamp(task.dueDate)}`}
-                          >
-                            {dueLabel(task.dueDate)}
-                            {dueTime(task.dueDate) ? ` · ${dueTime(task.dueDate)}` : ''}
-                          </span>
-                        )}
-                        <StatusBadge status={task.status} />
-                      </span>
-                    </button>
-                    <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => onEditTask(task)}
-                        aria-label={`Edit ${task.title}`}
-                        title="Edit task"
-                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-900 dark:hover:bg-gray-700/60 dark:hover:text-gray-100"
-                      >
-                        <Pencil size={14} aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteTask(task)}
-                        aria-label={`Delete ${task.title}`}
-                        title="Delete task"
-                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400"
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </motion.div>
-      {/* Distribution across the board, as a share of the whole list. */}
-      <motion.div variants={item}>
-        <Card padding="md">
-          <CardHeader
-            eyebrow="Overview"
-            title="Where the work sits"
-            subtitle={`${stats?.total ?? 0} live ${(stats?.total ?? 0) === 1 ? 'task' : 'tasks'}${
-              stats?.trashed ? ` · ${stats.trashed} in Trash` : ''
-            }`}
-            action={
-              <Button variant="ghost" size="sm" onClick={() => onNavigate('insights')}>
-                Insights
-              </Button>
-            }
-          />
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {([
-              ['pending', 'To Do', 'neutral'],
-              ['in-progress', 'In Progress', 'warning'],
-              ['completed', 'Completed', 'success'],
-              ['backlog', 'Backlog', 'neutral'],
-            ] as const).map(([status, label, tone]) => {
-              const count = statusCount(stats, status);
-              return (
-                <button
-                  key={status}
-                  onClick={() => onNavigate(status)}
-                  className="bg-surface hover:bg-card-hover rounded-xl p-4 text-left transition-colors"
-                >
-                  <div className="mb-2 flex items-baseline justify-between gap-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{label}</span>
-                    <span className="font-display text-lg tabular-nums text-gray-900 dark:text-gray-100">
-                      {count}
-                    </span>
-                  </div>
-                  <Progress value={count} max={stats?.total || 1} tone={tone} size="sm" />
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-      </motion.div>
-
-      <motion.div variants={item} className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <ActivityTimeline />
-        <Categories tasks={tasks} />
-        <FocusTimer />
-      </motion.div>
-      <motion.div variants={item} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Analytics stats={stats} />
-
         <Card padding="md">
           <CardHeader
             eyebrow="Deadlines"
@@ -490,17 +578,13 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
           ) : (
             <ul className="space-y-1">
               {upcomingDeadlines.map((task) => (
-                <li key={task._id}>
-                  <div className="group hover:bg-card-hover flex w-full items-center gap-1.5 rounded-lg p-1.5 transition-colors">
-                    <button
-                      onClick={() => onEditTask(task)}
-                      aria-label={`Open ${task.title}`}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 text-left"
-                    >
-                      <PriorityBadge priority={task.priority ?? 'none'} />
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {task.title}
-                      </span>
+                <TaskRow
+                  key={task._id}
+                  task={task}
+                  onEdit={onEditTask}
+                  onDelete={onDeleteTask}
+                  meta={
+                    task.dueDate ? (
                       <span className="shrink-0 text-right" title={`Due ${dueStamp(task.dueDate)}`}>
                         <span
                           className={cn(
@@ -516,37 +600,19 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
                           {dueStamp(task.dueDate)}
                         </span>
                       </span>
-                    </button>
-                    <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => onEditTask(task)}
-                        aria-label={`Edit ${task.title}`}
-                        title="Edit task"
-                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-200/60 hover:text-gray-900 dark:hover:bg-gray-700/60 dark:hover:text-gray-100"
-                      >
-                        <Pencil size={14} aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteTask(task)}
-                        aria-label={`Delete ${task.title}`}
-                        title="Delete task"
-                        className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-500/15 dark:hover:text-red-400"
-                      >
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                    </span>
-                  </div>
-                </li>
+                    ) : null
+                  }
+                  badge={<PriorityBadge priority={task.priority ?? 'none'} />}
+                />
               ))}
             </ul>
           )}
         </Card>
-      </motion.div>
-      <motion.div variants={item} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Notes />
 
+        <CalendarWidget tasks={visibleTasks} />
+      </motion.div>
+
+      <motion.div variants={item}>
         <Card padding="md">
           <CardHeader
             eyebrow="Activity"
@@ -566,7 +632,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
             />
           ) : (
             <ul className="space-y-2">
-              {recentNotifications.map((n: any) => (
+              {recentNotifications.map((n) => (
                 <li key={n._id} className="bg-surface flex items-center gap-3 rounded-lg p-3">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-500/12">
                     <Bell size={14} className="text-yellow-700 dark:text-yellow-300" aria-hidden="true" />
@@ -593,12 +659,3 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
     </motion.div>
   );
 }
-
-
-
-
-
-
-
-
-

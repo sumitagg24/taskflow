@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { toast } from 'sonner';
-import { getNotifications } from '@/api/tasks';
+import { getNotifications, default as api } from '@/api/tasks';
 import { useAuth } from './AuthContext';
 
 const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin;
@@ -21,6 +21,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [refreshKey, setRefreshKey] = useState(0);
   const socketRef = useRef<Socket | null>(null);
+  // Single-flight: on an auth rejection, renew the cookie session once so
+  // socket.io's own retry then succeeds with fresh cookies — instead of
+  // hammering the server with a dead session until some API call happens
+  // to refresh. Reset on every successful connect.
+  const authRetryRef = useRef(false);
   const failedToastShown = useRef(false);
   const { isAuthenticated, user } = useAuth();
   const userId = user?._id ?? null;
@@ -55,7 +60,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
     socketRef.current = socket;
 
-    socket.on('connect', () => refreshCount());
+    socket.on('connect', () => {
+      authRetryRef.current = false;
+      refreshCount();
+    });
+
+    socket.on('connect_error', (err: any) => {
+      const msg = String(err?.message || '');
+      if (!/invalid token|authentication required/i.test(msg) || authRetryRef.current) return;
+      authRetryRef.current = true;
+      api.post('/api/auth/refresh-token').catch(() => {
+        // Refresh failed (e.g. signed out elsewhere) — leave socket.io's
+        // backoff alone; it stops mattering once the session is gone.
+      });
+    });
 
     socket.on('notification:new', (notification: any) => {
       if (!notification?.isRead) {

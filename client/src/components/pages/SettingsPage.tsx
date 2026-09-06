@@ -508,7 +508,7 @@ export default function SettingsPage() {
                   {aiProviderList.filter((p: any) => p.key !== 'openai-compatible').map((provider: any) => {
                     const icon = providerIcons[provider.key] || { gradient: 'from-gray-400 to-slate-500', icon: '?', color: '#6b7280' };
                     return (
-                      <div className="relative flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 transition-all duration-200 hover:border-yellow-300 dark:hover:border-yellow-600 hover:shadow-md hover:shadow-yellow-500/5 group">
+                      <div key={provider.key} className="relative flex flex-col rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 transition-all duration-200 hover:border-yellow-300 dark:hover:border-yellow-600 hover:shadow-md hover:shadow-yellow-500/5 group">
                         {/* Clickable top section to select provider */}
                         <button
                           type="button"

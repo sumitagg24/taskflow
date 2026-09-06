@@ -216,6 +216,9 @@ describe('GET /api/auth/profile', () => {
       .get('/api/auth/profile')
       .set('Authorization', 'Bearer invalid-token');
     expect(res.status).toBe(401);
+    // Malformed tokens must NOT carry TOKEN_EXPIRED, or the client would
+    // enter a refresh loop for a token that can never be refreshed.
+    expect(res.body.code).not.toBe('TOKEN_EXPIRED');
   });
 
   it('rejects with refresh token (wrong type)', async () => {

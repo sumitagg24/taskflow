@@ -1,3 +1,4 @@
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Search, Plus, Sparkles, Settings, LogOut, User, ChevronDown, Bell } from 'lucide-react';
 import { useNotifications } from '@/context/NotificationContext';
@@ -31,15 +32,76 @@ const SECTION_TITLES: Record<string, string> = {
   settings: 'Settings',
 };
 
+function sectionToPath(section: string): string {
+  switch (section) {
+    case 'dashboard':
+      return '/';
+    case 'all':
+      return '/tasks';
+    case 'pending':
+    case 'in-progress':
+    case 'completed':
+    case 'backlog':
+      return `/tasks/${section}`;
+    case 'calendar':
+      return '/calendar';
+    case 'favorites':
+      return '/favorites';
+    case 'categories':
+      return '/categories';
+    case 'templates':
+      return '/templates';
+    case 'insights':
+      return '/insights';
+    case 'analytics':
+      return '/analytics';
+    case 'focus':
+      return '/focus';
+    case 'notifications':
+      return '/notifications';
+    case 'team':
+      return '/team';
+    case 'trash':
+      return '/trash';
+    case 'settings':
+      return '/settings';
+    default:
+      return '/';
+  }
+}
+
+function sectionFromPath(pathname: string): string {
+  if (pathname === '/') return 'dashboard';
+  if (pathname === '/tasks') return 'all';
+  const taskMatch = pathname.match(/^\/tasks\/(pending|in-progress|completed|backlog)\/?$/);
+  if (taskMatch) return taskMatch[1];
+  const single = pathname.match(/^\/([a-z-]+)\/?$/);
+  if (single) {
+    const s = single[1];
+    if (SECTION_TITLES[s] !== undefined) return s;
+  }
+  return 'dashboard';
+}
+
 export default function Navbar({
   onNewTask,
   onOpenCommandPalette,
   onOpenAIAssistant,
   onNavigate,
-  activeSection = 'dashboard',
+  activeSection,
 }: NavbarProps) {
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Title follows the URL (refresh/deep-link safe); the legacy prop is kept
+  // optional for callers that still pass it.
+  void activeSection;
+  const currentSection = sectionFromPath(location.pathname);
+  const go = (section: string) => {
+    onNavigate?.(section);
+    navigate(sectionToPath(section));
+  };
 
   const dateStr = new Date().toLocaleDateString(undefined, {
     weekday: 'long',
@@ -55,7 +117,7 @@ export default function Navbar({
       <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
         <div className="hidden min-w-0 sm:block">
           <h1 className="font-display truncate text-[19px] leading-tight text-gray-900 dark:text-gray-50">
-            {SECTION_TITLES[activeSection] ?? 'Workspace'}
+            {SECTION_TITLES[currentSection] ?? 'Workspace'}
           </h1>
           <p className="truncate text-xs text-gray-500 dark:text-gray-500">{dateStr}</p>
         </div>
@@ -91,7 +153,7 @@ export default function Navbar({
           <Tooltip content={unreadCount > 0 ? `${unreadCount} unread` : 'Notifications'}>
             <button
               type="button"
-              onClick={() => onNavigate?.('notifications')}
+              onClick={() => go('notifications')}
               aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
               className="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
             >
@@ -115,13 +177,13 @@ export default function Navbar({
                 id: 'profile',
                 label: 'Profile',
                 icon: <User size={15} />,
-                onSelect: () => onNavigate?.('settings'),
+                onSelect: () => go('settings'),
               },
               {
                 id: 'settings',
                 label: 'Settings',
                 icon: <Settings size={15} />,
-                onSelect: () => onNavigate?.('settings'),
+                onSelect: () => go('settings'),
               },
               {
                 id: 'logout',

@@ -1,0 +1,421 @@
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
+import { Toaster } from 'sonner';
+import { useTheme } from '@/context/ThemeContext';
+import Sidebar from '@/components/layout/Sidebar';
+import Navbar from '@/components/layout/Navbar';
+import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
+import Dashboard from '@/components/pages/Dashboard';
+import KanbanBoard from '@/components/KanbanBoard';
+import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
+import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard } from '@/components/ui';
+import { Plus, ListTodo } from 'lucide-react';
+
+const CommandPalette = lazy(() => import('@/components/CommandPalette'));
+const TaskForm = lazy(() => import('@/components/TaskForm'));
+const TaskDetailDrawer = lazy(() => import('@/components/TaskDetailDrawer'));
+const AIAssistant = lazy(() => import('@/components/AIAssistant'));
+const CalendarPage = lazy(() => import('@/components/pages/CalendarPage'));
+const SettingsPage = lazy(() => import('@/components/pages/SettingsPage'));
+const NotificationsPage = lazy(() => import('@/components/pages/NotificationsPage'));
+const FavoritesPage = lazy(() => import('@/components/pages/FavoritesPage'));
+const CategoriesPage = lazy(() => import('@/components/pages/CategoriesPage'));
+const AnalyticsPage = lazy(() => import('@/components/pages/AnalyticsPage'));
+const FocusTimerPage = lazy(() => import('@/components/pages/FocusTimerPage'));
+const TeamPage = lazy(() => import('@/components/pages/TeamPage'));
+const TemplatesPage = lazy(() => import('@/components/pages/TemplatesPage'));
+const InsightsPage = lazy(() => import('@/components/pages/InsightsPage'));
+const TrashPage = lazy(() => import('@/components/pages/TrashPage'));
+
+export interface TaskData {
+  _id: string;
+  title: string;
+  description?: string;
+  status: string;
+  priority?: string;
+  dueDate?: string;
+  tags?: string[];
+  category?: string;
+  subtasks?: unknown[];
+  comments?: unknown[];
+  attachments?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface ShellData {
+  tasks: TaskData[];
+  deferredTasks: TaskData[];
+  loading: boolean;
+  filters: FiltersValues;
+  setFilters: Dispatch<SetStateAction<FiltersValues>>;
+  editTask: TaskData | null;
+  setEditTask: (t: TaskData | null) => void;
+  showForm: boolean;
+  setShowForm: (v: boolean) => void;
+  deleteTarget: TaskData | null;
+  setDeleteTarget: (t: TaskData | null) => void;
+  deleting: boolean;
+  paletteOpen: boolean;
+  setPaletteOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+  detailTaskId: string | null;
+  setDetailTaskId: (id: string | null) => void;
+  showAIAssistant: boolean;
+  setShowAIAssistant: (v: boolean) => void;
+  fetchTasks: () => void;
+  handleDeleteRequest: (t: TaskData) => void;
+  handleDeleteConfirm: () => void;
+  handleEdit: (t: TaskData) => void;
+  handleNewTask: () => void;
+  handleFormSubmit: (t: TaskData) => void;
+  handleTaskChanged: (t: Record<string, unknown>) => void;
+  openPalette: () => void;
+}
+
+export const ShellContext = createContext<ShellData | null>(null);
+
+export function useShell(): ShellData {
+  const ctx = useContext(ShellContext);
+  if (!ctx) throw new Error('useShell must be used within ShellContext');
+  return ctx;
+}
+
+export function routeFor(section: string): string {
+  switch (section) {
+    case 'dashboard':
+      return '/';
+    case 'all':
+      return '/tasks';
+    case 'pending':
+    case 'in-progress':
+    case 'completed':
+    case 'backlog':
+      return `/tasks/${section}`;
+    case 'calendar':
+      return '/calendar';
+    case 'insights':
+      return '/insights';
+    case 'analytics':
+      return '/analytics';
+    case 'templates':
+      return '/templates';
+    case 'categories':
+      return '/categories';
+    case 'favorites':
+      return '/favorites';
+    case 'focus':
+      return '/focus';
+    case 'notifications':
+      return '/notifications';
+    case 'team':
+      return '/team';
+    case 'trash':
+      return '/trash';
+    case 'settings':
+      return '/settings';
+    default:
+      return '/';
+  }
+}
+
+const LIST_SECTIONS = ['all', 'pending', 'in-progress', 'completed', 'backlog'] as const;
+
+const LIST_TITLES: Record<string, string> = {
+  all: 'All Tasks',
+  pending: 'To Do',
+  'in-progress': 'In Progress',
+  completed: 'Completed',
+  backlog: 'Backlog',
+};
+
+function clearTaskParam(prev: URLSearchParams): URLSearchParams {
+  const next = new URLSearchParams(prev);
+  next.delete('task');
+  return next;
+}
+
+function ProtectedShell(): ReactNode {
+  const shell = useShell();
+  const { resolvedTheme } = useTheme();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlTaskId = searchParams.get('task');
+
+  // Single source of truth: the `?task=<id>` search param drives `detailTaskId`.
+  // Opening navigates with `?task=` (CommandPalette does this); closing removes
+  // the param via `replace` so history stays clean.
+  useEffect(() => {
+    const next = urlTaskId ?? null;
+    if (next !== shell.detailTaskId) shell.setDetailTaskId(next);
+  }, [urlTaskId, shell]);
+
+  const closeTask = useCallback(() => {
+    setSearchParams(clearTaskParam, { replace: true });
+  }, [setSearchParams]);
+
+  return (
+    <div className="flex min-h-screen">
+      <a
+        href="#task-main"
+        className="sr-only-focusable absolute z-[60] m-2 rounded-lg bg-yellow-400 px-3 py-2 text-sm font-medium text-gray-950"
+      >
+        Skip to tasks
+      </a>
+      <Sidebar />
+
+      <div className="flex flex-1 flex-col min-w-0">
+        <EmailVerificationBanner />
+        <Navbar
+          onNewTask={shell.handleNewTask}
+          onOpenCommandPalette={shell.openPalette}
+          onOpenAIAssistant={() => shell.setShowAIAssistant(true)}
+        />
+
+        <main id="task-main" className="flex-1 overflow-auto" key={location.pathname}>
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
+        </main>
+      </div>
+
+      <Suspense fallback={null}>
+        <Modal
+          isOpen={shell.showForm}
+          onClose={() => { shell.setShowForm(false); shell.setEditTask(null); }}
+          title={shell.editTask ? 'Edit Task' : 'Create Task'}
+          subtitle={shell.editTask ? 'Update task details' : 'Add a new task to your workspace'}
+          size="xl"
+        >
+          {shell.showForm && (
+            <TaskForm
+              existingTask={shell.editTask}
+              onSuccess={shell.handleFormSubmit}
+              onCancel={() => { shell.setShowForm(false); shell.setEditTask(null); }}
+            />
+          )}
+        </Modal>
+      </Suspense>
+
+      <DeleteConfirmModal
+        isOpen={!!shell.deleteTarget}
+        onClose={() => { if (!shell.deleting) shell.setDeleteTarget(null); }}
+        onConfirm={shell.handleDeleteConfirm}
+        itemName={shell.deleteTarget?.title}
+        loading={shell.deleting}
+      />
+
+      <Suspense fallback={null}>
+        {shell.detailTaskId && (
+          <TaskDetailDrawer
+            taskId={shell.detailTaskId}
+            onClose={closeTask}
+            onChanged={(task) => shell.handleTaskChanged(task as Record<string, unknown>)}
+            onEdit={(task) => {
+              setSearchParams(clearTaskParam, { replace: true });
+              shell.handleEdit(task as unknown as TaskData);
+            }}
+            onDelete={(task) => {
+              setSearchParams(clearTaskParam, { replace: true });
+              shell.handleDeleteRequest(task as unknown as TaskData);
+            }}
+          />
+        )}
+      </Suspense>
+
+      <button
+        onClick={shell.handleNewTask}
+        className="fixed right-5 bottom-5 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
+        aria-label="Create new task"
+      >
+        <Plus size={22} strokeWidth={2.25} aria-hidden="true" />
+      </button>
+
+      <Suspense fallback={null}>
+        <AIAssistant isOpen={shell.showAIAssistant} onClose={() => shell.setShowAIAssistant(false)} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <CommandPalette
+          isOpen={shell.paletteOpen}
+          onClose={() => shell.setPaletteOpen(false)}
+          tasks={shell.deferredTasks}
+          onNewTask={shell.handleNewTask}
+          onOpenAIAssistant={() => shell.setShowAIAssistant(true)}
+        />
+      </Suspense>
+
+      <Toaster
+        position="bottom-right"
+        richColors
+        closeButton
+        theme={resolvedTheme}
+        toastOptions={{ duration: 3000 }}
+      />
+    </div>
+  );
+}
+
+function DashboardRoute(): ReactNode {
+  const shell = useShell();
+  const navigate = useNavigate();
+  const onNavigate = useCallback(
+    (section: string) => {
+      navigate(routeFor(section));
+    },
+    [navigate]
+  );
+  return (
+    <Dashboard
+      tasks={shell.tasks}
+      loading={shell.loading}
+      onRefresh={shell.fetchTasks}
+      onEditTask={shell.handleEdit}
+      onDeleteTask={shell.handleDeleteRequest}
+      onNewTask={shell.handleNewTask}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+function TasksRoute(): ReactNode {
+  const { status } = useParams<{ status?: string }>();
+  const shell = useShell();
+
+  if (status !== undefined && !(LIST_SECTIONS as readonly string[]).includes(status)) {
+    return <Navigate to="/tasks" replace />;
+  }
+  const activeSection = status ?? 'all';
+  const scoped =
+    activeSection === 'all'
+      ? shell.deferredTasks
+      : shell.deferredTasks.filter((t) => t.status === activeSection);
+  const filtersActive = Object.values(shell.filters).some((v) => v !== '');
+
+  return (
+    <div className="animate-fadeIn p-4 lg:p-6">
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <h2 className="font-display text-2xl text-gray-900 dark:text-gray-100">
+          {LIST_TITLES[activeSection]}
+        </h2>
+        <span className="text-sm text-gray-500 dark:text-gray-400">
+          {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'}
+        </span>
+        <p className="sr-only" role="status">
+          {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'} shown
+        </p>
+      </div>
+      <Filters filters={shell.filters} onChange={shell.setFilters} />
+      {shell.loading ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : scoped.length === 0 ? (
+        <EmptyState
+          icon={<ListTodo size={22} />}
+          title={filtersActive ? 'No tasks match these filters' : `Nothing in ${LIST_TITLES[activeSection]}`}
+          description={
+            filtersActive
+              ? 'Try widening the filters, or clear them to see everything.'
+              : 'Create your first task here and it will show up instantly.'
+          }
+          action={
+            filtersActive ? (
+              <Button
+                variant="secondary"
+                onClick={() => shell.setFilters({ ...EMPTY_FILTERS })}
+              >
+                Clear filters
+              </Button>
+            ) : (
+              <Button icon={<Plus size={16} />} onClick={shell.handleNewTask}>New task</Button>
+            )
+          }
+        />
+      ) : (
+        <KanbanBoard
+          tasks={scoped}
+          onRefresh={shell.fetchTasks}
+          onDelete={shell.handleDeleteRequest}
+        />
+      )}
+    </div>
+  );
+}
+
+function CalendarRoute(): ReactNode {
+  return <CalendarPage />;
+}
+
+function FavoritesRoute(): ReactNode {
+  return <FavoritesPage />;
+}
+
+function CategoriesRoute(): ReactNode {
+  return <CategoriesPage />;
+}
+
+function TemplatesRoute(): ReactNode {
+  return <TemplatesPage />;
+}
+
+function InsightsRoute(): ReactNode {
+  return <InsightsPage />;
+}
+
+function AnalyticsRoute(): ReactNode {
+  return <AnalyticsPage />;
+}
+
+function FocusRoute(): ReactNode {
+  return <FocusTimerPage />;
+}
+
+function NotificationsRoute(): ReactNode {
+  return <NotificationsPage />;
+}
+
+function TrashRoute(): ReactNode {
+  const shell = useShell();
+  return <TrashPage onRefresh={shell.fetchTasks} />;
+}
+
+function SettingsRoute(): ReactNode {
+  return <SettingsPage />;
+}
+
+function TeamRoute(): ReactNode {
+  return <TeamPage />;
+}
+
+export const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <ProtectedShell />,
+    children: [
+      { index: true, element: <DashboardRoute /> },
+      { path: 'tasks', element: <TasksRoute /> },
+      { path: 'tasks/:status', element: <TasksRoute /> },
+      { path: 'calendar', element: <CalendarRoute /> },
+      { path: 'favorites', element: <FavoritesRoute /> },
+      { path: 'categories', element: <CategoriesRoute /> },
+      { path: 'templates', element: <TemplatesRoute /> },
+      { path: 'insights', element: <InsightsRoute /> },
+      { path: 'analytics', element: <AnalyticsRoute /> },
+      { path: 'focus', element: <FocusRoute /> },
+      { path: 'notifications', element: <NotificationsRoute /> },
+      { path: 'team', element: <TeamRoute /> },
+      { path: 'trash', element: <TrashRoute /> },
+      { path: 'settings', element: <SettingsRoute /> },
+      { path: '*', element: <Navigate to="/" replace /> },
+    ],
+  },
+]);

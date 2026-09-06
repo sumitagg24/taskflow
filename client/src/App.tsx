@@ -1,67 +1,23 @@
-import { useState, useCallback, useEffect, useDeferredValue, lazy, Suspense, type ReactElement } from 'react';
+import { useState, useCallback, useEffect, useDeferredValue, type ReactElement } from 'react';
+import { RouterProvider } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
 import { ThemeProvider, useTheme } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { getTasks, toTaskArray, deleteTask, restoreTask } from '@/api/tasks';
-import Sidebar from '@/components/layout/Sidebar';
-import Navbar from '@/components/layout/Navbar';
-import Dashboard, { PALETTE_USED_KEY } from '@/components/pages/Dashboard';
-import KanbanBoard from '@/components/KanbanBoard';
-import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
+import { PALETTE_USED_KEY } from '@/components/pages/Dashboard';
+import { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
 import AuthPage from '@/components/pages/AuthPage';
 import ForgotPasswordPage from '@/components/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/components/pages/ResetPasswordPage';
 import VerifyEmailPage from '@/components/pages/VerifyEmailPage';
 import OAuthCallbackPage from '@/components/pages/auth/OAuthCallbackPage';
 import VerificationNoticePage from '@/components/pages/auth/VerificationNoticePage';
-import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
-import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard, LogoMark } from '@/components/ui';
-import { Plus, ListTodo } from 'lucide-react';
-
-const CommandPalette = lazy(() => import('@/components/CommandPalette'));
-const TaskForm = lazy(() => import('@/components/TaskForm'));
-const TaskDetailDrawer = lazy(() => import('@/components/TaskDetailDrawer'));
-const AIAssistant = lazy(() => import('@/components/AIAssistant'));
-const CalendarPage = lazy(() => import('@/components/pages/CalendarPage'));
-const SettingsPage = lazy(() => import('@/components/pages/SettingsPage'));
-const NotificationsPage = lazy(() => import('@/components/pages/NotificationsPage'));
-const FavoritesPage = lazy(() => import('@/components/pages/FavoritesPage'));
-const CategoriesPage = lazy(() => import('@/components/pages/CategoriesPage'));
-const AnalyticsPage = lazy(() => import('@/components/pages/AnalyticsPage'));
-const FocusTimerPage = lazy(() => import('@/components/pages/FocusTimerPage'));
-const TeamPage = lazy(() => import('@/components/pages/TeamPage'));
-const TemplatesPage = lazy(() => import('@/components/pages/TemplatesPage'));
-const InsightsPage = lazy(() => import('@/components/pages/InsightsPage'));
-const TrashPage = lazy(() => import('@/components/pages/TrashPage'));
-
-const LIST_SECTIONS = ['all', 'pending', 'in-progress', 'completed', 'backlog'] as const;
-
-const LIST_TITLES: Record<string, string> = {
-  all: 'All Tasks',
-  pending: 'To Do',
-  'in-progress': 'In Progress',
-  completed: 'Completed',
-  backlog: 'Backlog',
-};
-
-type TaskData = {
-  _id: string;
-  title: string;
-  description?: string;
-  status: string;
-  priority?: string;
-  dueDate?: string;
-  tags?: string[];
-  category?: string;
-  subtasks?: any[];
-  comments?: any[];
-  attachments?: any[];
-  [key: string]: any;
-};
+import { LogoMark } from '@/components/ui';
+import { router, ShellContext, type TaskData } from '@/routes';
 
 function AppContent() {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { resolvedTheme } = useTheme();
 
   const [tasks, setTasks] = useState<TaskData[]>([]);
@@ -69,7 +25,6 @@ function AppContent() {
   const [filters, setFilters] = useState<FiltersValues>({ ...EMPTY_FILTERS });
   const [editTask, setEditTask] = useState<TaskData | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [activeSection, setActiveSection] = useState('dashboard');
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TaskData | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -77,7 +32,8 @@ function AppContent() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The read-only detail drawer, keyed by id so it can fetch the fully
   // populated task itself (comments, dependency titles) rather than reusing the
-  // trimmed copy the list already holds.
+  // trimmed copy the list already holds. Single source of truth is the
+  // `?task=<id>` search param: ProtectedShell mirrors the URL into this state.
   const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
   // Board + palette render the (possibly large) task list: defer re-renders
   // so typing in Filters (300ms debounce upstream) never blocks keystrokes.
@@ -107,40 +63,13 @@ function AppContent() {
     setAuthRoute({ kind: 'none', token: '' });
   }, []);
 
-  // "Open" means read, not edit: the drawer fetches the populated task and
-  // offers Edit from its footer.
-  const openTaskById = useCallback((id: string) => {
-    setDetailTaskId(id);
-  }, []);
-
-  useEffect(() => {
-    // Listen for AI Assistant navigate event
-    const navigateHandler = (e: CustomEvent) => {
-      if (e.detail?.section) {
-        setActiveSection(e.detail.section);
-      }
-    };
-    window.addEventListener('navigate', navigateHandler as EventListener);
-
-    // Open a task in the edit modal (used by notification click-through).
-    const openTaskHandler = (e: CustomEvent) => {
-      if (e.detail?.id) openTaskById(e.detail.id);
-    };
-    window.addEventListener('open-task', openTaskHandler as EventListener);
-
-    return () => {
-      window.removeEventListener('navigate', navigateHandler as EventListener);
-      window.removeEventListener('open-task', openTaskHandler as EventListener);
-    };
-  }, [openTaskById]);
-
   const fetchTasks = useCallback(async () => {
     try {
       const params = Object.fromEntries(
         Object.entries(filters).filter(([, v]) => v && v !== '')
       );
       const { data } = await getTasks(params);
-      setTasks(toTaskArray(data));
+      setTasks(toTaskArray(data) as TaskData[]);
     } catch {
       toast.error('Could not load tasks', {
         action: { label: 'Retry', onClick: () => fetchTasks() },
@@ -156,14 +85,6 @@ function AppContent() {
     } else {
       setLoading(false);
     }
-  }, [isAuthenticated, fetchTasks]);
-
-  // Restoring from Trash (or any cross-page mutation) asks the shell to refetch
-  // rather than trying to thread a task object back up through props.
-  useEffect(() => {
-    const onRefresh = () => { if (isAuthenticated) fetchTasks(); };
-    window.addEventListener('tasks:refresh', onRefresh);
-    return () => window.removeEventListener('tasks:refresh', onRefresh);
   }, [isAuthenticated, fetchTasks]);
 
   // ⌘K / Ctrl-K opens the palette from anywhere. Registered on the window in
@@ -242,8 +163,9 @@ function AppContent() {
         onClick: async () => {
           try {
             const { data } = await restoreTask(task._id);
+            const restored = data as TaskData;
             setTasks((prev) =>
-              prev.some((t) => t._id === data._id) ? prev : [data, ...prev]
+              prev.some((t) => t._id === restored._id) ? prev : [restored, ...prev]
             );
             toast.success('Restored');
           } catch {
@@ -289,13 +211,10 @@ function AppContent() {
 
   // The drawer mutates subtasks, comments, the timer and favourites, so its
   // fresh copy is folded back into the list the board renders from.
-  const handleTaskChanged = useCallback((task: Record<string, any>) => {
-    setTasks((prev) => prev.map((t) => (t._id === task._id ? ({ ...t, ...task } as TaskData) : t)));
+  const handleTaskChanged = useCallback((task: Record<string, unknown>) => {
+    const incoming = task as unknown as TaskData;
+    setTasks((prev) => prev.map((t) => (t._id === incoming._id ? ({ ...t, ...incoming }) : t)));
   }, []);
-
-  const handleNavigate = (section: string) => {
-    setActiveSection(section);
-  };
 
   // --- Auth routing ---
   if (!isAuthenticated) {
@@ -335,202 +254,40 @@ function AppContent() {
     );
   }
 
-  const renderContent = () => {
-    if (LIST_SECTIONS.includes(activeSection as (typeof LIST_SECTIONS)[number])) {
-      const scoped = activeSection === 'all' ? deferredTasks : deferredTasks.filter((t) => t.status === activeSection);
-      const filtersActive = Object.values(filters).some((v) => v !== '');
-
-      return (
-        <div className="animate-fadeIn p-4 lg:p-6">
-          <div className="mb-4 flex items-end justify-between gap-3">
-            <h2 className="font-display text-2xl text-gray-900 dark:text-gray-100">
-              {LIST_TITLES[activeSection]}
-            </h2>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'}
-            </span>
-            <p className="sr-only" role="status">
-              {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'} shown
-            </p>
-          </div>
-          <Filters filters={filters} onChange={setFilters} />
-          {loading ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <SkeletonCard />
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ) : scoped.length === 0 ? (
-            <EmptyState
-              icon={<ListTodo size={22} />}
-              title={filtersActive ? 'No tasks match these filters' : `Nothing in ${LIST_TITLES[activeSection]}`}
-              description={
-                filtersActive
-                  ? 'Try widening the filters, or clear them to see everything.'
-                  : 'Create your first task here and it will show up instantly.'
-              }
-              action={
-                filtersActive ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => setFilters({ ...EMPTY_FILTERS })}
-                  >
-                    Clear filters
-                  </Button>
-                ) : (
-                  <Button icon={<Plus size={16} />} onClick={handleNewTask}>New task</Button>
-                )
-              }
-            />
-          ) : (
-            <KanbanBoard
-              tasks={scoped}
-              onRefresh={fetchTasks}
-              onDelete={handleDeleteRequest}
-            />
-          )}
-        </div>
-      );
-    }
-
-    switch (activeSection) {
-      case 'calendar':
-        return <CalendarPage />;
-
-      case 'favorites':
-        return <FavoritesPage />;
-
-      case 'categories':
-        return <CategoriesPage />;
-
-      case 'templates':
-        return <TemplatesPage />;
-
-      case 'insights':
-        return <InsightsPage />;
-
-      case 'analytics':
-        return <AnalyticsPage />;
-
-      case 'focus':
-        return <FocusTimerPage />;
-
-      case 'notifications':
-        return <NotificationsPage />;
-
-      case 'trash':
-        return <TrashPage />;
-
-      case 'settings':
-        return <SettingsPage />;
-
-      case 'team':
-        return <TeamPage />;
-
-      case 'dashboard':
-      default:
-        return <Dashboard tasks={tasks} loading={loading} onRefresh={fetchTasks} onEditTask={handleEdit} onDeleteTask={handleDeleteRequest} onNewTask={handleNewTask} onNavigate={handleNavigate} />;
-    }
-  };
-
   return (
     <NotificationProvider>
-      <div className="flex min-h-screen">
-        <a
-          href="#task-main"
-          className="sr-only-focusable absolute z-[60] m-2 rounded-lg bg-yellow-400 px-3 py-2 text-sm font-medium text-gray-950"
-        >
-          Skip to tasks
-        </a>
-        <Sidebar activeSection={activeSection} onNavigate={handleNavigate} />
-
-        <div className="flex flex-1 flex-col min-w-0">
-          <EmailVerificationBanner />
-          <Navbar
-            onNewTask={handleNewTask}
-            onOpenCommandPalette={openPalette}
-            onOpenAIAssistant={() => setShowAIAssistant(true)}
-            onNavigate={handleNavigate}
-            activeSection={activeSection}
-          />
-
-          <main id="task-main" className="flex-1 overflow-auto" key={activeSection}>
-            <Suspense fallback={<PageLoader />}>
-              {renderContent()}
-            </Suspense>
-          </main>
-        </div>
-
-        <Suspense fallback={null}>
-          <Modal
-            isOpen={showForm}
-            onClose={() => { setShowForm(false); setEditTask(null); }}
-            title={editTask ? 'Edit Task' : 'Create Task'}
-            subtitle={editTask ? 'Update task details' : 'Add a new task to your workspace'}
-            size="xl"
-          >
-            {showForm && (
-              <TaskForm
-                existingTask={editTask}
-                onSuccess={handleFormSubmit}
-                onCancel={() => { setShowForm(false); setEditTask(null); }}
-              />
-            )}
-          </Modal>
-        </Suspense>
-
-        <DeleteConfirmModal
-          isOpen={!!deleteTarget}
-          onClose={() => { if (!deleting) setDeleteTarget(null); }}
-          onConfirm={handleDeleteConfirm}
-          itemName={deleteTarget?.title}
-          loading={deleting}
-        />
-
-        <Suspense fallback={null}>
-          {detailTaskId && (
-            <TaskDetailDrawer
-              taskId={detailTaskId}
-              onClose={() => setDetailTaskId(null)}
-              onChanged={handleTaskChanged}
-              onEdit={(task) => { setDetailTaskId(null); handleEdit(task as TaskData); }}
-              onDelete={(task) => { setDetailTaskId(null); handleDeleteRequest(task as TaskData); }}
-            />
-          )}
-        </Suspense>
-
-        <button
-          onClick={handleNewTask}
-          className="fixed right-5 bottom-5 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
-          aria-label="Create new task"
-        >
-          <Plus size={22} strokeWidth={2.25} aria-hidden="true" />
-        </button>
-
-        <Suspense fallback={null}>
-          <AIAssistant isOpen={showAIAssistant} onClose={() => setShowAIAssistant(false)} />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          <CommandPalette
-            isOpen={paletteOpen}
-            onClose={() => setPaletteOpen(false)}
-            tasks={deferredTasks}
-            onNavigate={handleNavigate}
-            onOpenTask={openTaskById}
-            onNewTask={handleNewTask}
-            onOpenAIAssistant={() => setShowAIAssistant(true)}
-          />
-        </Suspense>
-
-        <Toaster
-          position="bottom-right"
-          richColors
-          closeButton
-          theme={resolvedTheme}
-          toastOptions={{ duration: 3000 }}
-        />
-      </div>
+      <ShellContext.Provider
+        value={{
+          tasks,
+          deferredTasks,
+          loading,
+          filters,
+          setFilters,
+          editTask,
+          setEditTask,
+          showForm,
+          setShowForm,
+          deleteTarget,
+          setDeleteTarget,
+          deleting,
+          paletteOpen,
+          setPaletteOpen,
+          detailTaskId,
+          setDetailTaskId,
+          showAIAssistant,
+          setShowAIAssistant,
+          fetchTasks,
+          handleDeleteRequest,
+          handleDeleteConfirm,
+          handleEdit,
+          handleNewTask,
+          handleFormSubmit,
+          handleTaskChanged,
+          openPalette,
+        }}
+      >
+        <RouterProvider router={router} />
+      </ShellContext.Provider>
     </NotificationProvider>
   );
 }

@@ -32,7 +32,7 @@ function relativeDay(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export default function TrashPage() {
+export default function TrashPage({ onRefresh }: { onRefresh?: () => void }) {
   const [tasks, setTasks] = useState<TrashedTask[]>([]);
   const [retentionDays, setRetentionDays] = useState(30);
   const [loading, setLoading] = useState(true);
@@ -74,9 +74,9 @@ export default function TrashPage() {
       await restoreTask(task._id);
       setTasks((prev) => prev.filter((t) => t._id !== task._id));
       toast.success(`“${task.title}” restored`);
-      // Other views hold their own copy of the task list, so tell them to refetch
-      // rather than trying to thread the restored task back through props.
-      window.dispatchEvent(new CustomEvent('tasks:refresh'));
+      // Other views hold their own copy of the task list, so ask the shell to
+      // refetch rather than trying to thread the restored task back through props.
+      onRefresh?.();
     } catch {
       toast.error('Could not restore task');
     } finally {

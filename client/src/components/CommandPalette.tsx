@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowRightCircle, BarChart3, BookmarkPlus, Calendar, CheckCircle2, ClipboardList,
@@ -24,10 +25,48 @@ interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   tasks: PaletteTask[];
-  onNavigate: (section: string) => void;
-  onOpenTask: (id: string) => void;
+  onNavigate?: (section: string) => void;
+  onOpenTask?: (id: string) => void;
   onNewTask: () => void;
   onOpenAIAssistant?: () => void;
+}
+
+function routeFor(section: string): string {
+  switch (section) {
+    case 'dashboard':
+      return '/';
+    case 'all':
+      return '/tasks';
+    case 'pending':
+    case 'in-progress':
+    case 'completed':
+    case 'backlog':
+      return `/tasks/${section}`;
+    case 'calendar':
+      return '/calendar';
+    case 'favorites':
+      return '/favorites';
+    case 'categories':
+      return '/categories';
+    case 'templates':
+      return '/templates';
+    case 'insights':
+      return '/insights';
+    case 'analytics':
+      return '/analytics';
+    case 'focus':
+      return '/focus';
+    case 'notifications':
+      return '/notifications';
+    case 'team':
+      return '/team';
+    case 'trash':
+      return '/trash';
+    case 'settings':
+      return '/settings';
+    default:
+      return '/';
+  }
 }
 
 type Command = {
@@ -71,6 +110,8 @@ export default function CommandPalette({
   useFocusTrap(panelRef, isOpen, onClose);
   const { theme, setTheme, resolvedTheme } = useTheme();
   const { logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (isOpen) {
@@ -82,10 +123,11 @@ export default function CommandPalette({
 
   const go = useCallback(
     (section: string) => () => {
-      onNavigate(section);
+      onNavigate?.(section);
+      navigate(routeFor(section));
       onClose();
     },
-    [onNavigate, onClose]
+    [onNavigate, navigate, onClose]
   );
 
   const commands = useMemo<Command[]>(() => {
@@ -266,10 +308,11 @@ export default function CommandPalette({
           /* storage disabled — recents are a nicety, not a requirement */
         }
         onClose();
-        onOpenTask(row.task._id);
+        onOpenTask?.(row.task._id);
+        navigate(`${location.pathname}?task=${encodeURIComponent(row.task._id)}`);
       }
     },
-    [onClose, onOpenTask]
+    [onClose, onOpenTask, navigate, location.pathname]
   );
 
   useEffect(() => {

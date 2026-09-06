@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
@@ -12,8 +13,73 @@ import {
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeSection: string;
-  onNavigate: (section: string) => void;
+  activeSection?: string;
+  onNavigate?: (section: string) => void;
+}
+
+function sectionToPath(section: string): string {
+  switch (section) {
+    case 'dashboard':
+      return '/';
+    case 'all':
+      return '/tasks';
+    case 'pending':
+    case 'in-progress':
+    case 'completed':
+    case 'backlog':
+      return `/tasks/${section}`;
+    case 'calendar':
+      return '/calendar';
+    case 'favorites':
+      return '/favorites';
+    case 'categories':
+      return '/categories';
+    case 'templates':
+      return '/templates';
+    case 'insights':
+      return '/insights';
+    case 'analytics':
+      return '/analytics';
+    case 'focus':
+      return '/focus';
+    case 'notifications':
+      return '/notifications';
+    case 'team':
+      return '/team';
+    case 'trash':
+      return '/trash';
+    case 'settings':
+      return '/settings';
+    default:
+      return '/';
+  }
+}
+
+function sectionFromPath(pathname: string): string {
+  if (pathname === '/') return 'dashboard';
+  if (pathname === '/tasks') return 'all';
+  const taskMatch = pathname.match(/^\/tasks\/(pending|in-progress|completed|backlog)\/?$/);
+  if (taskMatch) return taskMatch[1];
+  const single = pathname.match(/^\/([a-z-]+)\/?$/);
+  if (single) {
+    const s = single[1];
+    if (
+      s === 'calendar' ||
+      s === 'favorites' ||
+      s === 'categories' ||
+      s === 'templates' ||
+      s === 'insights' ||
+      s === 'analytics' ||
+      s === 'focus' ||
+      s === 'notifications' ||
+      s === 'team' ||
+      s === 'trash' ||
+      s === 'settings'
+    ) {
+      return s;
+    }
+  }
+  return 'dashboard';
 }
 
 type NavEntry =
@@ -47,12 +113,23 @@ const navItems: NavEntry[] = [
 const COLLAPSE_KEY = 'taskflow:sidebar-collapsed';
 
 export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Active state follows the URL (refresh/deep-link safe); the legacy prop is
+  // kept optional for callers that still pass it.
+  void activeSection;
+  const currentSection = sectionFromPath(location.pathname);
   const [collapsed, setCollapsed] = useState(
     () => typeof localStorage !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1'
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  const go = (section: string) => {
+    onNavigate?.(section);
+    navigate(sectionToPath(section));
+    setMobileOpen(false);
+  };
 
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
@@ -86,15 +163,14 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
         }
 
         const Icon = entry.icon;
-        const isActive = activeSection === entry.id;
+        const isActive = currentSection === entry.id;
         const badge = entry.id === 'notifications' && unreadCount > 0 ? unreadCount : 0;
 
         const button = (
           <button
             type="button"
             onClick={() => {
-              onNavigate(entry.id);
-              setMobileOpen(false);
+              go(entry.id);
             }}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
@@ -197,7 +273,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
               </button>
             </Tooltip>
             <Tooltip content={user.name} side="right" delay={120}>
-              <button type="button" onClick={() => onNavigate('settings')} aria-label="Open settings">
+              <button type="button" onClick={() => go('settings')} aria-label="Open settings">
                 <Avatar name={user.name} size="sm" />
               </button>
             </Tooltip>

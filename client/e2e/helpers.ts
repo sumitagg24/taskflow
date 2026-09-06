@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { BrowserContext, Page } from '@playwright/test';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -144,8 +144,25 @@ export async function getVerificationToken(user: { email: string }) {
   return null; // Test-specific handling below
 }
 
-/** Store auth tokens and user info in localStorage for browser sessions. */
+/**
+ * Seed the browser with an authenticated session.
+ *
+ * The app is cookie-authenticated (httpOnly `accessToken`/`refreshToken` +
+ * readable `tf_session` flag); it ignores tokens in localStorage on boot, so
+ * the session must be installed as real cookies via `context.addCookies`.
+ * Works before any navigation when given an explicit domain.
+ *
+ * localStorage tokens are STILL written for backward compatibility: existing
+ * specs read them for direct API calls (the api client sends them as a Bearer
+ * fallback), and the server keeps accepting them.
+ */
 export async function setAuthInStorage(page: Page, auth: { accessToken: string; refreshToken: string; user: any }) {
+  const context: BrowserContext = page.context();
+  await context.addCookies([
+    { name: 'accessToken', value: auth.accessToken, domain: 'localhost', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' },
+    { name: 'refreshToken', value: auth.refreshToken, domain: 'localhost', path: '/', httpOnly: true, secure: false, sameSite: 'Lax' },
+    { name: 'tf_session', value: '1', domain: 'localhost', path: '/', httpOnly: false, secure: false, sameSite: 'Lax' },
+  ]);
   await page.evaluate(({ accessToken, refreshToken, user }) => {
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
@@ -155,8 +172,9 @@ export async function setAuthInStorage(page: Page, auth: { accessToken: string; 
   }, auth);
 }
 
-/** Clear auth from localStorage. */
+/** Clear auth: drop session cookies (the app's real session) + legacy localStorage tokens. */
 export async function clearAuthInStorage(page: Page) {
+  await page.context().clearCookies();
   await page.evaluate(() => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');

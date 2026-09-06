@@ -398,17 +398,34 @@ working.
 ## Testing
 
 - **Server:** `npm run test --prefix server` — Jest + Supertest over an
-  in-memory MongoDB (6 suites, 177 tests: auth, tasks incl. pagination/search/indexes,
-  growth, security, system, notification triggers).
+  in-memory MongoDB (15 suites, 269 tests: auth, tasks incl. pagination/search/indexes,
+  growth, security, system, notification triggers). Logger is `silent` under
+  `NODE_ENV=test` unless `LOG_LEVEL` is set explicitly.
 - **Client:** `npm run test --prefix client` — Vitest (11 files, 160 tests:
-  API client, Kanban windowing/keyboard, drawer, filters, UI kit, plan/referral libs)
-  plus `npm run typecheck --prefix client` and `npm run build --prefix client`.
+  API client, Kanban windowing/keyboard, drawer, filters, UI kit, plan/referral libs).
+- **Gate commands (run all before a PR):**
+  ```bash
+  npm run typecheck --prefix client   # strict tsc --noEmit
+  npm run build --prefix client       # production bundle
+  npm run test --prefix server        # Jest suites
+  npm run test --prefix client        # Vitest suites
+  npm run test:e2e                    # Playwright: setup + desktop (chromium) + mobile
+  npm run test:e2e:mobile             # Playwright: mobile (Pixel 7, 390x844) only
+  npm audit --prefix server           # dependency audit
+  npm audit --prefix client           # dependency audit
+  ```
 - **Live smoke test:** boots the real server against a real database and exercises
   29 checks end-to-end — register → CRUD → pagination/search → trash lifecycle →
   notifications/growth/templates/calendar/timer → docs/SPA → Socket.IO realtime
   broadcast. Currently **29/29 passing**.
 - **E2E/screenshots:** Playwright (`client/e2e`) drives the real UI for the
-  screenshots above; OAuth suites stay env-gated.
+  screenshots above; OAuth suites stay env-gated. The `setup` project registers
+  a fresh verified user per run (flips `emailVerified` via `MONGO_URI` from
+  `server/.env`) and persists cookies to `client/e2e/.auth/user.json` for the
+  `chromium` and `mobile` projects. `a11y.spec.ts` (axe-core, serious+critical
+  only) and `smoke-auth.spec.ts` (fixture → logout → UI login) ride the fixture;
+  older specs seed their own cookies via `helpers.setAuthInStorage`.
+  `GET /api/health` also reports `db: connected|connecting|disconnected` readiness.
 
 Run server tests before opening a pull request.
 

@@ -16,8 +16,29 @@ export default defineConfig({
   },
   projects: [
     {
+      // Cookie-based auth fixture: registers a fresh verified user via the
+      // API and persists the browser cookie jar to e2e/.auth/user.json.
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+    },
+    {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
+      },
+      dependencies: ['setup'],
+    },
+    {
+      name: 'mobile',
+      use: {
+        ...devices['Pixel 7'],
+        // Pin the handset viewport so mobile assertions are deterministic
+        // across Playwright device-descriptor updates.
+        viewport: { width: 390, height: 844 },
+        storageState: 'e2e/.auth/user.json',
+      },
+      dependencies: ['setup'],
     },
   ],
   webServer: process.env.CI

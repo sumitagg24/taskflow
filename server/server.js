@@ -206,11 +206,14 @@ app.use(express.static(clientDistPath));
 
 // ===== Health Check (rate limited) =====
 app.get('/api/health', apiLimiter, (req, res) => {
+  // mongoose readyState: 0 disconnected, 1 connected, 2 connecting, 3 disconnecting.
+  const readyState = require('mongoose').connection.readyState;
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     requestId: req.requestId,
+    db: readyState === 1 ? 'connected' : readyState === 2 ? 'connecting' : 'disconnected',
   });
 });
 

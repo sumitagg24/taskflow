@@ -2,8 +2,12 @@
 // In production, logs are JSON; in dev/test they are human-readable.
 // Set LOG_LEVEL to control verbosity: error, warn, info, debug (default: info).
 
-const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
-const CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS.info;
+const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3, silent: 99 };
+// Quiet under test (Jest output stays readable) unless the operator explicitly
+// opts into verbosity via LOG_LEVEL. `silent` outranks every real level, so
+// emit() short-circuits before touching console.
+const DEFAULT_LEVEL = process.env.NODE_ENV === 'test' ? 'silent' : 'info';
+const CURRENT_LEVEL = LOG_LEVELS[process.env.LOG_LEVEL] ?? LOG_LEVELS[DEFAULT_LEVEL];
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -16,6 +20,7 @@ function serialize(args) {
 }
 
 function emit(level, ...args) {
+  if (CURRENT_LEVEL >= LOG_LEVELS.silent) return;
   if (LOG_LEVELS[level] > CURRENT_LEVEL) return;
   const entry = { timestamp: new Date().toISOString(), level, ...serialize(args) };
   // In production use JSON, otherwise use the default console method for readability

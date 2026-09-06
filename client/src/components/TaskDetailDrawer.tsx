@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useIsPhone } from '@/hooks/useMediaQuery';
 import { toast } from 'sonner';
 import {
   CalendarDays,
@@ -93,28 +94,6 @@ const timeAgo = (iso: string) => {
 /** A running session is one with a start and no end yet. */
 const activeSession = (task: AnyTask | null) =>
   (task?.timeSessions || []).some((s: AnyTask) => s.start && !s.end);
-
-/**
- * Phone detection without new deps. There is no shared `useMediaQuery` hook
- * in the codebase, so this tiny local one listens to the Tailwind `md:`
- * breakpoint directly (`max-width: 767px`) and re-renders on change.
- */
-function useIsPhone(): boolean {
-  const query = '(max-width: 767px)';
-  const matches = () =>
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia(query).matches;
-  const [isPhone, setIsPhone] = useState<boolean>(matches);
-  useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-    const mq = window.matchMedia(query);
-    const onChange = () => setIsPhone(mq.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return isPhone;
-}
 
 /** Section shell: a labelled block with an icon, used for every panel below. */
 function Section({

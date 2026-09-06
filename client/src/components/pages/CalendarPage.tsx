@@ -6,6 +6,7 @@ import { getTasks, toTaskArray, createTask, calendarAPI } from '@/api/tasks';
 import { Modal } from '@/components/ui/Modal';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { toast } from 'sonner';
+import { PHONE_QUERY } from '@/hooks/useMediaQuery';
 import {
   ChevronLeft, ChevronRight, Calendar, Plus,
   ListTodo, Clock, MoreHorizontal, Download,
@@ -29,11 +30,9 @@ export default function CalendarPage() {
   const [loadError, setLoadError] = useState(false);
   // Phones open directly on today's agenda (the selected-day panel below)
   // instead of a bare month grid; desktop keeps the previous null default.
-  // No shared `useMediaQuery` hook exists, so this one read of the Tailwind
-  // `md:` breakpoint at init is deliberately local.
   const [selectedDay, setSelectedDay] = useState<number | null>(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return null;
-    if (!window.matchMedia('(max-width: 767px)').matches) return null;
+    if (!window.matchMedia(PHONE_QUERY).matches) return null;
     return new Date().getDate();
   });
   const [showAddModal, setShowAddModal] = useState(false);

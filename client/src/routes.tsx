@@ -178,7 +178,9 @@ function ProtectedShell(): ReactNode {
           onOpenAIAssistant={() => shell.setShowAIAssistant(true)}
         />
 
-        <main id="task-main" className="flex-1 overflow-auto" key={location.pathname}>
+        {/* Bottom clearance on phones so page content never slides under the
+            bottom navigation bar (bar height + safe-area). */}
+        <main id="task-main" className="flex-1 overflow-auto pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0" key={location.pathname}>
           <Suspense fallback={<PageLoader />}>
             <Outlet />
           </Suspense>
@@ -229,9 +231,11 @@ function ProtectedShell(): ReactNode {
         )}
       </Suspense>
 
+      {/* One-thumb create on phones. Lifted above the bottom navigation bar
+          (plus safe-area) so the two never overlap. */}
       <button
         onClick={shell.handleNewTask}
-        className="fixed right-5 bottom-5 z-40 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
+        className="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
         aria-label="Create new task"
       >
         <Plus size={22} strokeWidth={2.25} aria-hidden="true" />

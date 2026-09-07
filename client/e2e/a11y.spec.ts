@@ -49,12 +49,12 @@ test.describe('Accessibility — authenticated dashboard', () => {
       await page.getByRole('button', { name: 'Open navigation menu' }).click();
       // Wait for the drawer to open; then the Sign out button is visible.
       await expect(page.getByRole('dialog', { name: 'Navigation' })).toBeVisible({ timeout: 10000 });
-      await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 10000 });
-
-      // Now scan the entire page with axe — but note that the drawer is open,
+      await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 10000 });        // Now scan the entire page with axe — but note that the drawer is open,
       // so we must close it before scanning to avoid scanning the overlay.
       await page.getByRole('button', { name: 'Close navigation menu' }).click();
       await expect(page.getByRole('dialog', { name: 'Navigation' })).toBeHidden({ timeout: 5000 });
+      // Give the animation a beat to finish so axe doesn't catch the closing overlay.
+      await page.waitForTimeout(150);
     } else {
       await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 15000 });
     }

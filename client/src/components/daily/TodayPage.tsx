@@ -466,19 +466,34 @@ export default function TodayPage({ onRefresh }: { onRefresh?: () => void }) {
           hint="Your three intentional priorities. Chosen by you, never auto-filled."
           count={sections.topThree.length}
           empty={
-            <EmptyState
-              size="sm"
-              icon={<Crown size={20} aria-hidden="true" />}
-              title="No Top Three yet"
-              description="Pick up to three — everything else waits in Scheduled or Flexible."
-              action={
-                topCandidates.length > 0 ? (
-                  <Button size="sm" onClick={() => setAddTopOpen(true)} icon={<Plus size={14} aria-hidden="true" />}>
-                    Choose priorities
-                  </Button>
-                ) : undefined
-              }
-            />
+            <>
+              <EmptyState
+                size="sm"
+                icon={<Crown size={20} aria-hidden="true" />}
+                title="No Top Three yet"
+                description="Pick up to three — everything else waits in Scheduled or Flexible."
+                action={
+                  topCandidates.length > 0 ? (
+                    <Button size="sm" onClick={() => setAddTopOpen(true)} icon={<Plus size={14} aria-hidden="true" />}>
+                      Choose priorities
+                    </Button>
+                  ) : undefined
+                }
+              />
+              {/* Product ghost: three dashed priority slots. */}
+              <div aria-hidden="true" className="mt-2 space-y-2 opacity-60">
+                {[1, 2, 3].map((n) => (
+                  <div
+                    key={n}
+                    className="flex items-center gap-2 rounded-xl border border-dashed border-gray-300 p-3 dark:border-gray-700"
+                  >
+                    <div className="skeleton h-4 w-4 shrink-0" />
+                    <div className="skeleton h-4 flex-1" />
+                    <span className="text-[11px] tabular-nums text-gray-400">0{n}</span>
+                  </div>
+                ))}
+              </div>
+            </>
           }
         >
           {sections.topThree.map((t, i) => (

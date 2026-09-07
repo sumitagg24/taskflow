@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Plus, Inbox, Keyboard } from 'lucide-react';
 import { toast } from 'sonner';
 import { dailyAPI, type Task } from '@/api/tasks';
+import { addDraft } from '@/lib/offlineDrafts';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 
@@ -50,7 +51,11 @@ export default function QuickCapture({
       const value = title.trim();
       if (!value || busy) return;
       if (!navigator.onLine) {
-        setError('You are offline — reconnect and try again. Nothing was saved.');
+        // Offline is a queue, not an error: the draft syncs on reconnect.
+        addDraft(value);
+        toast.success('Saved offline — lands in your Inbox on reconnect.');
+        setTitle('');
+        onClose();
         return;
       }
       setBusy(true);
@@ -109,8 +114,8 @@ export default function QuickCapture({
           Press Q anywhere to open this · Enter to save · Esc to close
         </p>
         {offline && (
-          <p role="alert" className="rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
-            Offline — quick capture needs a connection. Your text stays here until you reconnect.
+          <p role="status" className="rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
+            Offline — saving here queues it for your Inbox on reconnect.
           </p>
         )}
         {error && (

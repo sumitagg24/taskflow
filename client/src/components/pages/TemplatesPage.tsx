@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Search, Copy, Trash2, Share2, Plus, Loader2, Sparkles } from 'lucide-react';
+import { Search, Copy, Trash2, Share2, Plus, Sparkles } from 'lucide-react';
 import { templatesAPI, createTask } from '@/api/tasks';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import StarterTemplates from '@/components/daily/StarterTemplates';
 import { Button } from '@/components/ui/Button';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { SkeletonCard } from '@/components/ui/Feedback';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
 
@@ -157,8 +158,13 @@ export default function TemplatesPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 size={24} className="animate-spin text-yellow-500" />
+        <div role="status" aria-live="polite" aria-busy="true">
+          <span className="sr-only-focusable">Loading templates</span>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
         </div>
       ) : filtered.length === 0 ? (
         <div className="card p-12 text-center">

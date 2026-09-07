@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { useOfflineDrafts } from '@/lib/offlineDrafts';
 import { ShellContext } from '@/routes';
 import BottomNav from '@/components/layout/BottomNav';
 import MoreSheet from '@/components/layout/MoreSheet';
@@ -141,6 +142,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
   
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  const { count: draftCount } = useOfflineDrafts();
   // Nullable on purpose: Sidebar must not crash if ever rendered outside the
   // shell provider (login screen, isolated tests). Palette then falls back to
   // the documented Ctrl/⌘+K shortcut the App shell listens for on window.
@@ -192,6 +194,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
         const Icon = entry.icon;
         const isActive = currentSection === entry.id;
         const badge = entry.id === 'notifications' && unreadCount > 0 ? unreadCount : 0;
+        const pendingSync = entry.id === 'inbox' ? draftCount : 0;
 
         const button = (
           <button
@@ -234,6 +237,19 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
                 )}
               >
                 {badge > 99 ? '99+' : badge}
+              </span>
+            )}
+            {/* Offline drafts waiting to sync — the honest "N to sync" badge. */}
+            {pendingSync > 0 && (
+              <span
+                title={`${pendingSync} offline ${pendingSync === 1 ? 'draft' : 'drafts'} will sync on reconnect`}
+                className={cn(
+                  'flex h-4.5 min-w-4.5 items-center justify-center rounded-full border border-yellow-500/50 px-1 text-[10px] font-bold text-yellow-700 dark:text-yellow-300',
+                  isCollapsed ? 'absolute right-1.5 bottom-1' : 'ml-auto',
+                  badge > 0 && !isCollapsed && 'ml-1'
+                )}
+              >
+                {pendingSync > 99 ? '99+' : pendingSync}
               </span>
             )}
           </button>

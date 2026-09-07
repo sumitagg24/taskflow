@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
-  Inbox as InboxIcon, Loader2, AlertCircle, RefreshCw, WifiOff,
+  Inbox as InboxIcon, AlertCircle, RefreshCw, WifiOff, CloudUpload,
   CalendarDays, Flag, FolderInput, Sun, Archive, Trash2, CheckSquare, Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dailyAPI, updateTask, deleteTask, restoreTask, type Task } from '@/api/tasks';
+import { useOfflineDrafts } from '@/lib/offlineDrafts';
 import { Card, Button, EmptyState, StatusBadge, PriorityBadge, LoadingRegion, SkeletonCard, PageHeader } from '@/components/ui';
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'] as const;
@@ -25,6 +26,7 @@ export default function InboxPage({ onRefresh, onNavigate }: { onRefresh?: () =>
   const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const { count: draftCount } = useOfflineDrafts();
 
   const fetchInbox = useCallback(async () => {
     setLoadError(null);
@@ -282,6 +284,12 @@ export default function InboxPage({ onRefresh, onNavigate }: { onRefresh?: () =>
           Offline — triage is paused until you reconnect. Your Inbox is shown as last seen.
         </p>
       )}
+      {draftCount > 0 && (
+        <p role="status" className="flex items-center gap-2 rounded-xl border border-yellow-500/40 px-4 py-2 text-sm text-yellow-800 dark:text-yellow-300">
+          <CloudUpload size={14} aria-hidden="true" />
+          {draftCount} offline {draftCount === 1 ? 'draft' : 'drafts'} will land here on reconnect.
+        </p>
+      )}
       {tasks.length > 0 && (
         <Card padding="md">
           <div className="flex items-center gap-2">
@@ -303,11 +311,24 @@ export default function InboxPage({ onRefresh, onNavigate }: { onRefresh?: () =>
         )}
 
       {tasks.length === 0 ? (
-        <EmptyState
-          icon={<InboxIcon size={22} aria-hidden="true" />}
-          title="Inbox is clear"
-          description="Quick captures land here with just a title. Press Q anywhere to capture the next thing."
-        />
+        <>
+          <EmptyState
+            icon={<InboxIcon size={22} aria-hidden="true" />}
+            title="Inbox is clear"
+            description="Quick captures land here with just a title. Press Q anywhere to capture the next thing."
+          />
+          {/* Product ghost: the shape of a triaged row, so empty reads as a
+              state with a future rather than a blank wall. */}
+          <div aria-hidden="true" className="mx-auto w-full max-w-md space-y-2 opacity-60">
+            <div className="rounded-xl border border-dashed border-gray-300 p-3 dark:border-gray-700">
+              <div className="skeleton h-4 w-2/3" />
+              <div className="mt-2 flex gap-1.5">
+                <div className="skeleton h-5 w-16" />
+                <div className="skeleton h-5 w-20" />
+              </div>
+            </div>
+          </div>
+        </>
       ) : (
         <ul className="space-y-2" aria-label="Untriaged Inbox tasks">
           {tasks.map((task) => {

@@ -11,7 +11,7 @@ import { PHONE_QUERY } from '@/hooks/useMediaQuery';
 import {
   ChevronLeft, ChevronRight, Calendar, Plus,
   ListTodo, Clock, MoreHorizontal, Download,
-  ExternalLink, CalendarPlus, Loader2, AlertCircle, RefreshCw,
+  ExternalLink, CalendarPlus, AlertCircle, RefreshCw,
 } from 'lucide-react';
 
 /** Minimal shape of a task as this page uses it (typed; no `any` below). */
@@ -110,8 +110,16 @@ export default function CalendarPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 size={24} className="animate-spin text-yellow-500" />
+      <div role="status" aria-live="polite" aria-busy="true" className="p-4 lg:p-6">
+        <span className="sr-only-focusable">Loading calendar</span>
+        <div className="card p-6">
+          <div className="skeleton mb-4 h-6 w-40" aria-hidden="true" />
+          <div className="grid grid-cols-7 gap-1" aria-hidden="true">
+            {Array.from({ length: 35 }).map((_, i) => (
+              <div key={i} className="skeleton h-20" />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }

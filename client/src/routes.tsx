@@ -8,7 +8,7 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom';
-import { Toaster } from 'sonner';
+import { Toaster, toast } from 'sonner';
 import { useTheme } from '@/context/ThemeContext';
 import Sidebar from '@/components/layout/Sidebar';
 import Navbar from '@/components/layout/Navbar';
@@ -18,6 +18,7 @@ import KanbanBoard from '@/components/KanbanBoard';
 import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
 import { Modal, PageLoader, EmptyState, Button, SkeletonCard, ShortcutsModal, PageHeader, SegmentedControl } from '@/components/ui';
 import { QUICK_CAPTURE_EVENT } from '@/lib/daily';
+import { flushDrafts, readDrafts } from '@/lib/offlineDrafts';
 import { Plus, ListTodo } from 'lucide-react';
 
 const CommandPalette = lazy(() => import('@/components/CommandPalette'));
@@ -201,6 +202,30 @@ function ProtectedShell(): ReactNode {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener(QUICK_CAPTURE_EVENT, onCaptureEvent);
     };
+  }, []);
+
+  // Offline drafts saved from quick capture sync on reconnect, oldest first.
+  useEffect(() => {
+    const onOnline = async () => {
+      if (readDrafts().length === 0) return;
+      const { synced, pending } = await flushDrafts((t) => {
+        shell.handleFormSubmit(t as unknown as TaskData);
+      });
+      if (synced > 0) {
+        toast.success(
+          pending > 0
+            ? `${synced} queued ${synced === 1 ? 'task' : 'tasks'} synced — ${pending} still waiting`
+            : `${synced} queued ${synced === 1 ? 'task' : 'tasks'} landed in your Inbox`
+        );
+        shell.fetchTasks();
+      } else if (pending > 0) {
+        toast.error('Reconnect failed to sync — will retry next time.');
+      }
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+    // shell.* are stable callbacks from context; re-subscribing is harmless.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

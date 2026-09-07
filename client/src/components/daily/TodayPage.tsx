@@ -11,7 +11,7 @@ import {
 import {
   MAX_TOP_THREE, todayKeyLocal, destinationAfterTopRemoval, partitionToday,
 } from '@/lib/daily';
-import { Card, CardHeader, Button, EmptyState, StatusBadge, PriorityBadge, LoadingRegion, SkeletonCard } from '@/components/ui';
+import { Card, CardHeader, Button, EmptyState, StatusBadge, PriorityBadge, LoadingRegion, SkeletonCard, PageHeader } from '@/components/ui';
 import EndOfDayDialog from '@/components/daily/EndOfDayDialog';
 
 type SectionId = 'top' | 'scheduled' | 'flexible';
@@ -404,35 +404,34 @@ export default function TodayPage({ onRefresh }: { onRefresh?: () => void }) {
       </p>
       <p id="today-reorder-status" className="sr-only" role="status" aria-live="polite" />
 
-      <Card padding="lg">
-        <CardHeader
-          eyebrow={`Today · ${new Date(`${payload.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
-          title={incompleteCount === 0 ? 'Today is clear' : `${incompleteCount} for today`}
-          subtitle="Top Three is yours to choose — we never auto-fill it. Drag or use arrow buttons to reorder."
-          action={
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" size="sm" onClick={() => { setLoading(true); fetchToday(); }} icon={<RefreshCw size={14} aria-hidden="true" />}>
-                Refresh
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => setShowEod(true)}
-                disabled={incompleteCount === 0}
-                icon={<MoonStar size={14} aria-hidden="true" />}
-              >
-                End day
-              </Button>
-            </div>
-          }
-        />
-        {offline && (
-          <p role="alert" className="mt-3 flex items-center gap-2 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
-            <WifiOff size={14} aria-hidden="true" />
-            Offline — Today is read-only until you reconnect.
-          </p>
-        )}
-      </Card>
+      <PageHeader
+        eyebrow={`Today · ${new Date(`${payload.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}`}
+        title={incompleteCount === 0 ? 'Today is clear' : 'Today'}
+        count={incompleteCount === 0 ? null : incompleteCount}
+        subtitle="Top Three is yours to choose — we never auto-fill it. Drag or use arrow buttons to reorder."
+        secondary={
+          <Button variant="secondary" size="sm" onClick={() => { setLoading(true); fetchToday(); }} icon={<RefreshCw size={14} aria-hidden="true" />}>
+            Refresh
+          </Button>
+        }
+        primary={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setShowEod(true)}
+            disabled={incompleteCount === 0}
+            icon={<MoonStar size={14} aria-hidden="true" />}
+          >
+            End day
+          </Button>
+        }
+      />
+      {offline && (
+        <p role="alert" className="flex items-center gap-2 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
+          <WifiOff size={14} aria-hidden="true" />
+          Offline — Today is read-only until you reconnect.
+        </p>
+      )}
 
       {payload.overdue.length > 0 && (
         <Card padding="md" className="border-red-200 dark:border-red-500/25">

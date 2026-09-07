@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
 import { getTasks, toTaskArray, createTask, calendarAPI } from '@/api/tasks';
 import { Modal } from '@/components/ui/Modal';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
 import { toast } from 'sonner';
 import { PHONE_QUERY } from '@/hooks/useMediaQuery';
@@ -143,43 +144,48 @@ export default function CalendarPage() {
         {monthName}: {monthTaskCount} dated {monthTaskCount === 1 ? 'task' : 'tasks'}
         {selectedDay ? `, ${selectedTasks.length} on day ${selectedDay}` : ''}
       </p>
+      <PageHeader
+        eyebrow="Plan"
+        title="Calendar"
+        count={monthTaskCount}
+        subtitle="Manage tasks by due date"
+        primary={
+          <a
+            href={calendarAPI.exportUrl()}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-yellow-400 px-3 text-xs font-medium text-gray-950 transition-colors hover:bg-clay-hover"
+            title="Download all tasks as an iCalendar (.ics) file"
+          >
+            <Download size={14} aria-hidden="true" />
+            Export .ics
+          </a>
+        }
+        secondary={
+          <button
+            onClick={goToday}
+            aria-label={`Go to today, ${todayLong}`}
+            className="inline-flex h-8 items-center rounded-md border border-gray-200 px-3 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Today
+          </button>
+        }
+      />
       <div className="card p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Calendar size={22} className="text-yellow-500" />
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Calendar</h2>
-              <p className="text-sm text-gray-400">Manage tasks by due date</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <a
-              href={calendarAPI.exportUrl()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-yellow-400 px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-yellow-500 transition-colors"
-              title="Download all tasks as an iCalendar (.ics) file"
-            >
-              <Download size={14} />
-              Export .ics
-            </a>
-            <button
-              onClick={goToday}
-              aria-label={`Go to today, ${todayLong}`}
-              className="btn-secondary text-xs px-3 py-1.5"
-            >
-              Today
-            </button>
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {monthName}
+          </p>
+          <div className="flex items-center gap-1">
             <button
               onClick={prevMonth}
               aria-label={`Previous month, ${prevMonthName}`}
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             >
               <ChevronLeft size={18} aria-hidden="true" />
             </button>
             <button
               onClick={nextMonth}
               aria-label={`Next month, ${nextMonthName}`}
-              className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             >
               <ChevronRight size={18} aria-hidden="true" />
             </button>

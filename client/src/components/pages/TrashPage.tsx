@@ -4,7 +4,7 @@ import { RotateCcw, Trash2, Search, AlertTriangle, Clock } from 'lucide-react';
 import { getTrash, restoreTask, purgeTask, emptyTrash } from '@/api/tasks';
 import {
   Button, Card, Input, EmptyState, SkeletonCard, LoadingRegion,
-  StatusBadge, PriorityDot, DeleteConfirmModal, Tooltip, Badge,
+  StatusBadge, PriorityDot, DeleteConfirmModal, Tooltip, Badge, PageHeader,
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
@@ -115,24 +115,24 @@ export default function TrashPage({ onRefresh }: { onRefresh?: () => void }) {
 
   return (
     <div className="animate-fadeIn p-4 lg:p-6">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="font-display text-2xl text-gray-900 dark:text-gray-100">Trash</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Deleted tasks stay here for {retentionDays} days, then they&apos;re gone for good.
-          </p>
-        </div>
-        {tasks.length > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<Trash2 size={15} />}
-            onClick={() => setConfirmEmpty(true)}
-          >
-            Empty Trash
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Trash"
+        count={tasks.length}
+        subtitle={`Deleted tasks stay here for ${retentionDays} days, then they're gone for good.`}
+        primary={
+          tasks.length > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Trash2 size={15} aria-hidden="true" />}
+              onClick={() => setConfirmEmpty(true)}
+            >
+              Empty Trash
+            </Button>
+          ) : undefined
+        }
+      />
 
       {tasks.length > 3 && (
         <div className="mb-4 max-w-sm">

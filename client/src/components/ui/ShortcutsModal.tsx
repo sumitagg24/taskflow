@@ -9,13 +9,15 @@ interface ShortcutsModalProps {
   onClose: () => void;
 }
 
+// The entire shipped shortcut set. Nothing else exists — this list is the
+// source of truth, and every entry here must keep working.
 const shortcuts = [
-  { keys: ['⌘', 'K'], description: 'Focus search bar' },
-  { keys: ['⌘', 'N'], description: 'Create new task' },
-  { keys: ['Esc'], description: 'Close modals / panels' },
-  { keys: ['?'], description: 'Show keyboard shortcuts' },
-  { keys: ['↑', '↓'], description: 'Navigate items' },
-  { keys: ['Enter'], description: 'Confirm / Submit' },
+  { keys: ['Ctrl/⌘', 'K'], description: 'Command palette (search, jump, act)' },
+  { keys: ['Q'], description: 'Quick capture to Inbox' },
+  { keys: ['?'], description: 'Show this list' },
+  { keys: ['Esc'], description: 'Close dialogs' },
+  { keys: ['↑', '↓'], description: 'Move within lists and palette' },
+  { keys: ['Enter'], description: 'Confirm' },
 ];
 
 export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
@@ -55,6 +57,7 @@ export function ShortcutsModal({ isOpen, onClose }: ShortcutsModalProps) {
               </div>
               <button
                 onClick={onClose}
+                aria-label="Close keyboard shortcuts"
                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 transition-colors"
               >
                 <X size={18} />

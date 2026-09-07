@@ -5,20 +5,10 @@ import { dailyAPI, type Task } from '@/api/tasks';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 
-export const QUICK_CAPTURE_SHORTCUT = 'q';
-
-function isTypingTarget(el: EventTarget | null): boolean {
-  if (!(el instanceof HTMLElement)) return false;
-  const tag = el.tagName.toLowerCase();
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
-  if (el.isContentEditable) return true;
-  return false;
-}
-
 /**
  * Global quick capture — mounted once in the app shell so it works from every
  * main screen. Title-only create into the Inbox; triage happens later.
- * Desktop shortcut: press Q (or C) anywhere outside a text field.
+ * Desktop shortcut: press Q anywhere outside a text field.
  */
 export default function QuickCapture({
   open,
@@ -141,22 +131,4 @@ export default function QuickCapture({
   );
 }
 
-/** Global Q/C shortcut wiring — call once in the shell. */
-export function useQuickCaptureShortcut(onOpen: () => void) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
-      const k = e.key.toLowerCase();
-      if (k === 'q' || k === 'c') {
-        // Don't hijack when a modal already handles the key.
-        const dialogOpen = document.querySelector('[role="dialog"]');
-        if (dialogOpen) return;
-        e.preventDefault();
-        onOpen();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onOpen]);
-}
+

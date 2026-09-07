@@ -8,6 +8,13 @@ import type { Task } from '@/lib/domain';
 
 export const MAX_TOP_THREE = 3;
 
+/** Window event that opens global quick capture from any nested route. */
+export const QUICK_CAPTURE_EVENT = 'taskflow:quick-capture';
+
+export function requestQuickCapture() {
+  window.dispatchEvent(new CustomEvent(QUICK_CAPTURE_EVENT));
+}
+
 export const OPEN_STATUSES = new Set(['backlog', 'pending', 'in-progress', 'blocked', 'review']);
 
 export function toDateKey(d: Date): string {

@@ -88,21 +88,20 @@ describe('Dashboard task rows', () => {
     expect(await screen.findByText(new RegExp(expectedDay.replace(/[^A-Za-z0-9]/g, '.')))).toBeInTheDocument();
   });
 
-  it('quick capture creates immediately and background-syncs', async () => {
+  it('quick capture delegates to the one global Inbox modal', async () => {
     mockAll();
     const onRefresh = vi.fn();
     render(<Dashboard tasks={TASKS} loading={false} onRefresh={onRefresh} onEditTask={() => {}} onDeleteTask={() => {}} onNewTask={() => {}} onNavigate={() => {}} />);
 
-    const input = await screen.findByLabelText('Quick capture');
-    fireEvent.change(input, { target: { value: 'Captured task' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
-
+    // No inline form: one button that asks the shell to open the modal.
+    const seen: string[] = [];
+    window.addEventListener('taskflow:quick-capture', () => seen.push('open'));
+    const trigger = await screen.findByRole('button', { name: /Type a task and press Enter/i });
+    fireEvent.click(trigger);
     await waitFor(() => {
-      expect(apiMocks.createTask).toHaveBeenCalledWith({ title: 'Captured task', status: 'pending' });
+      expect(seen).toEqual(['open']);
     });
-    // Optimistic prepend: visible before any parent refetch lands...
-    expect(await screen.findByText('Captured task')).toBeInTheDocument();
-    // ...then the shell is asked to background-sync its canonical list.
-    expect(onRefresh).toHaveBeenCalledTimes(1);
+    // Dashboard never creates directly — the modal owns the only create path.
+    expect(apiMocks.createTask).not.toHaveBeenCalled();
   });
 });

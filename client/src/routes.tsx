@@ -16,7 +16,8 @@ import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
 import Dashboard from '@/components/pages/Dashboard';
 import KanbanBoard from '@/components/KanbanBoard';
 import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
-import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard } from '@/components/ui';
+import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard, ShortcutsModal } from '@/components/ui';
+import { QUICK_CAPTURE_EVENT } from '@/lib/daily';
 import { Plus, ListTodo } from 'lucide-react';
 
 const CommandPalette = lazy(() => import('@/components/CommandPalette'));
@@ -82,6 +83,8 @@ export interface ShellData {
   handleTaskChanged: (t: Record<string, unknown>) => void;
   openPalette: () => void;
 }
+
+
 
 export const ShellContext = createContext<ShellData | null>(null);
 
@@ -170,9 +173,11 @@ function ProtectedShell(): ReactNode {
     setSearchParams(clearTaskParam, { replace: true });
   }, [setSearchParams]);
 
-  // Phase 6 quick capture: available from every main screen (Q/C shortcut).
+  // Quick capture: available from every main screen via the Q shortcut.
+  // The shipped shortcut set is exactly: Ctrl/⌘+K (palette), Q (capture),
+  // ? (this shortcut list), Esc/arrows/Enter inside dialogs. Nothing else.
   const [quickOpen, setQuickOpen] = useState(false);
-  const openQuick = useCallback(() => setQuickOpen(true), []);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   useEffect(() => {
     const isTyping = (el: EventTarget | null) => {
       if (!(el instanceof HTMLElement)) return false;
@@ -181,16 +186,26 @@ function ProtectedShell(): ReactNode {
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '?') {
+        if (isTyping(e.target)) return;
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+        return;
+      }
       if (isTyping(e.target)) return;
       if (document.querySelector('[role="dialog"]')) return;
-      const k = e.key.toLowerCase();
-      if (k === 'q' || k === 'c') {
+      if (e.key.toLowerCase() === 'q') {
         e.preventDefault();
         setQuickOpen(true);
       }
     };
+    const onCaptureEvent = () => setQuickOpen(true);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(QUICK_CAPTURE_EVENT, onCaptureEvent);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(QUICK_CAPTURE_EVENT, onCaptureEvent);
+    };
   }, []);
 
   return (
@@ -288,7 +303,9 @@ function ProtectedShell(): ReactNode {
         />
       </Suspense>
 
-      {/* Phase 6: global Inbox quick capture (Q/C) + floating capture button. */}
+      <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {/* Global Inbox quick capture (Q) + floating capture button. */}
       <Suspense fallback={null}>
         {quickOpen && (
           <QuickCapture
@@ -300,16 +317,6 @@ function ProtectedShell(): ReactNode {
           />
         )}
       </Suspense>
-      <button
-        type="button"
-        onClick={openQuick}
-        aria-label="Quick capture to Inbox (shortcut Q)"
-        title="Quick capture to Inbox (Q)"
-        className="fixed bottom-[calc(8.5rem+env(safe-area-inset-bottom))] left-4 z-40 hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-gray-200 bg-white/95 px-3 py-2 text-xs font-medium text-gray-600 shadow-lg backdrop-blur hover:text-gray-900 md:flex dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-300"
-      >
-        Q · Capture
-      </button>
-
       <Toaster
         position="bottom-right"
         richColors

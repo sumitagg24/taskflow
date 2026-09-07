@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Search, Star, Copy, Trash2, Share2, Plus, Loader2, Sparkles } from 'lucide-react';
+import { Search, Copy, Trash2, Share2, Plus, Loader2, Sparkles } from 'lucide-react';
 import { templatesAPI, createTask } from '@/api/tasks';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import StarterTemplates from '@/components/daily/StarterTemplates';
 import { Button } from '@/components/ui/Button';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
 
@@ -125,20 +126,17 @@ export default function TemplatesPage() {
       animate={{ opacity: 1, y: 0 }}
       className="p-4 lg:p-6 max-w-5xl mx-auto"
     >
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Star size={24} className="text-yellow-500 fill-yellow-500" />
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Templates</h2>
-            <p className="text-sm text-gray-400">
-              {templates.length} template{templates.length === 1 ? '' : 's'} — save and reuse task structures
-            </p>
-          </div>
-        </div>
-        <Button onClick={() => setShowModal(true)} icon={<Plus size={16} />}>
-          New Template
-        </Button>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Templates"
+        count={templates.length}
+        subtitle="Save and reuse task structures"
+        primary={
+          <Button onClick={() => setShowModal(true)} icon={<Plus size={16} aria-hidden="true" />}>
+            New Template
+          </Button>
+        }
+      />
 
       <div className="card mb-6 p-5">
         <div className="mb-3 flex items-center gap-2">

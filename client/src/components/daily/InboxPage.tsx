@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dailyAPI, updateTask, deleteTask, restoreTask, type Task } from '@/api/tasks';
-import { Card, CardHeader, Button, EmptyState, StatusBadge, PriorityBadge, LoadingRegion, SkeletonCard } from '@/components/ui';
+import { Card, Button, EmptyState, StatusBadge, PriorityBadge, LoadingRegion, SkeletonCard, PageHeader } from '@/components/ui';
 
 const PRIORITIES = ['critical', 'high', 'medium', 'low', 'none'] as const;
 const CATEGORIES = ['work', 'personal', 'college', 'projects', 'fitness', 'shopping', 'finance', 'learning', 'uncategorized'];
@@ -250,29 +250,30 @@ export default function InboxPage({ onRefresh }: { onRefresh?: () => void }) {
         {overdueCount > 0 ? `, plus ${overdueCount} overdue elsewhere (not in Inbox)` : ''}.
       </p>
 
-      <Card padding="lg">
-        <CardHeader
-          eyebrow="Inbox"
-          title={tasks.length ? `${tasks.length} to triage` : 'Inbox zero'}
-          subtitle={
-            overdueCount > 0
-              ? `${overdueCount} overdue ${overdueCount === 1 ? 'task lives' : 'tasks live'} outside the Inbox — not mixed in here.`
-              : 'Untriaged quick captures only — scheduled and overdue work lives elsewhere.'
-          }
-          action={
-            <Button variant="secondary" size="sm" onClick={fetchInbox} icon={<RefreshCw size={14} aria-hidden="true" />}>
-              Refresh
-            </Button>
-          }
-        />
-        {offline && (
-          <p role="alert" className="mt-3 flex items-center gap-2 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
-            <WifiOff size={14} aria-hidden="true" />
-            Offline — triage is paused until you reconnect. Your Inbox is shown as last seen.
-          </p>
-        )}
-        {tasks.length > 0 && (
-          <div className="mt-3 flex items-center gap-2">
+      <PageHeader
+        eyebrow="Inbox"
+        title={tasks.length ? 'To triage' : 'Inbox zero'}
+        count={tasks.length ? tasks.length : null}
+        subtitle={
+          overdueCount > 0
+            ? `${overdueCount} overdue ${overdueCount === 1 ? 'task lives' : 'tasks live'} outside the Inbox — not mixed in here.`
+            : 'Untriaged quick captures only — scheduled and overdue work lives elsewhere.'
+        }
+        secondary={
+          <Button variant="secondary" size="sm" onClick={fetchInbox} icon={<RefreshCw size={14} aria-hidden="true" />}>
+            Refresh
+          </Button>
+        }
+      />
+      {offline && (
+        <p role="alert" className="flex items-center gap-2 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
+          <WifiOff size={14} aria-hidden="true" />
+          Offline — triage is paused until you reconnect. Your Inbox is shown as last seen.
+        </p>
+      )}
+      {tasks.length > 0 && (
+        <Card padding="md">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={toggleAll}
@@ -287,8 +288,8 @@ export default function InboxPage({ onRefresh }: { onRefresh?: () => void }) {
               {selected.size > 0 ? `${selected.size} selected` : 'Pick tasks to triage in bulk'}
             </span>
           </div>
+        </Card>
         )}
-      </Card>
 
       {tasks.length === 0 ? (
         <EmptyState

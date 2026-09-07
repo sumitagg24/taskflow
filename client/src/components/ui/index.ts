@@ -16,6 +16,7 @@ export {
 export type { BadgeProps } from './Badge';
 export { Card, CardHeader, StatCard } from './Card';
 export type { CardProps } from './Card';
+export { PageHeader } from './PageHeader';
 export { Switch } from './Switch';
 export type { SwitchProps } from './Switch';
 export { Tabs, SegmentedControl } from './Tabs';
@@ -29,3 +30,4 @@ export { Logo, LogoMark } from './Logo';
 export { default as PasswordStrengthBar } from './PasswordStrengthBar';
 export { default as EmailVerificationBanner } from './EmailVerificationBanner';
 export { ErrorBoundary } from './ErrorBoundary';
+export { ShortcutsModal } from './ShortcutsModal';

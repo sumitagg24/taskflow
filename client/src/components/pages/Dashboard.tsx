@@ -1,15 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
   Calendar, Clock, Quote, Bell, Flame, Check, X, Plus, Pencil, Trash2,
 } from 'lucide-react';
-import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { getStats, aiAPI, getNotifications, createTask } from '@/api/tasks';
+import { getStats, aiAPI, getNotifications } from '@/api/tasks';
+import { requestQuickCapture } from '@/lib/daily';
 import {
   Card, CardHeader, StatusBadge, PriorityBadge, PriorityDot,
-  Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut, Input,
+  Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut,
 } from '@/components/ui';
 import CalendarWidget from '@/components/widgets/CalendarWidget';
 import WeeklyReset, { WeeklyResetBanner } from '@/components/daily/WeeklyReset';
@@ -204,38 +204,10 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
     () => localStorage.getItem(ONBOARDING_DISMISSED) === '1'
   );
 
-  // Quick capture: one-line create. The new task prepends locally for an
-  // instant update, then `onRefresh` background-syncs the shell's canonical
-  // list (which dedupes by id via `visibleTasks` below).
-  const [quickTitle, setQuickTitle] = useState('');
-  const [quickBusy, setQuickBusy] = useState(false);
-  const [quickError, setQuickError] = useState<string | null>(null);
-  const [captured, setCaptured] = useState<DashboardTask[]>([]);
-
-  const visibleTasks = useMemo(() => {
-    const ids = new Set(tasks.map((t) => t._id));
-    return [...captured.filter((c) => !ids.has(c._id)), ...tasks];
-  }, [captured, tasks]);
-
-  const submitQuickCapture = async (e: FormEvent) => {
-    e.preventDefault();
-    const title = quickTitle.trim();
-    if (!title || quickBusy) return;
-    setQuickBusy(true);
-    setQuickError(null);
-    try {
-      const { data } = await createTask({ title, status: 'pending' });
-      const created = data as DashboardTask;
-      setCaptured((prev) => [created, ...prev]);
-      setQuickTitle('');
-      toast.success('Task captured');
-      onRefresh?.();
-    } catch {
-      setQuickError('Could not create that task — try again.');
-    } finally {
-      setQuickBusy(false);
-    }
-  };
+  // The canonical list comes straight from the shell — capture happens in
+  // the one global quick-capture modal (Q), so there is exactly one create
+  // path and no local prepend/merge to keep in sync.
+  const visibleTasks = tasks;
 
   // Tasks come from the App shell (single GET /tasks there). This loader
   // covers the Dashboard-owned endpoints only: stats + decoration.
@@ -426,40 +398,19 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
       </motion.div>
       <WeeklyReset open={showWeekly} onClose={() => setShowWeekly(false)} onNavigate={onNavigate} />
 
-      {/* Quick capture — one line, Enter to file it, no modal round-trip. */}
+      {/* Quick capture — one entry point: the global Inbox modal (Q). */}
       <motion.div variants={item}>
         <Card padding="md">
-          <form onSubmit={submitQuickCapture}>
-            <label htmlFor="dashboard-quick-capture" className="caption-upper mb-2 block">
-              Quick capture
-            </label>
-            <div className="flex gap-2">
-              <Input
-                id="dashboard-quick-capture"
-                wrapperClassName="flex-1"
-                placeholder="Type a task and press Enter…"
-                autoComplete="off"
-                maxLength={500}
-                value={quickTitle}
-                onChange={(e) => setQuickTitle(e.target.value)}
-                className="min-h-[44px]"
-              />
-              <Button
-                type="submit"
-                loading={quickBusy}
-                disabled={!quickTitle.trim()}
-                icon={<Plus size={16} aria-hidden="true" />}
-                className="min-h-[44px] shrink-0"
-              >
-                Add
-              </Button>
-            </div>
-            {quickError && (
-              <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
-                {quickError}
-              </p>
-            )}
-          </form>
+          <p className="caption-upper mb-2">Quick capture</p>
+          <button
+            type="button"
+            onClick={requestQuickCapture}
+            className="flex min-h-[44px] w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-card px-3.5 text-left text-sm text-gray-500 transition-colors hover:border-gray-300 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200"
+          >
+            <Plus size={16} className="shrink-0" aria-hidden="true" />
+            <span className="flex-1 truncate">Type a task and press Enter…</span>
+            <KbdShortcut keys={['Q']} />
+          </button>
         </Card>
       </motion.div>
 

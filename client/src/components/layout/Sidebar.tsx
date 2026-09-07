@@ -228,7 +228,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
               />
             )}
             <Icon
-              size={17}
+              size={15}
               aria-hidden="true"
               className={cn(
                 'shrink-0',

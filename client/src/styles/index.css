@@ -218,7 +218,7 @@
   --bg-card-hover: #f5f3ec;
   --bg-surface: #f0eee6;
   --bg-surface-strong: #e8e0d2;
-  --bg-sidebar: #f5f4ee;
+  --bg-sidebar: #efeee7;
   --bg-sidebar-hover: #ebe8de;
   --bg-sidebar-active: #f6e5dd;
   --bg-input: #ffffff;
@@ -226,7 +226,7 @@
   --border-strong: #d3cec4;
   --text-primary: #1f1e1d;
   --text-secondary: #5c5a55;
-  --text-muted: #6c6a64;
+  --text-muted: #5c5a55;
   --accent: #cc785c;
   --accent-strong: #a9583e;
   --accent-ink: #1a1917;
@@ -239,15 +239,15 @@
   --bg-card-hover: #292824;
   --bg-surface: #252320;
   --bg-surface-strong: #302e2a;
-  --bg-sidebar: #1b1a18;
+  --bg-sidebar: #161514;
   --bg-sidebar-hover: #262521;
   --bg-sidebar-active: #33251f;
   --bg-input: #201f1c;
   --border-color: #35332e;
   --border-strong: #45423b;
   --text-primary: #f5f3ec;
-  --text-secondary: #b0aea5;
-  --text-muted: #6c6a64;
+  --text-secondary: #716e67;
+  --text-muted: #5c5a55;
   --accent: #cc785c;
   --accent-strong: #e2a992;
   --accent-ink: #1a1917;

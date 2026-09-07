@@ -3,8 +3,9 @@ import { motion } from 'framer-motion';
 import { cn, CATEGORY_CONFIG } from '@/lib/utils';
 import { getTasks, toTaskArray } from '@/api/tasks';
 import { StatusBadge, PriorityBadge } from '@/components/ui/Badge';
+import { PageHeader } from '@/components/ui/PageHeader';
 import {
-  Tags, Search, ArrowRight, Loader2,
+  Search, ArrowRight, Loader2,
 } from 'lucide-react';
 
 export default function CategoriesPage() {
@@ -42,13 +43,12 @@ export default function CategoriesPage() {
       animate={{ opacity: 1, y: 0 }}
       className="p-4 lg:p-6"
     >
-      <div className="flex items-center gap-3 mb-6">
-        <Tags size={24} className="text-yellow-500" />
-        <div>
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Categories</h2>
-          <p className="text-sm text-gray-400">{tasks.length} total tasks</p>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Workspace"
+        title="Categories"
+        count={tasks.length}
+        subtitle="Organise by area of life and work"
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {CATEGORY_CONFIG.map(cat => {

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, MoreHorizontal, GripVertical, Trash2, Flame, MessageSquare, CheckSquare, Clock, Paperclip, Timer, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
-import { PriorityBadge } from './ui/Badge';
+
 import { Button } from './ui/Button';
 import { router } from '@/routes';
 import { DeleteConfirmModal } from './ui/DeleteConfirmModal';
@@ -633,13 +633,15 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
           onDragStart={(e: DragEvent<HTMLDivElement>) => onDragStart(e, card)}
           className="space-y-2"
         >
-          {/* Header with select + drag handle + actions */}
+          {/* Header with select + drag handle + actions. Actions reveal on
+              hover/focus with a fine pointer and stay visible on touch. */}
           <div className="flex items-start gap-2">
             <button
               onClick={(e) => { e.stopPropagation(); onToggleSelect(card._id); }}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
-                'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors',
+                'relative mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors',
+                'before:absolute before:-inset-2.5 before:content-[""]',
                 isSelected
                   ? 'border-yellow-400 bg-yellow-400 text-gray-900'
                   : 'border-gray-300 hover:border-yellow-400 dark:border-gray-600'
@@ -652,17 +654,17 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
             </button>
             <GripVertical
               size={14}
-              className="mt-0.5 shrink-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-600"
+              className="mt-0.5 hidden shrink-0 text-gray-400 [@media(hover:hover)]:block [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:transition-opacity [@media(hover:hover)]:group-hover:opacity-100 dark:text-gray-600"
               aria-hidden="true"
             />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium leading-snug text-gray-900 dark:text-gray-100">{card.title}</p>
             </div>
-            <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            <div className="flex shrink-0 gap-0.5 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:transition-opacity [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100">
               <button
                 onClick={(e) => { e.stopPropagation(); onStartTimer(card); }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="hover:bg-surface-strong rounded p-1 text-gray-500 transition-colors hover:text-yellow-600 dark:text-gray-400"
+                className="hover:bg-surface-strong flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-gray-500 transition-colors hover:text-yellow-600 md:min-h-[32px] md:min-w-[32px] dark:text-gray-400"
                 aria-label={`Track time on “${card.title}”`}
                 title="Start time tracking"
               >
@@ -679,7 +681,7 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
                   void router.navigate(`${pathname}?task=${encodeURIComponent(card._id)}`);
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="hover:bg-surface-strong rounded p-1 text-gray-500 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
+                className="hover:bg-surface-strong flex min-h-[44px] min-w-[44px] items-center justify-center rounded text-gray-500 transition-colors hover:text-gray-900 md:min-h-[32px] md:min-w-[32px] dark:text-gray-400 dark:hover:text-gray-100"
                 aria-label={`Open “${card.title}”`}
                 title="Open task"
               >
@@ -688,31 +690,12 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
             </div>
           </div>
 
-          {/* Description */}
-          {card.description && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{card.description}</p>
-          )}
-
-          {/* Tags */}
-          {card.tags && card.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {card.tags.slice(0, 3).map((tag: string, i: number) => (
-                <span key={i} className="bg-surface-strong inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300">
-                  {tag}
-                </span>
-              ))}
-              {card.tags.length > 3 && (
-                <span className="inline-flex items-center px-1 text-[10px] text-gray-500 dark:text-gray-400">
-                  +{card.tags.length - 3}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <PriorityBadge priority={card.priority || 'none'} />
+          {/* Meta line — one row only. Priority lives on the rail (plus an
+              sr-only label); tags beyond two and all counts live in the
+              disclosure below. */}
+          {(card.dueDate || blockedBy.length > 0 || blocking.length > 0 || (card.tags?.length ?? 0) > 0) && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="sr-only">Priority {card.priority || 'none'}. </span>
               {card.dueDate && (
                 <span className={cn(
                   'flex items-center gap-1 text-[10px]',
@@ -741,45 +724,74 @@ function Card({ card, onDragStart, onDelete, isSelected, onToggleSelect, onStart
                   Blocking {blocking.length}
                 </span>
               )}
-            </div>
-            <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              {(card.comments?.length ?? 0) > 0 && (
-                <span className="flex items-center gap-0.5 text-[10px]" title={`${card.comments!.length} comments`}>
-                  <MessageSquare size={10} aria-hidden="true" />
-                  {card.comments!.length}
+              {card.tags?.slice(0, 2).map((tag: string, i: number) => (
+                <span key={i} className="bg-surface-strong inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300">
+                  {tag}
+                </span>
+              ))}
+              {(card.tags?.length ?? 0) > 2 && (
+                <span className="inline-flex items-center px-1 text-[10px] text-gray-500 dark:text-gray-400">
+                  +{card.tags!.length - 2}
                 </span>
               )}
-              {(card.subtasks?.length ?? 0) > 0 && (
-                <span className="flex items-center gap-0.5 text-[10px]" title="Subtasks complete">
-                  <CheckSquare size={10} aria-hidden="true" />
-                  {card.subtasks!.filter((s: any) => s.completed).length}/{card.subtasks!.length}
-                </span>
-              )}
-              {(card.attachments?.length ?? 0) > 0 && (
-                <span className="flex items-center gap-0.5 text-[10px]" title={`${card.attachments!.length} attachments`}>
-                  <Paperclip size={10} aria-hidden="true" />
-                  {card.attachments!.length}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Subtask progress bar */}
-          {subtaskProgress >= 0 && (
-            <div
-              className="bg-surface-strong h-1 overflow-hidden rounded-full"
-              role="progressbar"
-              aria-valuenow={subtaskProgress}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Subtask progress"
-            >
-              <div
-                className="h-full rounded-full bg-yellow-400 transition-all duration-500"
-                style={{ width: `${subtaskProgress}%` }}
-              />
             </div>
           )}
+
+          {/* Disclosure — description, remaining tags, counts, progress.
+              Revealed on hover/focus with a fine pointer, always visible on
+              touch (no hover to discover it with). Keyboard focus lands on
+              the card body (tabIndex=0), so group-focus-within reveals it. */}
+          <div className="hidden space-y-2 [@media(hover:hover)]:group-focus-within:block [@media(hover:hover)]:group-hover:block [@media(hover:none)]:block">
+            {card.description && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{card.description}</p>
+            )}
+            {(card.tags?.length ?? 0) > 2 && (
+              <div className="flex flex-wrap gap-1">
+                {card.tags!.slice(2).map((tag: string, i: number) => (
+                  <span key={i} className="bg-surface-strong inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+            {((card.comments?.length ?? 0) > 0 || (card.subtasks?.length ?? 0) > 0 || (card.attachments?.length ?? 0) > 0) && (
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                {(card.comments?.length ?? 0) > 0 && (
+                  <span className="flex items-center gap-0.5 text-[10px]" title={`${card.comments!.length} comments`}>
+                    <MessageSquare size={10} aria-hidden="true" />
+                    {card.comments!.length}
+                  </span>
+                )}
+                {(card.subtasks?.length ?? 0) > 0 && (
+                  <span className="flex items-center gap-0.5 text-[10px]" title="Subtasks complete">
+                    <CheckSquare size={10} aria-hidden="true" />
+                    {card.subtasks!.filter((s: any) => s.completed).length}/{card.subtasks!.length}
+                  </span>
+                )}
+                {(card.attachments?.length ?? 0) > 0 && (
+                  <span className="flex items-center gap-0.5 text-[10px]" title={`${card.attachments!.length} attachments`}>
+                    <Paperclip size={10} aria-hidden="true" />
+                    {card.attachments!.length}
+                  </span>
+                )}
+              </div>
+            )}
+            {subtaskProgress >= 0 && (
+              <div
+                className="bg-surface-strong h-1 overflow-hidden rounded-full"
+                role="progressbar"
+                aria-valuenow={subtaskProgress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Subtask progress"
+              >
+                <div
+                  className="h-full rounded-full bg-yellow-400 transition-all duration-500"
+                  style={{ width: `${subtaskProgress}%` }}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
     </>

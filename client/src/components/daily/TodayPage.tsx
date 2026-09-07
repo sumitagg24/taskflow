@@ -11,7 +11,8 @@ import {
 import {
   MAX_TOP_THREE, todayKeyLocal, destinationAfterTopRemoval, partitionToday,
 } from '@/lib/daily';
-import { Card, CardHeader, Button, EmptyState, StatusBadge, PriorityBadge, LoadingRegion, SkeletonCard, PageHeader } from '@/components/ui';
+import { Card, CardHeader, Button, EmptyState, LoadingRegion, SkeletonCard, PageHeader } from '@/components/ui';
+import { PriorityDot } from '@/components/ui/Badge';
 import EndOfDayDialog from '@/components/daily/EndOfDayDialog';
 
 type SectionId = 'top' | 'scheduled' | 'flexible';
@@ -99,8 +100,10 @@ function TaskRow({
                 {timeLabel(task.dueDate) ? ` · ${timeLabel(task.dueDate)}` : ''}
               </span>
             )}
-            <StatusBadge status={task.status} />
-            <PriorityBadge priority={(task.priority as string) ?? 'none'} />
+            {/* Priority signal without badge weight: a dot plus an sr-only
+                label. Status is implicit — everything here is open Today work. */}
+            <PriorityDot priority={(task.priority as string) ?? 'none'} />
+            <span className="sr-only">Priority {(task.priority as string) ?? 'none'}.</span>
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-1 sm:flex-row sm:items-center">

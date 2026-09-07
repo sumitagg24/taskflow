@@ -2,9 +2,9 @@ import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 're
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  ArrowRightCircle, BarChart3, BookmarkPlus, Calendar, CheckCircle2, ClipboardList,
-  CornerDownLeft, Flame, LayoutDashboard, ListTodo, Moon, Plus, Search, Settings,
-  Sparkles, Star, Sun, Tags, Timer, Trash2, Users, Archive, Bell, LogOut,
+  BookmarkPlus, Calendar,
+  CalendarCheck2, CornerDownLeft, Flame, LayoutDashboard, ListTodo, Inbox, Moon, Plus, Search, Settings,
+  Sparkles, Star, Sun, Tags, Timer, Trash2, Users, Bell, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
@@ -29,6 +29,7 @@ interface CommandPaletteProps {
   onNavigate?: (section: string) => void;
   onOpenTask?: (id: string) => void;
   onNewTask: () => void;
+  onQuickCapture?: () => void;
   onOpenAIAssistant?: () => void;
 }
 
@@ -36,6 +37,12 @@ function routeFor(section: string): string {
   switch (section) {
     case 'dashboard':
       return '/';
+    case 'today':
+      return '/today';
+    case 'inbox':
+      return '/inbox';
+    case 'weekly-review':
+      return '/weekly-review';
     case 'all':
       return '/tasks';
     case 'pending':
@@ -54,7 +61,7 @@ function routeFor(section: string): string {
     case 'insights':
       return '/insights';
     case 'analytics':
-      return '/analytics';
+      return '/insights';
     case 'focus':
       return '/focus';
     case 'notifications':
@@ -100,6 +107,7 @@ export default function CommandPalette({
   onNavigate,
   onOpenTask,
   onNewTask,
+  onQuickCapture,
   onOpenAIAssistant,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
@@ -132,19 +140,18 @@ export default function CommandPalette({
   );
 
   const commands = useMemo<Command[]>(() => {
-    const nav: [string, string, ReactNode][] = [
+    // Mirrors the sidebar: daily loop first, statuses live as tabs on /tasks.
+    const nav: [string, string, ReactNode, string?][] = [
       ['dashboard', 'Dashboard', <LayoutDashboard size={15} key="i" />],
+      ['today', 'Today', <Sun size={15} key="i" />, 'end day wrap up plan for today'],
+      ['inbox', 'Inbox', <Inbox size={15} key="i" />, 'triage untriaged capture'],
+      ['weekly-review', 'Weekly Reset', <CalendarCheck2 size={15} key="i" />, 'weekly review reset retrospective'],
       ['all', 'All Tasks', <ListTodo size={15} key="i" />],
-      ['pending', 'To Do', <ClipboardList size={15} key="i" />],
-      ['in-progress', 'In Progress', <ArrowRightCircle size={15} key="i" />],
-      ['completed', 'Completed', <CheckCircle2 size={15} key="i" />],
-      ['backlog', 'Backlog', <Archive size={15} key="i" />],
       ['calendar', 'Calendar', <Calendar size={15} key="i" />],
-      ['favorites', 'Favorites', <Star size={15} key="i" />],
       ['categories', 'Categories', <Tags size={15} key="i" />],
-      ['templates', 'Templates', <BookmarkPlus size={15} key="i" />],
+      ['templates', 'Templates', <BookmarkPlus size={15} key="i" />, 'apply starter preset'],
+      ['favorites', 'Favorites', <Star size={15} key="i" />],
       ['insights', 'Insights', <Flame size={15} key="i" />],
-      ['analytics', 'Analytics', <BarChart3 size={15} key="i" />],
       ['focus', 'Focus Timer', <Timer size={15} key="i" />],
       ['notifications', 'Notifications', <Bell size={15} key="i" />],
       ['team', 'Team', <Users size={15} key="i" />],
@@ -152,22 +159,36 @@ export default function CommandPalette({
       ['settings', 'Settings', <Settings size={15} key="i" />],
     ];
 
-    const list: Command[] = nav.map(([id, label, icon]) => ({
+    const list: Command[] = nav.map(([id, label, icon, extra]) => ({
       id: `nav:${id}`,
       label,
       icon,
       group: 'Navigate',
-      keywords: `go to ${label}`,
+      keywords: `go to ${label}${extra ? ` ${extra}` : ''}`,
       run: go(id),
     }));
+
+    if (onQuickCapture) {
+      list.push({
+        id: 'action:capture',
+        label: 'Capture to Inbox',
+        hint: 'Q',
+        icon: <Inbox size={15} />,
+        group: 'Actions',
+        keywords: 'quick capture inbox add thought',
+        run: () => {
+          onClose();
+          onQuickCapture();
+        },
+      });
+    }
 
     list.push({
       id: 'action:new-task',
       label: 'Create new task',
-      hint: 'N',
       icon: <Plus size={15} />,
       group: 'Actions',
-      keywords: 'add create new task',
+      keywords: 'add create new task full form',
       run: () => {
         onClose();
         onNewTask();
@@ -227,7 +248,7 @@ export default function CommandPalette({
     });
 
     return list;
-  }, [go, logout, onClose, onNewTask, onOpenAIAssistant, resolvedTheme, setTheme, theme]);
+  }, [go, logout, onClose, onNewTask, onQuickCapture, onOpenAIAssistant, resolvedTheme, setTheme, theme]);
 
   type Row =
     | { kind: 'header'; label: string }
@@ -520,6 +541,14 @@ export default function CommandPalette({
               <span className="flex items-center gap-1.5">
                 <Kbd>↵</Kbd>
                 open
+              </span>
+              <span className="hidden items-center gap-1.5 sm:flex">
+                <Kbd>Q</Kbd>
+                capture
+              </span>
+              <span className="hidden items-center gap-1.5 sm:flex">
+                <Kbd>?</Kbd>
+                shortcuts
               </span>
               <span className="ml-auto hidden sm:inline">
                 {selectable.length} result{selectable.length === 1 ? '' : 's'}

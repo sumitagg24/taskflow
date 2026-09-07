@@ -286,6 +286,7 @@ function ProtectedShell(): ReactNode {
           onClose={() => shell.setPaletteOpen(false)}
           tasks={shell.deferredTasks}
           onNewTask={shell.handleNewTask}
+          onQuickCapture={() => setQuickOpen(true)}
           onOpenAIAssistant={() => shell.setShowAIAssistant(true)}
         />
       </Suspense>

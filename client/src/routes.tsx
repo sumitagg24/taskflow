@@ -16,7 +16,7 @@ import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
 import Dashboard from '@/components/pages/Dashboard';
 import KanbanBoard from '@/components/KanbanBoard';
 import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
-import { Modal, PageLoader, EmptyState, Button, SkeletonCard, ShortcutsModal } from '@/components/ui';
+import { Modal, PageLoader, EmptyState, Button, SkeletonCard, ShortcutsModal, PageHeader, SegmentedControl } from '@/components/ui';
 import { QUICK_CAPTURE_EVENT } from '@/lib/daily';
 import { Plus, ListTodo } from 'lucide-react';
 
@@ -33,7 +33,6 @@ const SettingsPage = lazy(() => import('@/components/pages/SettingsPage'));
 const NotificationsPage = lazy(() => import('@/components/pages/NotificationsPage'));
 const FavoritesPage = lazy(() => import('@/components/pages/FavoritesPage'));
 const CategoriesPage = lazy(() => import('@/components/pages/CategoriesPage'));
-const AnalyticsPage = lazy(() => import('@/components/pages/AnalyticsPage'));
 const FocusTimerPage = lazy(() => import('@/components/pages/FocusTimerPage'));
 const TeamPage = lazy(() => import('@/components/pages/TeamPage'));
 const TemplatesPage = lazy(() => import('@/components/pages/TemplatesPage'));
@@ -112,7 +111,7 @@ export function routeFor(section: string): string {
     case 'insights':
       return '/insights';
     case 'analytics':
-      return '/analytics';
+      return '/insights';
     case 'templates':
       return '/templates';
     case 'categories':
@@ -341,6 +340,7 @@ function DashboardRoute(): ReactNode {
 function TasksRoute(): ReactNode {
   const { status } = useParams<{ status?: string }>();
   const shell = useShell();
+  const navigate = useNavigate();
 
   if (status !== undefined && !(LIST_SECTIONS as readonly string[]).includes(status)) {
     return <Navigate to="/tasks" replace />;
@@ -354,16 +354,24 @@ function TasksRoute(): ReactNode {
 
   return (
     <div className="animate-fadeIn p-4 lg:p-6">
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <h2 className="font-display text-2xl text-gray-900 dark:text-gray-100">
-          {LIST_TITLES[activeSection]}
-        </h2>
-        <span className="text-sm text-gray-500 dark:text-gray-400">
-          {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'}
-        </span>
-        <p className="sr-only" role="status">
-          {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'} shown
-        </p>
+      <PageHeader
+        eyebrow="Workspace"
+        title={LIST_TITLES[activeSection]}
+        count={scoped.length}
+        subtitle="Filter by status, then narrow further below."
+      />
+      <p className="sr-only" role="status">
+        {scoped.length} {scoped.length === 1 ? 'task' : 'tasks'} shown
+      </p>
+      {/* Statuses live here as tabs now — not as top-level nav items. */}
+      <div className="mb-4 overflow-x-auto pb-1">
+        <SegmentedControl
+          aria-label="Filter tasks by status"
+          value={activeSection}
+          onChange={(id) => navigate(id === 'all' ? '/tasks' : `/tasks/${id}`)}
+          items={LIST_SECTIONS.map((s) => ({ id: s, label: LIST_TITLES[s] }))}
+          className="[&_button]:min-h-[44px] md:[&_button]:min-h-[28px]"
+        />
       </div>
       <Filters filters={shell.filters} onChange={shell.setFilters} />
       {shell.loading ? (
@@ -473,10 +481,6 @@ function InsightsRoute(): ReactNode {
   return <InsightsPage />;
 }
 
-function AnalyticsRoute(): ReactNode {
-  return <AnalyticsPage />;
-}
-
 function FocusRoute(): ReactNode {
   return <FocusTimerPage />;
 }
@@ -514,7 +518,8 @@ export const router = createBrowserRouter([
       { path: 'categories', element: <CategoriesRoute /> },
       { path: 'templates', element: <TemplatesRoute /> },
       { path: 'insights', element: <InsightsRoute /> },
-      { path: 'analytics', element: <AnalyticsRoute /> },
+      // Dead alias: /analytics merged into /insights long ago. Bookmarks land here, not on a second dashboard.
+      { path: 'analytics', element: <Navigate to="/insights" replace /> },
       { path: 'focus', element: <FocusRoute /> },
       { path: 'notifications', element: <NotificationsRoute /> },
       { path: 'team', element: <TeamRoute /> },

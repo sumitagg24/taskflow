@@ -9,10 +9,10 @@ import BottomNav from '@/components/layout/BottomNav';
 import MoreSheet from '@/components/layout/MoreSheet';
 import { Avatar, Logo, LogoMark, Tooltip } from '@/components/ui';
 import {
-  LayoutDashboard, ListTodo, ClipboardList, ArrowRightCircle,
-  CheckCircle2, Archive, Calendar, Tags, BarChart3, Timer,
+  LayoutDashboard, ListTodo,
+  Calendar, Tags,
   Bell, Settings, PanelLeftClose, PanelLeftOpen,
-  LogOut, Menu, X, Star, Users, BookmarkPlus, Trash2, Flame,
+  LogOut, Menu, X, Users, BookmarkPlus, Trash2,
   Sun, Inbox, CalendarCheck2,
 } from 'lucide-react';
 
@@ -74,8 +74,9 @@ export function sectionFromPath(pathname: string): string {
   if (pathname === '/inbox') return 'inbox';
   if (pathname === '/weekly-review') return 'weekly-review';
   if (pathname === '/tasks') return 'all';
+  // Statuses are tabs on /tasks now, not nav items — highlight All Tasks.
   const taskMatch = pathname.match(/^\/tasks\/(pending|in-progress|completed|backlog)\/?$/);
-  if (taskMatch) return taskMatch[1];
+  if (taskMatch) return 'all';
   const single = pathname.match(/^\/([a-z-]+)\/?$/);
   if (single) {
     const s = single[1];
@@ -88,7 +89,6 @@ export function sectionFromPath(pathname: string): string {
       s === 'categories' ||
       s === 'templates' ||
       s === 'insights' ||
-      s === 'analytics' ||
       s === 'focus' ||
       s === 'notifications' ||
       s === 'team' ||
@@ -111,22 +111,12 @@ const navItems: NavEntry[] = [
   { type: 'item', id: 'today', label: 'Today', icon: Sun },
   { type: 'item', id: 'inbox', label: 'Inbox', icon: Inbox },
   { type: 'item', id: 'weekly-review', label: 'Weekly Reset', icon: CalendarCheck2 },
+  { type: 'section', label: 'Workspace' },
   { type: 'item', id: 'all', label: 'All Tasks', icon: ListTodo },
-  { type: 'section', label: 'Workflow' },
-  { type: 'item', id: 'pending', label: 'To Do', icon: ClipboardList },
-  { type: 'item', id: 'in-progress', label: 'In Progress', icon: ArrowRightCircle },
-  { type: 'item', id: 'completed', label: 'Completed', icon: CheckCircle2 },
-  { type: 'item', id: 'backlog', label: 'Backlog', icon: Archive },
-  { type: 'section', label: 'Plan' },
   { type: 'item', id: 'calendar', label: 'Calendar', icon: Calendar },
-  { type: 'item', id: 'favorites', label: 'Favorites', icon: Star },
   { type: 'item', id: 'categories', label: 'Categories', icon: Tags },
   { type: 'item', id: 'templates', label: 'Templates', icon: BookmarkPlus },
-  { type: 'section', label: 'Insight' },
-  { type: 'item', id: 'insights', label: 'Insights', icon: Flame },
-  { type: 'item', id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { type: 'item', id: 'focus', label: 'Focus Timer', icon: Timer },
-  { type: 'section', label: 'Workspace' },
+  { type: 'section', label: 'System' },
   { type: 'item', id: 'notifications', label: 'Notifications', icon: Bell },
   { type: 'item', id: 'team', label: 'Team', icon: Users },
   { type: 'item', id: 'trash', label: 'Trash', icon: Trash2 },

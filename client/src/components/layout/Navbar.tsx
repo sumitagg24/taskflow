@@ -27,7 +27,7 @@ const SECTION_TITLES: Record<string, string> = {
   categories: 'Categories',
   templates: 'Templates',
   insights: 'Insights',
-  analytics: 'Analytics',
+  analytics: 'Insights',
   focus: 'Focus Timer',
   notifications: 'Notifications',
   team: 'Team',
@@ -63,7 +63,7 @@ function sectionToPath(section: string): string {
     case 'insights':
       return '/insights';
     case 'analytics':
-      return '/analytics';
+      return '/insights';
     case 'focus':
       return '/focus';
     case 'notifications':

@@ -1,9 +1,13 @@
 import { useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  LayoutDashboard,
+  CalendarCheck2,
+  ListTodo,
   BookmarkPlus,
   Tags,
   Star,
+  Flame,
   Bell,
   Timer,
   Users,
@@ -36,12 +40,20 @@ interface MoreRow {
   icon: LucideIcon;
 }
 
+// Mirrors the sidebar destinations minus the BottomNav tabs
+// (Today/Inbox/Calendar live on the tab bar). Secondary routes
+// (Favorites/Insights/Focus) stay reachable here and via the palette,
+// so collapsing the sidebar never orphans a feature.
 const ROWS: MoreRow[] = [
-  { id: 'templates', label: 'Templates', hint: 'Reusable task setups', icon: BookmarkPlus },
+  { id: 'dashboard', label: 'Dashboard', hint: 'Overview and up next', icon: LayoutDashboard },
+  { id: 'weekly-review', label: 'Weekly Reset', hint: 'Calm weekly review', icon: CalendarCheck2 },
+  { id: 'all', label: 'All Tasks', hint: 'Every task, filterable', icon: ListTodo },
   { id: 'categories', label: 'Categories', hint: 'Organise by area', icon: Tags },
+  { id: 'templates', label: 'Templates', hint: 'Reusable task setups', icon: BookmarkPlus },
   { id: 'favorites', label: 'Favorites', hint: 'Starred tasks', icon: Star },
-  { id: 'notifications', label: 'Notifications', hint: 'Reminders and mentions', icon: Bell },
+  { id: 'insights', label: 'Insights', hint: 'Scores and trends', icon: Flame },
   { id: 'focus', label: 'Focus Timer', hint: 'Timed work sessions', icon: Timer },
+  { id: 'notifications', label: 'Notifications', hint: 'Reminders and mentions', icon: Bell },
   { id: 'team', label: 'Team', hint: 'People and sharing', icon: Users },
   { id: 'trash', label: 'Trash', hint: 'Restore or purge', icon: Trash2 },
   { id: 'settings', label: 'Settings', hint: 'Preferences and account', icon: Settings },

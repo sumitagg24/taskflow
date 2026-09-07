@@ -42,6 +42,7 @@
   --color-clay: #cc785c;
   --color-clay-hover: #c26f52;
   --color-clay-active: #a9583e;
+  --color-clay-ink: #a9583e;
   --color-kraft: #d4a27f;
   --color-manilla: #ebdbbc;
 
@@ -50,12 +51,16 @@
   --color-gray-100: #f0eee6;
   --color-gray-200: #e6e1d7;
   --color-gray-300: #d3cec4;
-  --color-gray-400: #b0aea5;
-  --color-gray-500: #6c6a64;
+  --color-gray-400: #6c6a64;
+  --color-gray-500: #5c5a55;
   --color-gray-600: #4a4843;
-  --color-gray-505: #5c5a55;
-  --color-gray-700: #4a4843;
+  --color-gray-505: #53514c;
+  --color-gray-700: #3a3833;
   --color-gray-800: #2c2b28;
+  --color-gray-550: #53514c;
+  --color-gray-470: #6c6a64;
+  --text-secondary: #5c5a55;
+  --text-muted: #5c5a55;
   --color-gray-900: #1f1e1d;
   --color-gray-950: #141413;
 
@@ -227,6 +232,7 @@
   --text-primary: #1f1e1d;
   --text-secondary: #5c5a55;
   --text-muted: #5c5a55;
+  --text-muted-soft: #5c5a55;
   --accent: #cc785c;
   --accent-strong: #a9583e;
   --accent-ink: #1a1917;
@@ -246,11 +252,19 @@
   --border-color: #35332e;
   --border-strong: #45423b;
   --text-primary: #f5f3ec;
-  --text-secondary: #716e67;
-  --text-muted: #5c5a55;
+  --text-secondary: #b0aea5;
+  --text-muted: #83817b;
   --accent: #cc785c;
   --accent-strong: #e2a992;
   --accent-ink: #1a1917;
+}
+
+/* Clay text — dark enough for WCAG AA on cream canvas (4.8:1). The fill
+   color #cc785c is fine for decoration / large text / icons; this token is for
+   body text and small UI labels where the stricter threshold applies. */
+.text-clay-ink {
+  --tw-text-opacity: 1;
+  color: rgb(169 88 62 / var(--tw-text-opacity));
 }
 
 /* ============================================================================
@@ -462,7 +476,7 @@ h1, h2, h3 {
   font-weight: 500;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 /* Hairline rule that reads as an editorial divider rather than a border. */

@@ -3,10 +3,12 @@ import { toast } from 'sonner';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 
-interface Props {
+export interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: ReactNode;
 }
+
+type Props = ErrorBoundaryProps;
 
 interface State {
   hasError: boolean;
@@ -14,6 +16,11 @@ interface State {
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
+  static defaultProps: Props = {
+    children: null as unknown as ReactNode,
+    fallback: null,
+  };
+
   state: State = { hasError: false, error: null };
 
   componentDidCatch(error: Error, info: ErrorInfo) {

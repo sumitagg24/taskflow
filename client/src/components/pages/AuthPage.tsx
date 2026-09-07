@@ -385,7 +385,7 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
               <button
                 type="button"
                 onClick={onForgotPassword}
-                className="rounded-md text-[13px] text-gray-500 transition-colors hover:text-clay focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:text-gray-400"
+                className="rounded-md text-[13px] text-gray-500 transition-colors hover:text-clay-ink focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:text-gray-400"
               >
                 Forgot your password?
               </button>
@@ -403,14 +403,12 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
           onGoogleCredential={handleGoogleCredential}
           onError={handleSocialError}
           busy={loading || socialLoading}
-        />
-
-        <p className="mt-7 text-[13px] text-gray-500 dark:text-gray-400">
+        />          <p className="mt-7 text-[13px] text-gray-500 dark:text-gray-400">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button
             type="button"
             onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
-            className="rounded-md font-medium text-clay underline decoration-clay/30 decoration-1 underline-offset-[3px] transition-colors hover:decoration-clay focus-visible:ring-[3px] focus-visible:ring-yellow-400/15"
+            className="rounded-md font-medium text-clay-ink underline decoration-clay-ink/30 decoration-1 underline-offset-[3px] transition-colors hover:decoration-clay hover:decoration-clay-ink focus-visible:ring-[3px] focus-visible:ring-yellow-400/15"
           >
             {mode === 'login' ? 'Create one' : 'Sign in'}
           </button>

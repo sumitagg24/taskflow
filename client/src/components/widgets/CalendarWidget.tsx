@@ -52,7 +52,7 @@ export default function CalendarWidget({ tasks }: CalendarWidgetProps) {
           <button
             onClick={prevMonth}
             aria-label={prevMonthLabel}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <ChevronLeft size={16} aria-hidden="true" />
             <span className="sr-only">{prevMonthLabel}</span>
@@ -60,7 +60,7 @@ export default function CalendarWidget({ tasks }: CalendarWidgetProps) {
           <button
             onClick={nextMonth}
             aria-label={nextMonthLabel}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <ChevronRight size={16} aria-hidden="true" />
             <span className="sr-only">{nextMonthLabel}</span>
@@ -72,7 +72,7 @@ export default function CalendarWidget({ tasks }: CalendarWidgetProps) {
 
       <div className="grid grid-cols-7 gap-1">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <div key={d} className="text-center text-[10px] font-medium text-gray-400 py-1">{d}</div>
+          <div key={d} className="text-center text-[10px] font-medium text-gray-500 py-1">{d}</div>
         ))}
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`empty-${i}`} />

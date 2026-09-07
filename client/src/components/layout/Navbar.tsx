@@ -178,7 +178,7 @@ export default function Navbar({
 
           <ThemeToggle />
 
-          <Button size="sm" icon={<Plus size={15} />} onClick={onNewTask} className="ml-1 h-9 px-3">
+          <Button size="sm" icon={<Plus size={15} />} onClick={onNewTask} className="ml-1 h-9 px-3" aria-label="Create new task">
             <span className="hidden sm:inline">New Task</span>
           </Button>
 

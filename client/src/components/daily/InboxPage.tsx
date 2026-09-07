@@ -17,7 +17,7 @@ const CATEGORIES = ['work', 'personal', 'college', 'projects', 'fitness', 'shopp
  * scheduled: every row carries an "Inbox" badge and the header states the
  * overdue count separately so the two are never confused.
  */
-export default function InboxPage({ onRefresh }: { onRefresh?: () => void }) {
+export default function InboxPage({ onRefresh, onNavigate }: { onRefresh?: () => void; onNavigate?: (section: string) => void }) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [overdueCount, setOverdueCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -254,17 +254,28 @@ export default function InboxPage({ onRefresh }: { onRefresh?: () => void }) {
         eyebrow="Inbox"
         title={tasks.length ? 'To triage' : 'Inbox zero'}
         count={tasks.length ? tasks.length : null}
-        subtitle={
-          overdueCount > 0
-            ? `${overdueCount} overdue ${overdueCount === 1 ? 'task lives' : 'tasks live'} outside the Inbox — not mixed in here.`
-            : 'Untriaged quick captures only — scheduled and overdue work lives elsewhere.'
-        }
+        subtitle="Untriaged quick captures only."
         secondary={
           <Button variant="secondary" size="sm" onClick={fetchInbox} icon={<RefreshCw size={14} aria-hidden="true" />}>
             Refresh
           </Button>
         }
       />
+      {/* Overdue lives in exactly one place — Today. This is a doorway, not a second list. */}
+      {overdueCount > 0 && (
+        <button
+          type="button"
+          onClick={() => onNavigate?.('today')}
+          className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50/60 px-4 text-left text-sm transition-colors hover:border-red-300 dark:border-red-500/25 dark:bg-red-500/[0.06] dark:hover:border-red-500/40"
+        >
+          <span className="font-medium text-red-700 dark:text-red-300">
+            {overdueCount} overdue {overdueCount === 1 ? 'task needs' : 'tasks need'} a decision
+          </span>
+          <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">
+            Review in Today →
+          </span>
+        </button>
+      )}
       {offline && (
         <p role="alert" className="flex items-center gap-2 rounded-lg bg-yellow-50 px-3 py-2 text-sm text-yellow-800 dark:bg-yellow-500/10 dark:text-yellow-300">
           <WifiOff size={14} aria-hidden="true" />

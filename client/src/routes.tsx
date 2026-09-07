@@ -16,7 +16,7 @@ import EmailVerificationBanner from '@/components/ui/EmailVerificationBanner';
 import Dashboard from '@/components/pages/Dashboard';
 import KanbanBoard from '@/components/KanbanBoard';
 import Filters, { EMPTY_FILTERS, type FiltersValues } from '@/components/Filters';
-import { Modal, DeleteConfirmModal, PageLoader, EmptyState, Button, SkeletonCard, ShortcutsModal } from '@/components/ui';
+import { Modal, PageLoader, EmptyState, Button, SkeletonCard, ShortcutsModal } from '@/components/ui';
 import { QUICK_CAPTURE_EVENT } from '@/lib/daily';
 import { Plus, ListTodo } from 'lucide-react';
 
@@ -65,9 +65,6 @@ export interface ShellData {
   setEditTask: (t: TaskData | null) => void;
   showForm: boolean;
   setShowForm: (v: boolean) => void;
-  deleteTarget: TaskData | null;
-  setDeleteTarget: (t: TaskData | null) => void;
-  deleting: boolean;
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
   detailTaskId: string | null;
@@ -76,7 +73,6 @@ export interface ShellData {
   setShowAIAssistant: (v: boolean) => void;
   fetchTasks: () => void;
   handleDeleteRequest: (t: TaskData) => void;
-  handleDeleteConfirm: () => void;
   handleEdit: (t: TaskData) => void;
   handleNewTask: () => void;
   handleFormSubmit: (t: TaskData) => void;
@@ -253,14 +249,6 @@ function ProtectedShell(): ReactNode {
         </Modal>
       </Suspense>
 
-      <DeleteConfirmModal
-        isOpen={!!shell.deleteTarget}
-        onClose={() => { if (!shell.deleting) shell.setDeleteTarget(null); }}
-        onConfirm={shell.handleDeleteConfirm}
-        itemName={shell.deleteTarget?.title}
-        loading={shell.deleting}
-      />
-
       <Suspense fallback={null}>
         {shell.detailTaskId && (
           <TaskDetailDrawer
@@ -423,7 +411,14 @@ function CalendarRoute(): ReactNode {
 
 function InboxRoute(): ReactNode {
   const shell = useShell();
-  return <InboxPage onRefresh={shell.fetchTasks} />;
+  const navigate = useNavigate();
+  const onNavigate = useCallback(
+    (section: string) => {
+      navigate(routeFor(section));
+    },
+    [navigate]
+  );
+  return <InboxPage onRefresh={shell.fetchTasks} onNavigate={onNavigate} />;
 }
 
 function TodayRoute(): ReactNode {

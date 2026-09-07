@@ -36,8 +36,7 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
   const [editTask, setEditTask] = useState<TaskData | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<TaskData | null>(null);
-  const [deleting, setDeleting] = useState(false);
+
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The read-only detail drawer, keyed by id so it can fetch the fully
@@ -153,20 +152,13 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
     setPaletteOpen(true);
   }, []);
 
-  const handleDeleteRequest = (task: TaskData) => {
-    setDeleteTarget(task);
-  };
-
-  // Delete is a soft delete on the server, so the honest affordance is an
-  // instant Undo rather than a scarier confirmation dialog. Optimistic: the
-  // row disappears the moment Delete is confirmed; the API call follows and
-  // rolls back only on failure.
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-    const task = deleteTarget;
+  // Single delete is a soft delete on the server, so the one affordance is
+  // instant + Undo — no confirmation dialog. Optimistic: the row disappears
+  // the moment Delete is pressed; the API call follows and rolls back only
+  // on failure. Bulk delete and purge/empty-trash keep their confirms.
+  const handleDeleteRequest = async (task: TaskData) => {
     const snapshot = tasks;
     setTasks((prev) => prev.filter((t) => t._id !== task._id));
-    setDeleteTarget(null);
     toast.success(`“${task.title}” moved to Trash`, {
       action: {
         label: 'Undo',
@@ -184,14 +176,11 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
         },
       },
     });
-    setDeleting(true);
     try {
       await deleteTask(task._id);
     } catch {
       setTasks(snapshot);
       toast.error('Failed to delete task');
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -277,9 +266,6 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
           setEditTask,
           showForm,
           setShowForm,
-          deleteTarget,
-          setDeleteTarget,
-          deleting,
           paletteOpen,
           setPaletteOpen,
           detailTaskId,
@@ -288,7 +274,6 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
           setShowAIAssistant,
           fetchTasks,
           handleDeleteRequest,
-          handleDeleteConfirm,
           handleEdit,
           handleNewTask,
           handleFormSubmit,

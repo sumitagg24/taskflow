@@ -33,7 +33,8 @@ describe('InboxPage', () => {
     render(<InboxPage />);
     await waitFor(() => expect(screen.getByText('Quick thought')).toBeInTheDocument());
     expect(screen.getByText(/Inbox · untriaged/i)).toBeInTheDocument();
-    expect(screen.getByText(/2 overdue.*outside the Inbox/i)).toBeInTheDocument();
+    // Overdue is a doorway to Today, not a second list.
+    expect(screen.getByRole('button', { name: /2 overdue.*Review in Today/i })).toBeInTheDocument();
   });
 
   it('shows empty state when clear', async () => {

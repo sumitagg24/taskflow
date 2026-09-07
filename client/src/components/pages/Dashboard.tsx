@@ -420,10 +420,10 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
           <CardHeader
             eyebrow="Up next"
             title={upNext.length ? `${upNext.length} need${upNext.length === 1 ? 's' : ''} you` : 'Today is clear'}
-            subtitle="Overdue first, then due today, then what's next."
+            subtitle="Overdue first, then due today, then what's next. Decide overdue in Today."
             action={
-              <Button variant="ghost" size="sm" onClick={() => onNavigate('all')}>
-                View all
+              <Button variant="ghost" size="sm" onClick={() => onNavigate('today')}>
+                Open Today
               </Button>
             }
           />

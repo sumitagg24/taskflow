@@ -236,7 +236,7 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
               'focus-visible:ring-[3px] focus-visible:ring-yellow-400/15',
               mode === m
                 ? 'text-gray-900 dark:text-gray-100'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                : 'text-gray-600 hover:text-gray-700 dark:hover:text-gray-300'
             )}
           >
             {mode === m && (

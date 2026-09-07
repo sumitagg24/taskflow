@@ -52,9 +52,9 @@ test.describe('Settings & Notifications', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // The user should be logged in - sidebar or navbar should show user info
-    const userElement = page.locator('[data-testid="user-name"], [class*="profile"], [class*="avatar"]').first();
-    await expect(userElement).toBeVisible({ timeout: 5000 });
+    // The user should be logged in — the sidebar account menu (avatar +
+    // identity) proves the session and the user info is on screen.
+    await expect(page.getByRole('button', { name: 'Account menu' })).toBeVisible({ timeout: 10000 });
   });
 
   test('Theme — dark/light toggle works', async ({ page }) => {

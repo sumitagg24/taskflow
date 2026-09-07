@@ -11,15 +11,18 @@ export default function CalendarWidget({ tasks }: CalendarWidgetProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const monthName = currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const today = new Date();
 
-  const monthName = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const prevMonthLabel = `Previous month — ${currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}`;
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const nextMonthLabel = `Next month — ${currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}`;
 
   // Derived per-day counts re-run on every parent render without this;
   // the per-task Date parse is the only non-trivial work in this widget.
@@ -42,15 +45,25 @@ export default function CalendarWidget({ tasks }: CalendarWidgetProps) {
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Calendar size={18} className="text-yellow-500" />
+          <Calendar size={18} className="text-yellow-500" aria-hidden="true" />
           <h3 className="font-semibold text-gray-900 dark:text-gray-100">Calendar</h3>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={prevMonth} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <ChevronLeft size={16} />
+          <button
+            onClick={prevMonth}
+            aria-label={prevMonthLabel}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+            <span className="sr-only">{prevMonthLabel}</span>
           </button>
-          <button onClick={nextMonth} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <ChevronRight size={16} />
+          <button
+            onClick={nextMonth}
+            aria-label={nextMonthLabel}
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+            <span className="sr-only">{nextMonthLabel}</span>
           </button>
         </div>
       </div>

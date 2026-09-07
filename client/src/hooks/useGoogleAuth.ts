@@ -1,5 +1,21 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (config: unknown) => void;
+          renderButton: (el: HTMLElement, config: unknown) => void;
+          prompt: (cb: (n: unknown) => void) => void;
+          cancelPrompt: () => void;
+          disableAutoSelect: () => void;
+        };
+      };
+    };
+  }
+}
+
 interface GoogleCredentialResponse {
   credential?: string;
   select_by?: string;
@@ -191,11 +207,16 @@ export function useGoogleAuth(clientId: string | undefined) {
     setCredential(null);
     setCredentialError(null);
     try {
-      window.google.accounts.id.prompt((notification) => {
+      window.google.accounts.id.prompt((notification: unknown) => {
+        const n = notification as { isNotDisplayed?: () => boolean; isSkippedMoment?: () => boolean; isDismissedMoment?: () => boolean } | null | undefined;
+        if (n == null) {
+          setBusy(false);
+          return;
+        }
         if (
-          notification.isNotDisplayed() ||
-          notification.isSkippedMoment() ||
-          notification.isDismissedMoment()
+          typeof n.isNotDisplayed === 'function' && n.isNotDisplayed() ||
+          typeof n.isSkippedMoment === 'function' && n.isSkippedMoment() ||
+          typeof n.isDismissedMoment === 'function' && n.isDismissedMoment()
         ) {
           setBusy(false);
         }

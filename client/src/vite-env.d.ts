@@ -1,5 +1,13 @@
 /// <reference types="vite/client" />
 
+declare global {
+  interface Window {
+    __TEST__?: string;
+  }
+}
+
+export {};
+
 interface Window {
   google?: {
     accounts: {

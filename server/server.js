@@ -230,6 +230,10 @@ app.use('/api/templates', apiLimiter, templateRoutes);
 app.use('/api/calendar', apiLimiter, calendarRoutes);
 app.use('/api/time-tracking', apiLimiter, timeTrackingRoutes);
 app.use('/api/growth', apiLimiter, growthRoutes);
+// Phase 6 daily operating loop (Inbox → Today → resolve → weekly reset)
+// (Starters live on templateRoutes before `/:id` — see routes/templateRoutes.)
+const dailyRoutes = require('./routes/dailyRoutes');
+app.use('/api/daily', apiLimiter, dailyRoutes);
 
 app.use('/api/ai', aiLimiter, aiRoutes);
 

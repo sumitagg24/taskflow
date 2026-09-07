@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Search, Star, Copy, Trash2, Share2, Plus, Loader2, Sparkles } from 'lucide-react';
 import { templatesAPI, createTask } from '@/api/tasks';
 import { TemplateModal } from '@/components/templates/TemplateModal';
+import StarterTemplates from '@/components/daily/StarterTemplates';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { reportCreateError } from '@/lib/planLimit';
@@ -137,6 +138,14 @@ export default function TemplatesPage() {
         <Button onClick={() => setShowModal(true)} icon={<Plus size={16} />}>
           New Template
         </Button>
+      </div>
+
+      <div className="card mb-6 p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles size={16} className="text-yellow-600 dark:text-yellow-400" aria-hidden="true" />
+          <h3 className="font-display text-base text-gray-900 dark:text-gray-100">Start from a starter</h3>
+        </div>
+        <StarterTemplates onApplied={loadTemplates} />
       </div>
 
       <div className="relative mb-6">

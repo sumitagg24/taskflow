@@ -51,6 +51,12 @@ export interface Task {
   dueDate?: string;
   tags?: string[];
   category?: string;
+  /** Phase 6 daily loop — same canonical model, no duplicated data. */
+  inbox?: boolean;
+  plannedFor?: string | null;
+  isTopThree?: boolean;
+  topThreeOrder?: number;
+  todayOrder?: number;
   subtasks?: Subtask[];
   comments?: TaskComment[];
   attachments?: { _id?: string; url?: string; name?: string }[];

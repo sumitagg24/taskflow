@@ -25,10 +25,24 @@ const AUTH_DIR = path.join(HERE, '.auth');
 const STORAGE_STATE_PATH = path.join(AUTH_DIR, 'user.json');
 const CREDENTIALS_PATH = path.join(AUTH_DIR, 'credentials.json');
 const SERVER_ENV_PATH = path.join(HERE, '..', '..', 'server', '.env');
-const API_BASE = process.env.E2E_API_BASE ?? 'http://localhost:5000/api';
+// E2E_API_URL is the canonical var (helpers.ts); E2E_API_BASE is the legacy
+// alias this file originally used. Isolated runs export both to the same value.
+const API_BASE = process.env.E2E_API_URL ?? process.env.E2E_API_BASE ?? 'http://localhost:5000/api';
+
+/**
+ * Resolve the MongoDB the API is actually using. The isolated harness exports
+ * E2E_MONGO_URI (an in-memory server) so the verify-flip below lands in the
+ * same database the API reads — never in the developer's real database.
+ * Classic local runs fall back to MONGO_URI from server/.env as before.
+ */
+function readMongoUri(): string {
+  const isolated = process.env.E2E_MONGO_URI;
+  if (isolated !== undefined && isolated !== '') return isolated;
+  return readMongoUriFromServerEnv();
+}
 
 /** Read MONGO_URI straight from server/.env. Throws loudly — never mask it. */
-function readMongoUri(): string {
+function readMongoUriFromServerEnv(): string {
   if (!fs.existsSync(SERVER_ENV_PATH)) {
     throw new Error(
       `[auth.setup] server/.env not found at ${SERVER_ENV_PATH}. ` +
@@ -56,11 +70,17 @@ const mongoose = serverRequire('mongoose') as typeof import('mongoose');
 
 setup('authenticate (verified fixture user)', async ({ page }) => {
   const worker = process.env.TEST_WORKER_INDEX ?? '0';
+  // Isolated runs (E2E_MONGO_URI) boot a FRESH in-memory database per run, so
+  // a fixed identity is collision-free AND keeps screenshots deterministic
+  // (the sidebar renders the fixture email — a run-unique address would bust
+  // every visual baseline). Classic local runs keep the random identity to
+  // stay collision-free on the shared developer database.
+  const isolated = (process.env.E2E_MONGO_URI ?? '') !== '';
   const uniq = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   const user = {
     name: 'E2E Fixture',
-    username: `e2efix_${worker}_${uniq}`.slice(0, 30),
-    email: `e2e_fixture_${worker}_${uniq}@test.taskflow.app`,
+    username: isolated ? 'e2efixture' : `e2efix_${worker}_${uniq}`.slice(0, 30),
+    email: isolated ? 'e2e_fixture@test.taskflow.app' : `e2e_fixture_${worker}_${uniq}@test.taskflow.app`,
     password: 'TestPass1!',
   };
 
@@ -96,6 +116,7 @@ setup('authenticate (verified fixture user)', async ({ page }) => {
   if (!login.ok()) {
     throw new Error(`[auth.setup] login failed: ${login.status()} ${await login.text()}.`);
   }
+  const loginBody = (await login.json()) as { accessToken?: string; refreshToken?: string };
 
   fs.mkdirSync(AUTH_DIR, { recursive: true });
   await page.context().storageState({ path: STORAGE_STATE_PATH });
@@ -103,6 +124,18 @@ setup('authenticate (verified fixture user)', async ({ page }) => {
   // The httpOnly cookies are opaque to specs; persist the fixture credentials
   // alongside so specs (e.g. smoke-auth) can log back in through the UI.
   fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify({ email: user.email, password: user.password }));
+
+  // Persist THIS session's token pair for test-side API seeding (specs acting
+  // as the fixture user). Reusing these beats logging in again per test: the
+  // server stores a SINGLE refresh token per user, so every extra password
+  // login silently invalidates the browser session the specs run in.
+  if (!loginBody.accessToken || !loginBody.refreshToken) {
+    throw new Error('[auth.setup] login response carried no token pair — cannot write tokens.json.');
+  }
+  fs.writeFileSync(
+    path.join(AUTH_DIR, 'tokens.json'),
+    JSON.stringify({ accessToken: loginBody.accessToken, refreshToken: loginBody.refreshToken })
+  );
 
   const saved = JSON.parse(fs.readFileSync(STORAGE_STATE_PATH, 'utf8')) as {
     cookies: Array<{ name: string }>;

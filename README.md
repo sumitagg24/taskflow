@@ -138,6 +138,21 @@ gracefully (heuristic fallbacks) when no API keys are configured.
 
 ---
 
+## Feature availability
+
+What the code actually supports today — checked against the routers,
+controllers, and pages, not the marketing copy.
+
+| Status | Area | Reality |
+|--------|------|---------|
+| Available | Tasks, board, drawer, palette | Full CRUD, Kanban DnD + keyboard moves, deep-linkable detail drawer (`?task=<id>`), ⌘K palette, Trash (30-day restore/purge), batch ops, CSV/iCal export |
+| Available | Calendar, Insights, Focus, AI | iCal export + Google/Outlook/Apple links; Insights (the old `/analytics` redirects to `/insights`); Pomodoro + per-task sessions; AI endpoints with heuristic fallback when no provider key is set |
+| Available | Notifications, realtime, templates, auth | In-app + optional email; Socket.IO per-user rooms; templates incl. shared (`GET /api/templates/shared`), apply, copy; email/password + Google/GitHub OAuth (server-configured providers only) |
+| Informational-only | Plans & billing | Free/Pro/Team tiers with prices live in `server/config/plans.js` and ARE enforced server-side (task caps, AI quotas, attachment limits), but there is **no checkout or upgrade endpoint** — the growth API is get/invite/revoke only, and no payment provider is wired. Referral credits are tracked for real. |
+| Unavailable (labelled) | Team shared boards | Invites are referral attribution, not workspace membership — the Team page itself says *"Member roles and a team digest land next."* Shared *templates* exist; shared *boards* do not. |
+
+---
+
 ## Architecture
 
 ```
@@ -405,14 +420,40 @@ working.
   API client, Kanban windowing/keyboard, drawer, filters, UI kit, plan/referral libs).
 - **Gate commands (run all before a PR):**
   ```bash
-  npm run typecheck --prefix client   # strict tsc --noEmit
+  npm run typecheck --prefix client   # strict tsc --noEmit (covers src/; see note below)
   npm run build --prefix client       # production bundle
   npm run test --prefix server        # Jest suites
   npm run test --prefix client        # Vitest suites
-  npm run test:e2e                    # Playwright: setup + desktop (chromium) + mobile
-  npm run test:e2e:mobile             # Playwright: mobile (Pixel 7, 390x844) only
+  npm run test:e2e:isolated           # Playwright on a hermetic stack (memory-Mongo API :5058 + Vite :5174)
   npm audit --prefix server           # dependency audit
   npm audit --prefix client           # dependency audit
+  ```
+- **Typecheck note:** `client/tsconfig.json` includes `src/` only, so
+  `npm run typecheck --prefix client` does NOT cover `client/e2e/`. Spec and
+  helper code is still written TS-strict; validate it explicitly, e.g.
+  `npx tsc --noEmit --strict --skipLibCheck --module esnext --target es2020 --moduleResolution bundler <e2e files>`
+  from `client/` (no tsconfig change needed).
+- **E2E projects:** `setup` (registers a verified fixture user per run into
+  `client/e2e/.auth/`, never committed), then `chromium` (Desktop Chrome) and
+  `mobile` (Pixel 7, 390×844) — every spec runs on both unless skipped by
+  design (phone-only controls). Default servers are the classic dev pair
+  (`http://localhost:3000` + `http://localhost:5000/api`); the isolated
+  runner overrides them via `E2E_BASE_URL` / `E2E_API_URL` /
+  `E2E_MONGO_URI` / `E2E_NO_WEBSERVER=1` (see `docs/ops/e2e-isolated-stack.md`).
+  ```bash
+  npm run test:e2e:isolated --prefix client            # full gate, both projects
+  node e2e/run-isolated.cjs routes --project=mobile   # from client/: file filters + project
+  npm run test:e2e --prefix client                    # classic path: your own dev servers on :3000/:5000
+  npm run test:e2e:mobile --prefix client             # mobile project only (classic path)
+  ```
+- **Visual baselines:** `client/e2e/visual.spec.ts` pins dashboard, board,
+  calendar, insights, settings, team, drawer, mobile nav, and mobile capture
+  (frozen clock + fixed seed; team invite link masked). Baselines live in
+  `client/e2e/__snapshots__/` (`<name>-chromium.png`, `<name>-mobile.png`)
+  and are committed. Regenerate deliberately after intentional UI changes:
+  ```bash
+  npm run test:e2e:isolated:snapshots --prefix client
+  # = node e2e/run-isolated.cjs visual --update-snapshots   (from client/)
   ```
 - **Live smoke test:** boots the real server against a real database and exercises
   29 checks end-to-end — register → CRUD → pagination/search → trash lifecycle →
@@ -423,7 +464,10 @@ working.
   a fresh verified user per run (flips `emailVerified` via `MONGO_URI` from
   `server/.env`) and persists cookies to `client/e2e/.auth/user.json` for the
   `chromium` and `mobile` projects. `a11y.spec.ts` (axe-core, serious+critical
-  only) and `smoke-auth.spec.ts` (fixture → logout → UI login) ride the fixture;
+  only; two pre-existing screens are `.fixme`-documented with defect links —
+  unnamed CalendarWidget month buttons and muted-token contrast, both in
+  unowned UI files) and `smoke-auth.spec.ts` (fixture → logout → UI login,
+  self-healing the shared session afterwards) ride the fixture;
   older specs seed their own cookies via `helpers.setAuthInStorage`.
   `GET /api/health` also reports `db: connected|connecting|disconnected` readiness.
 
@@ -447,6 +491,34 @@ Set `NODE_ENV=production`, configure `MONGO_URI`, `JWT_SECRET`,
 **Docker:** `docker-compose up -d` provisions MongoDB, the API, and the client.
 
 Backup/restore runbook: `docs/ops/backup-restore.md`.
+
+---
+
+## Known limitations
+
+Only volunteered when verified against the code — no folklore.
+
+- **Offline is shell-only.** The service worker (`client/public/sw.js`)
+  precaches `/` + `/index.html` and runtime-caches same-origin non-API GETs
+  with an `index.html` fallback, but there is no offline mutation queue or
+  sync: task/notification writes fail without connectivity.
+- **Single-process server.** Recurring-task generation, trash purge,
+  focus-time reset, and due-soon reminders are `setInterval` jobs inside the
+  Node process, and the logout token denylist is an in-memory map. Scale-out
+  or serverless hosting needs external cron + shared stores first; rate
+  limiting is the one piece already pluggable (`REDIS_URL`).
+- **Vercel needs real env.** The client ships as a static SPA
+  (`client/vercel.json` is a plain rewrite to `/index.html`); the API still
+  needs a Node runtime with `MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
+  and `CLIENT_URL` — it refuses to boot in production without them.
+- **Email is best-effort in dev/test.** Without `EMAIL_HOST/USER/PASS` the
+  server falls back to Ethereal (network account creation, ~10s timeout
+  worst case), which is why registration takes seconds in E2E; failures only
+  warn, the user is still created.
+- **Sessions are single-refresh-token.** Each login rotates the one stored
+  refresh token and logout denylists the access token until its natural
+  (~15 min) expiry — concurrent logins/logouts on the same account invalidate
+  each other. The E2E harness works around this deliberately (see the runbook).
 
 ---
 

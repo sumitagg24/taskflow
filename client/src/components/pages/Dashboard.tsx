@@ -12,6 +12,7 @@ import {
   Button, EmptyState, Progress, SkeletonCard, LoadingRegion, KbdShortcut, Input,
 } from '@/components/ui';
 import CalendarWidget from '@/components/widgets/CalendarWidget';
+import WeeklyReset, { WeeklyResetBanner } from '@/components/daily/WeeklyReset';
 
 /** Task shape as this page reads it — the shell owns the canonical list. */
 export interface DashboardTask {
@@ -198,6 +199,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [digest, setDigest] = useState<DayDigest | null>(null);
   const [recentNotifications, setRecentNotifications] = useState<DashboardNotification[]>([]);
+  const [showWeekly, setShowWeekly] = useState(false);
   const [onboardingHidden, setOnboardingHidden] = useState(
     () => localStorage.getItem(ONBOARDING_DISMISSED) === '1'
   );
@@ -403,8 +405,26 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
               {digest.quote}
             </p>
           )}
+
+          {/* Daily loop entry points — Today / Inbox / Weekly reset. */}
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => onNavigate('today')}>
+              Open Today
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => onNavigate('inbox')}>
+              Triage Inbox
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowWeekly(true)}>
+              Weekly reset
+            </Button>
+          </div>
         </Card>
       </motion.div>
+
+      <motion.div variants={item}>
+        <WeeklyResetBanner onOpen={() => setShowWeekly(true)} />
+      </motion.div>
+      <WeeklyReset open={showWeekly} onClose={() => setShowWeekly(false)} onNavigate={onNavigate} />
 
       {/* Quick capture — one line, Enter to file it, no modal round-trip. */}
       <motion.div variants={item}>

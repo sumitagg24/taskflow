@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --prefix client",
     "test:e2e": "npm run test:e2e --prefix client",
     "test:e2e:mobile": "npm run test:e2e:mobile --prefix client",
+    "test:e2e:isolated": "npm run test:e2e:isolated --prefix client",
     "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {

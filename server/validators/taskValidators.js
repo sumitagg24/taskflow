@@ -43,6 +43,26 @@ const createTaskValidator = [
     .optional()
     .isInt({ min: 0 })
     .withMessage('Estimated time must be a positive number'),
+  body('inbox')
+    .optional()
+    .isBoolean()
+    .withMessage('inbox must be a boolean'),
+  body('plannedFor')
+    .optional({ values: 'null' })
+    .isISO8601()
+    .withMessage('plannedFor must be a valid date'),
+  body('isTopThree')
+    .optional()
+    .isBoolean()
+    .withMessage('isTopThree must be a boolean'),
+  body('topThreeOrder')
+    .optional()
+    .isInt({ min: 0, max: 1000 })
+    .withMessage('topThreeOrder must be a non-negative integer'),
+  body('todayOrder')
+    .optional()
+    .isInt({ min: 0, max: 100000 })
+    .withMessage('todayOrder must be a non-negative integer'),
 ];
 
 const updateTaskValidator = [
@@ -90,6 +110,26 @@ const updateTaskValidator = [
     .optional({ values: 'null' })
     .isMongoId()
     .withMessage('Invalid assignee ID'),
+  body('inbox')
+    .optional()
+    .isBoolean()
+    .withMessage('inbox must be a boolean'),
+  body('plannedFor')
+    .optional({ values: 'null' })
+    .isISO8601()
+    .withMessage('plannedFor must be a valid date'),
+  body('isTopThree')
+    .optional()
+    .isBoolean()
+    .withMessage('isTopThree must be a boolean'),
+  body('topThreeOrder')
+    .optional()
+    .isInt({ min: 0, max: 1000 })
+    .withMessage('topThreeOrder must be a non-negative integer'),
+  body('todayOrder')
+    .optional()
+    .isInt({ min: 0, max: 100000 })
+    .withMessage('todayOrder must be a non-negative integer'),
 ];
 
 const idValidator = [param('id').isMongoId().withMessage('Invalid task ID')];
@@ -115,6 +155,26 @@ const listQueryValidator = [
     .optional()
     .isIn(TASK_SORTS)
     .withMessage('Invalid sort option: must be one of dueDate, -dueDate, priority, -priority, title, -title, status, oldest, updated'),
+  query('inbox')
+    .optional()
+    .isIn(['true', 'false'])
+    .withMessage('inbox must be true or false'),
+  query('isTopThree')
+    .optional()
+    .isIn(['true', 'false'])
+    .withMessage('isTopThree must be true or false'),
+  query('plannedFor')
+    .optional()
+    .isISO8601()
+    .withMessage('plannedFor must be a valid date'),
+  query('plannedForBefore')
+    .optional()
+    .isISO8601()
+    .withMessage('plannedForBefore must be a valid date'),
+  query('plannedForAfter')
+    .optional()
+    .isISO8601()
+    .withMessage('plannedForAfter must be a valid date'),
 ];
 
 const exportQueryValidator = [

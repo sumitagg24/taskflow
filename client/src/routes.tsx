@@ -1,4 +1,4 @@
-import { createContext, lazy, Suspense, useCallback, useContext, useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import {
   createBrowserRouter,
   Navigate,
@@ -23,6 +23,10 @@ const CommandPalette = lazy(() => import('@/components/CommandPalette'));
 const TaskForm = lazy(() => import('@/components/TaskForm'));
 const TaskDetailDrawer = lazy(() => import('@/components/TaskDetailDrawer'));
 const AIAssistant = lazy(() => import('@/components/AIAssistant'));
+const InboxPage = lazy(() => import('@/components/daily/InboxPage'));
+const TodayPage = lazy(() => import('@/components/daily/TodayPage'));
+const WeeklyReset = lazy(() => import('@/components/daily/WeeklyReset'));
+const QuickCapture = lazy(() => import('@/components/daily/QuickCapture'));
 const CalendarPage = lazy(() => import('@/components/pages/CalendarPage'));
 const SettingsPage = lazy(() => import('@/components/pages/SettingsPage'));
 const NotificationsPage = lazy(() => import('@/components/pages/NotificationsPage'));
@@ -91,6 +95,12 @@ export function routeFor(section: string): string {
   switch (section) {
     case 'dashboard':
       return '/';
+    case 'today':
+      return '/today';
+    case 'inbox':
+      return '/inbox';
+    case 'weekly-review':
+      return '/weekly-review';
     case 'all':
       return '/tasks';
     case 'pending':
@@ -159,6 +169,29 @@ function ProtectedShell(): ReactNode {
   const closeTask = useCallback(() => {
     setSearchParams(clearTaskParam, { replace: true });
   }, [setSearchParams]);
+
+  // Phase 6 quick capture: available from every main screen (Q/C shortcut).
+  const [quickOpen, setQuickOpen] = useState(false);
+  const openQuick = useCallback(() => setQuickOpen(true), []);
+  useEffect(() => {
+    const isTyping = (el: EventTarget | null) => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName.toLowerCase();
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (isTyping(e.target)) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const k = e.key.toLowerCase();
+      if (k === 'q' || k === 'c') {
+        e.preventDefault();
+        setQuickOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="flex min-h-screen">
@@ -232,10 +265,10 @@ function ProtectedShell(): ReactNode {
       </Suspense>
 
       {/* One-thumb create on phones. Lifted above the bottom navigation bar
-          (plus safe-area) so the two never overlap. */}
+          (plus safe-area) so the two never overlap. z-50 to stay above board content. */}
       <button
         onClick={shell.handleNewTask}
-        className="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
+        className="fixed right-5 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-50 flex h-13 w-13 items-center justify-center rounded-full bg-yellow-400 text-gray-950 shadow-lg transition-all hover:bg-clay-hover active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500/50 focus-visible:ring-offset-2 md:hidden"
         aria-label="Create new task"
       >
         <Plus size={22} strokeWidth={2.25} aria-hidden="true" />
@@ -254,6 +287,28 @@ function ProtectedShell(): ReactNode {
           onOpenAIAssistant={() => shell.setShowAIAssistant(true)}
         />
       </Suspense>
+
+      {/* Phase 6: global Inbox quick capture (Q/C) + floating capture button. */}
+      <Suspense fallback={null}>
+        {quickOpen && (
+          <QuickCapture
+            open={quickOpen}
+            onClose={() => setQuickOpen(false)}
+            onCreated={(t) => {
+              shell.handleFormSubmit(t as unknown as TaskData);
+            }}
+          />
+        )}
+      </Suspense>
+      <button
+        type="button"
+        onClick={openQuick}
+        aria-label="Quick capture to Inbox (shortcut Q)"
+        title="Quick capture to Inbox (Q)"
+        className="fixed bottom-[calc(8.5rem+env(safe-area-inset-bottom))] left-4 z-40 hidden min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-gray-200 bg-white/95 px-3 py-2 text-xs font-medium text-gray-600 shadow-lg backdrop-blur hover:text-gray-900 md:flex dark:border-gray-700 dark:bg-gray-900/95 dark:text-gray-300"
+      >
+        Q · Capture
+      </button>
 
       <Toaster
         position="bottom-right"
@@ -359,6 +414,47 @@ function CalendarRoute(): ReactNode {
   return <CalendarPage />;
 }
 
+function InboxRoute(): ReactNode {
+  const shell = useShell();
+  return <InboxPage onRefresh={shell.fetchTasks} />;
+}
+
+function TodayRoute(): ReactNode {
+  const shell = useShell();
+  return <TodayPage onRefresh={shell.fetchTasks} />;
+}
+
+function WeeklyReviewRoute(): ReactNode {
+  const shell = useShell();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="p-4 lg:p-6">
+      <WeeklyReset
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          navigate('/');
+        }}
+        onNavigate={(section) => navigate(routeFor(section))}
+      />
+      {!open && (
+        <div className="mx-auto max-w-md py-16 text-center">
+          <p className="text-sm text-gray-500">Review dismissed — no pressure. Come back any Monday.</p>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="mt-3 rounded-lg bg-yellow-400 px-4 py-2 text-sm font-medium text-gray-950"
+          >
+            Reopen reset
+          </button>
+          <span className="hidden">{String(shell.tasks.length)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FavoritesRoute(): ReactNode {
   return <FavoritesPage />;
 }
@@ -406,6 +502,9 @@ export const router = createBrowserRouter([
     element: <ProtectedShell />,
     children: [
       { index: true, element: <DashboardRoute /> },
+      { path: 'today', element: <TodayRoute /> },
+      { path: 'inbox', element: <InboxRoute /> },
+      { path: 'weekly-review', element: <WeeklyReviewRoute /> },
       { path: 'tasks', element: <TasksRoute /> },
       { path: 'tasks/:status', element: <TasksRoute /> },
       { path: 'calendar', element: <CalendarRoute /> },

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useDeferredValue, type ReactElement } from 'react';
 import { RouterProvider } from 'react-router-dom';
 import { Toaster, toast } from 'sonner';
-import { ThemeProvider, useTheme } from '@/context/ThemeContext';
+import { ThemeProvider, useTheme, type ResolvedTheme } from '@/context/ThemeContext';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { getTasks, toTaskArray, deleteTask, restoreTask } from '@/api/tasks';
@@ -15,10 +15,20 @@ import OAuthCallbackPage from '@/components/pages/auth/OAuthCallbackPage';
 import VerificationNoticePage from '@/components/pages/auth/VerificationNoticePage';
 import { LogoMark } from '@/components/ui';
 import { router, ShellContext, type TaskData } from '@/routes';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 function AppContent() {
   const { isAuthenticated } = useAuth();
   const { resolvedTheme } = useTheme();
+
+  return (
+    <ErrorBoundary>
+      <ShellContent isAuthenticated={isAuthenticated} resolvedTheme={resolvedTheme} />
+    </ErrorBoundary>
+  );
+}
+
+function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boolean; resolvedTheme: ResolvedTheme }) {
 
   const [tasks, setTasks] = useState<TaskData[]>([]);
   const [loading, setLoading] = useState(true);

@@ -75,6 +75,8 @@ const userSchema = new mongoose.Schema(
     focusTimeToday: { type: Number, default: 0 },
     streak: { type: Number, default: 0 },
     lastActiveDate: { type: Date, default: null },
+    // Phase 6: weekly reset is optional/dismissible — last dismissal time.
+    weeklyResetDismissedAt: { type: Date, default: null },
 
     // Email verification
     emailVerified: { type: Boolean, default: false },

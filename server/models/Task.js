@@ -109,6 +109,22 @@ const taskSchema = new mongoose.Schema(
     // Category
     category: { type: String, default: 'uncategorized' },
 
+    // ── Phase 6: daily operating loop (single canonical model) ─────────────
+    // Inbox = untriaged quick-capture. `true` means the task lives in the Inbox
+    // and has not been triaged yet. Triage clears it — never duplicated.
+    inbox: { type: Boolean, default: false },
+    // Day the user intends to work on the task (planning intent), distinct
+    // from `dueDate` (deadline). Today membership = plannedFor is today OR
+    // dueDate falls today. Stored as a Date at local-midnight boundary; the
+    // daily controller normalises YYYY-MM-DD input to UTC midnight.
+    plannedFor: { type: Date, default: null },
+    // Top Three = at most 3 user-chosen priorities for the planned day. Never
+    // auto-filled; enforced server-side (see dailyController.setTopThree).
+    isTopThree: { type: Boolean, default: false },
+    topThreeOrder: { type: Number, default: 0 },
+    // Manual order within the Today flexible/scheduled lists.
+    todayOrder: { type: Number, default: 0 },
+
     // Soft delete. `null` means live; a Date means the task sits in Trash and
     // is restorable until TRASH_RETENTION_DAYS have passed. Every read path
     // must filter on `deletedAt: null` — deleting is meant to feel instant and
@@ -132,6 +148,10 @@ taskSchema.index({ userId: 1, deletedAt: 1, order: 1 });
 taskSchema.index({ userId: 1, deletedAt: 1, updatedAt: -1 });
 taskSchema.index({ userId: 1, deletedAt: 1, createdAt: 1 });
 taskSchema.index({ userId: 1, deletedAt: 1, title: 1 });
+// Phase 6 daily-loop indexes: inbox triage, planned-day lookup, Top Three.
+taskSchema.index({ userId: 1, deletedAt: 1, inbox: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, plannedFor: 1 });
+taskSchema.index({ userId: 1, deletedAt: 1, isTopThree: 1 });
 taskSchema.index({ title: 'text', description: 'text' });
 
 module.exports = mongoose.model('Task', taskSchema);

@@ -20,8 +20,6 @@ export interface BottomNavProps {
   moreBadge?: number;
 }
 
-const LIST_SECTIONS = ['all', 'pending', 'in-progress', 'completed', 'backlog'];
-
 /**
  * Phone-only bottom tab bar (`md:hidden`). Rendered from Sidebar.tsx — the
  * shell (`routes.tsx`) is owned by another worker, so Sidebar is the only
@@ -40,14 +38,14 @@ export default function BottomNav({
   moreOpen = false,
   moreBadge = 0,
 }: BottomNavProps) {
-  const inboxActive = LIST_SECTIONS.includes(current);
-
-  const tabClass = (active: boolean) =>
+  const tabClass = (active: boolean, label: string) =>
     cn(
-      'flex min-h-[44px] min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-[10px] font-medium transition-colors',
+      'flex min-h-[44px] min-w-[44px] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors',
       active
         ? 'text-yellow-700 dark:text-yellow-300'
-        : 'text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+        : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100',
+      // WCAG 2.2 AA: 24×24px minimum tap target. Ensure focus-visible outline.
+      'focus-visible:outline-2 focus-visible:outline-yellow-500/50 focus-visible:outline-offset-2',
     );
 
   return (
@@ -58,42 +56,42 @@ export default function BottomNav({
       <div className="flex items-stretch gap-1 px-2 pt-1.5">
         <button
           type="button"
-          onClick={() => onNavigate('dashboard')}
-          aria-current={current === 'dashboard' ? 'page' : undefined}
+          onClick={() => onNavigate('today')}
+          aria-current={current === 'today' ? 'page' : undefined}
           aria-label="Today"
-          className={tabClass(current === 'dashboard')}
+          className={tabClass(current === 'today', 'Today')}
         >
           <House size={21} aria-hidden="true" />
-          Today
+          <span className="sr-only">Today</span>
         </button>
         <button
           type="button"
-          onClick={() => onNavigate('all')}
-          aria-current={inboxActive ? 'page' : undefined}
+          onClick={() => onNavigate('inbox')}
+          aria-current={current === 'inbox' ? 'page' : undefined}
           aria-label="Inbox"
-          className={tabClass(inboxActive)}
+          className={tabClass(current === 'inbox', 'Inbox')}
         >
           <Inbox size={21} aria-hidden="true" />
-          Inbox
+          <span className="sr-only">Inbox</span>
         </button>
         <button
           type="button"
           onClick={() => onNavigate('calendar')}
           aria-current={current === 'calendar' ? 'page' : undefined}
           aria-label="Plan"
-          className={tabClass(current === 'calendar')}
+          className={tabClass(current === 'calendar', 'Plan')}
         >
           <CalendarDays size={21} aria-hidden="true" />
-          Plan
+          <span className="sr-only">Plan</span>
         </button>
         <button
           type="button"
           onClick={onOpenPalette}
           aria-label="Search tasks and commands"
-          className={tabClass(false)}
+          className={tabClass(false, 'Search tasks and commands')}
         >
           <Search size={21} aria-hidden="true" />
-          Search
+          <span className="sr-only">Search tasks and commands</span>
         </button>
         <button
           type="button"
@@ -101,13 +99,13 @@ export default function BottomNav({
           aria-label="More destinations"
           aria-expanded={moreOpen}
           aria-haspopup="dialog"
-          className={cn(tabClass(moreOpen), 'relative')}
+          className={cn(tabClass(moreOpen, 'More destinations'), 'relative')}
         >
           <Ellipsis size={21} aria-hidden="true" />
-          More
+          <span className="sr-only">More destinations</span>
           {moreBadge > 0 && (
             <span
-              aria-hidden="true"
+              aria-label={`${moreBadge} unread notifications`}
               className="absolute top-1 right-1/2 translate-x-4 h-2 w-2 rounded-full bg-yellow-400"
             />
           )}

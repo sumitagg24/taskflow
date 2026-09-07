@@ -29,20 +29,41 @@ test.describe('Task Management', () => {
   });
 
   test('Kanban — renders columns with correct labels', async ({ page }) => {
-    // Verify Kanban board is visible
-    await expect(page.locator('text=Backlog').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text=To Do').or(page.locator('text=Pending'))).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('text=In Progress').first()).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('text=Completed').first()).toBeVisible({ timeout: 3000 });
+    // The board renders once tasks exist; a fresh account shows the empty
+    // state instead, so seed one task first (same as the count test below).
+    const accessToken = await page.evaluate(() => localStorage.getItem('accessToken'));
+    if (accessToken) {
+      await createTaskViaApi(accessToken, { title: 'Column Probe Task', status: 'pending' });
+    }
+
+    await page.goto('/tasks');
+    // Column titles are <h3 class="caption-upper"> elements inside the board.
+    // Scoped to main: the (desktop-only, hidden) sidebar also has these words.
+    const main = page.locator('#task-main');
+    await expect(main.getByRole('heading', { name: 'Backlog' })).toBeVisible({ timeout: 8000 });
+    await expect(main.getByRole('heading', { name: 'To Do' })).toBeVisible({ timeout: 3000 });
+    await expect(main.getByRole('heading', { name: 'In Progress' })).toBeVisible({ timeout: 3000 });
+    await expect(main.getByRole('heading', { name: 'Completed' })).toBeVisible({ timeout: 3000 });
   });
 
   test('Kanban — displays task count per column', async ({ page }) => {
-    // The column headers show task counts
-    const backlogCount = page.locator('text=Backlog').locator('..').locator('span:has-text("0")');
-    await expect(backlogCount).toBeVisible({ timeout: 5000 });
+    // The board only renders once tasks exist — seed first, then read the
+    // list header count on /tasks (the board moved there in the router migration).
+    const accessToken = await page.evaluate(() => localStorage.getItem('accessToken'));
+    expect(accessToken).toBeTruthy();
+    if (accessToken) {
+      await createTaskViaApi(accessToken, { title: 'Count Task One', status: 'backlog' });
+      await createTaskViaApi(accessToken, { title: 'Count Task Two', status: 'in-progress' });
+    }
+    await page.goto('/tasks');
+    await expect(page.getByRole('heading', { name: 'All Tasks' }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('2 tasks', { exact: true }).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('Filters — search input is functional', async ({ page }) => {
+    // Filters live on the /tasks list route since the router migration.
+    await page.goto('/tasks');
+    await expect(page.getByRole('heading', { name: 'All Tasks' }).first()).toBeVisible({ timeout: 10000 });
     // Find search input
     const searchInput = page.locator('[placeholder*="Search"], [placeholder*="search"]').first();
     await expect(searchInput).toBeVisible({ timeout: 5000 });

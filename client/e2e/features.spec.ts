@@ -7,20 +7,16 @@ test.describe('Calendar, Analytics & AI Assistant', () => {
     const auth = await createUserViaApi(user);
     await setAuthInStorage(page, auth);
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('[class*="sidebar"]').first()).toBeVisible({ timeout: 5000 });
+    // Portable authenticated-shell marker — `complementary` (the desktop
+    // sidebar) does not exist on the mobile bottom-nav shell.
+    await expect(page.getByRole('textbox', { name: 'Quick capture' })).toBeVisible({ timeout: 15000 });
   });
 
   test('Calendar page — renders without errors', async ({ page }) => {
-    // Navigate to calendar via sidebar link
-    const calendarLink = page.locator('a:has-text("Calendar"), button:has-text("Calendar"), [href*="calendar"], [data-section="calendar"]').first();
-    if (await calendarLink.isVisible().catch(() => false)) {
-      await calendarLink.click();
-    } else {
-      // Use section navigation via URL
-      await page.goto('/?section=calendar');
-    }
-    await page.waitForTimeout(500);
+    // Calendar is a first-class route now; direct URL navigation covers both
+    // the sidebar (desktop) and bottom-nav (mobile) paths implicitly.
+    await page.goto('/calendar');
+    await expect(page.getByRole('heading', { name: /calendar/i }).first()).toBeVisible({ timeout: 10000 });
 
     // Calendar should load without errors
     const error = page.locator('text=Error').or(page.locator('text=Failed to load'));
@@ -28,16 +24,10 @@ test.describe('Calendar, Analytics & AI Assistant', () => {
   });
 
   test('Analytics page — renders without errors', async ({ page }) => {
-    // Navigate to analytics via sidebar link
-    const analyticsLink = page.locator('a:has-text("Analytics"), button:has-text("Analytics"), [href*="analytics"], [data-section="analytics"]').first();
-    if (await analyticsLink.isVisible().catch(() => false)) {
-      await analyticsLink.click();
-    } else {
-      await page.goto('/?section=analytics');
-    }
-    await page.waitForTimeout(500);
+    // Insights is the single analysis destination (Phase 1 consolidation).
+    await page.goto('/insights');
+    await expect(page.getByRole('heading', { name: /insights/i }).first()).toBeVisible({ timeout: 10000 });
 
-    // Analytics should load without errors
     const error = page.locator('text=Error').or(page.locator('text=Failed to load'));
     await expect(error).toHaveCount(0, { timeout: 3000 });
   });
@@ -56,56 +46,42 @@ test.describe('Calendar, Analytics & AI Assistant', () => {
   });
 
   test('Navigation — all sidebar links navigate correctly', async ({ page }) => {
-    // Test that major sidebar navigation links exist
-    const sections = ['Dashboard', 'Calendar', 'Analytics', 'Settings'];
-    for (const section of sections) {
-      const link = page.locator(`a:has-text("${section}"), button:has-text("${section}"), [data-section="${section.toLowerCase()}"]`).first();
-      const isVisible = await link.isVisible().catch(() => false);
-      if (isVisible) {
-        await link.click();
-        await page.waitForTimeout(300);
-        // No crash — navigate successfully
-        const error = page.locator('text=Error').or(page.locator('Failed to load'));
-        const hasError = await error.isVisible().catch(() => false);
-        expect(hasError).toBeFalsy();
-      }
+    // Test that major navigation destinations exist and route correctly.
+    const routes = [
+      { path: '/', name: /today|dashboard|good/i },
+      { path: '/tasks', name: /tasks|inbox|board/i },
+      { path: '/calendar', name: /calendar/i },
+      { path: '/insights', name: /insights|analytics/i },
+      { path: '/settings', name: /settings/i },
+    ];
+    for (const route of routes) {
+      await page.goto(route.path);
+      await expect(page.getByRole('main').or(page.locator('#task-main')).first()).toBeVisible({ timeout: 10000 });
+      const error = page.locator('text=Error').or(page.locator('Failed to load'));
+      const hasError = await error.isVisible().catch(() => false);
+      expect(hasError).toBeFalsy();
     }
   });
 
   test('Favorites page — renders without errors', async ({ page }) => {
-    const favLink = page.locator('a:has-text("Favorites"), button:has-text("Favorites"), [data-section="favorites"]').first();
-    if (await favLink.isVisible().catch(() => false)) {
-      await favLink.click();
-    } else {
-      await page.goto('/?section=favorites');
-    }
-    await page.waitForTimeout(500);
+    await page.goto('/favorites');
+    await expect(page.getByRole('main').or(page.locator('#task-main')).first()).toBeVisible({ timeout: 10000 });
     const error = page.locator('text=Error').first();
     const hasError = await error.isVisible().catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
   test('Categories page — renders without errors', async ({ page }) => {
-    const catLink = page.locator('a:has-text("Categories"), button:has-text("Categories"), [data-section="categories"]').first();
-    if (await catLink.isVisible().catch(() => false)) {
-      await catLink.click();
-    } else {
-      await page.goto('/?section=categories');
-    }
-    await page.waitForTimeout(500);
+    await page.goto('/categories');
+    await expect(page.getByRole('main').or(page.locator('#task-main')).first()).toBeVisible({ timeout: 10000 });
     const error = page.locator('text=Error').first();
     const hasError = await error.isVisible().catch(() => false);
     expect(hasError).toBeFalsy();
   });
 
   test('Focus Timer page — renders without errors', async ({ page }) => {
-    const timerLink = page.locator('a:has-text("Focus"), button:has-text("Focus"), [data-section="focus"]').first();
-    if (await timerLink.isVisible().catch(() => false)) {
-      await timerLink.click();
-    } else {
-      await page.goto('/?section=focus');
-    }
-    await page.waitForTimeout(500);
+    await page.goto('/focus');
+    await expect(page.getByRole('main').or(page.locator('#task-main')).first()).toBeVisible({ timeout: 10000 });
     const error = page.locator('text=Error').first();
     const hasError = await error.isVisible().catch(() => false);
     expect(hasError).toBeFalsy();
@@ -124,8 +100,8 @@ test.describe('Calendar, Analytics & AI Assistant', () => {
     }
 
     // Navigate to calendar
-    await page.goto('/?section=calendar');
-    await page.waitForTimeout(500);
+    await page.goto('/calendar');
+    await expect(page.getByRole('heading', { name: /calendar/i }).first()).toBeVisible({ timeout: 10000 });
 
     // Calendar should load
     const error = page.locator('text=Error').first();

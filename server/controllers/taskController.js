@@ -14,10 +14,14 @@ const ALLOWED_TASK_FIELDS = new Set([
   'title', 'description', 'status', 'priority', 'dueDate', 'category',
   'tags', 'isFavorite', 'estimatedTime', 'assignee', 'isRecurring',
   'recurringInterval', 'recurringEndDate',
+  // Phase 6 daily loop — same canonical model, no duplicated data.
+  'inbox', 'plannedFor', 'isTopThree', 'topThreeOrder', 'todayOrder',
 ]);
 
 const ALLOWED_BATCH_FIELDS = new Set([
   'status', 'priority', 'category', 'isFavorite', 'dueDate', 'assignee', 'tags',
+  // Phase 6 bulk triage needs these (assign date, move to Today, priorities).
+  'inbox', 'plannedFor', 'isTopThree', 'topThreeOrder', 'todayOrder',
 ]);
 
 const ALLOWED_SORT_FIELDS = new Set([
@@ -186,7 +190,7 @@ const enforceAttachmentsLimit = (user, existingCount, incomingCount) => {
 // Get all tasks for current user with filters
 exports.getTasks = async (req, res, next) => {
   try {
-    const { status, priority, sort, search, category, tag, isFavorite, dueDateBefore, dueDateAfter } = req.query;
+    const { status, priority, sort, search, category, tag, isFavorite, dueDateBefore, dueDateAfter, inbox, plannedFor, plannedForBefore, plannedForAfter, isTopThree } = req.query;
     const filter = ownedLive(req.user._id);
 
     // Strict enums: a present-but-unlisted value is a client bug, so 400 naming
@@ -208,6 +212,32 @@ exports.getTasks = async (req, res, next) => {
     if (category && typeof category === 'string') filter.category = sanitizeString(category);
     if (tag && typeof tag === 'string') filter.tags = { $in: [sanitizeString(tag)] };
     if (isFavorite === 'true') filter.isFavorite = true;
+    // Phase 6 daily-loop filters. Strict booleans: present-but-invalid 400s.
+    if (inbox !== undefined) {
+      if (inbox !== 'true' && inbox !== 'false') return res.status(400).json({ message: 'inbox must be true or false' });
+      filter.inbox = inbox === 'true';
+    }
+    if (isTopThree !== undefined) {
+      if (isTopThree !== 'true' && isTopThree !== 'false') return res.status(400).json({ message: 'isTopThree must be true or false' });
+      filter.isTopThree = isTopThree === 'true';
+    }
+    if (plannedFor !== undefined && plannedFor !== '') {
+      const d = new Date(plannedFor);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: 'plannedFor must be a valid date' });
+      const start = new Date(d); start.setHours(0, 0, 0, 0);
+      const end = new Date(start); end.setDate(end.getDate() + 1);
+      filter.plannedFor = { $gte: start, $lt: end };
+    }
+    if (plannedForBefore) {
+      const d = new Date(plannedForBefore);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: 'plannedForBefore must be a valid date' });
+      filter.plannedFor = { ...filter.plannedFor, $lte: d };
+    }
+    if (plannedForAfter) {
+      const d = new Date(plannedForAfter);
+      if (isNaN(d.getTime())) return res.status(400).json({ message: 'plannedForAfter must be a valid date' });
+      filter.plannedFor = { ...filter.plannedFor, $gte: d };
+    }
     if (dueDateBefore) {
       const d = new Date(dueDateBefore);
       if (isNaN(d.getTime())) return res.status(400).json({ message: 'dueDateBefore must be a valid date' });
@@ -1266,6 +1296,12 @@ exports.processRecurringTasks = async () => {
         isFavorite: false,
         dueDate: task.recurringNextDate,
         recurringNextDate: nextRecurrence,
+        // Phase 6: recurrences are fresh plans, never pre-triaged or pre-ranked.
+        inbox: false,
+        plannedFor: null,
+        isTopThree: false,
+        topThreeOrder: 0,
+        todayOrder: 0,
       });
       await newTask.save();
     }

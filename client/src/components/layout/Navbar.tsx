@@ -14,6 +14,9 @@ interface NavbarProps {
 
 const SECTION_TITLES: Record<string, string> = {
   dashboard: 'Dashboard',
+  today: 'Today',
+  inbox: 'Inbox',
+  'weekly-review': 'Weekly Reset',
   all: 'All Tasks',
   pending: 'To Do',
   'in-progress': 'In Progress',
@@ -36,6 +39,12 @@ function sectionToPath(section: string): string {
   switch (section) {
     case 'dashboard':
       return '/';
+    case 'today':
+      return '/today';
+    case 'inbox':
+      return '/inbox';
+    case 'weekly-review':
+      return '/weekly-review';
     case 'all':
       return '/tasks';
     case 'pending':
@@ -72,6 +81,9 @@ function sectionToPath(section: string): string {
 
 function sectionFromPath(pathname: string): string {
   if (pathname === '/') return 'dashboard';
+  if (pathname === '/today') return 'today';
+  if (pathname === '/inbox') return 'inbox';
+  if (pathname === '/weekly-review') return 'weekly-review';
   if (pathname === '/tasks') return 'all';
   const taskMatch = pathname.match(/^\/tasks\/(pending|in-progress|completed|backlog)\/?$/);
   if (taskMatch) return taskMatch[1];

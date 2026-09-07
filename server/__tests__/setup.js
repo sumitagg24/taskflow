@@ -59,6 +59,7 @@ function createApp() {
   app.use('/api/calendar', apiLimiter, calendarRoutes);
   app.use('/api/time-tracking', apiLimiter, timeTrackingRoutes);
   app.use('/api/growth', apiLimiter, growthRoutes);
+  app.use('/api/daily', apiLimiter, require('../routes/dailyRoutes'));
   app.use('/api/ai', aiLimiter, aiRoutes);
   app.use('/api/auth/ai-settings', apiLimiter, aiSettingsRoutes);
 

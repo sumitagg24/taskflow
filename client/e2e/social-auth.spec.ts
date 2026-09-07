@@ -52,6 +52,11 @@ const socialButton = (page: Page, provider: 'Google' | 'GitHub', mode: Mode = 'l
   });
 
 test.describe('Social sign-in row', () => {
+  // Every test here asserts on the logged-OUT auth page ("Land on the auth
+  // page"), which never renders under the `setup` fixture session the
+  // projects boot with — opt the whole file back out to a clean session.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test('renders exactly the providers the server has configured', async ({ page }) => {
     const providers = await readProviders(page);
     await openAuth(page);

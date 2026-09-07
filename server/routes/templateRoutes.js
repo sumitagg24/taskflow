@@ -21,6 +21,11 @@ const validate = require('../validators/validate');
 // All routes require auth
 router.use(protect);
 
+// Phase 6 starters — MUST sit before `/:id` so "starters" is never parsed as an id.
+const { getStarters, applyStarter } = require('../controllers/dailyController');
+router.get('/starters', getStarters);
+router.post('/starters/:key/apply', applyStarter);
+
 // Shared templates
 router.get('/shared', getSharedTemplates);
 

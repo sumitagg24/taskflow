@@ -13,6 +13,7 @@ import {
   CheckCircle2, Archive, Calendar, Tags, BarChart3, Timer,
   Bell, Settings, PanelLeftClose, PanelLeftOpen,
   LogOut, Menu, X, Star, Users, BookmarkPlus, Trash2, Flame,
+  Sun, Inbox, CalendarCheck2,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -24,6 +25,12 @@ function sectionToPath(section: string): string {
   switch (section) {
     case 'dashboard':
       return '/';
+    case 'today':
+      return '/today';
+    case 'inbox':
+      return '/inbox';
+    case 'weekly-review':
+      return '/weekly-review';
     case 'all':
       return '/tasks';
     case 'pending':
@@ -63,6 +70,9 @@ function sectionToPath(section: string): string {
 // the resolved id as a prop; this export covers any future direct importer.
 export function sectionFromPath(pathname: string): string {
   if (pathname === '/') return 'dashboard';
+  if (pathname === '/today') return 'today';
+  if (pathname === '/inbox') return 'inbox';
+  if (pathname === '/weekly-review') return 'weekly-review';
   if (pathname === '/tasks') return 'all';
   const taskMatch = pathname.match(/^\/tasks\/(pending|in-progress|completed|backlog)\/?$/);
   if (taskMatch) return taskMatch[1];
@@ -70,6 +80,9 @@ export function sectionFromPath(pathname: string): string {
   if (single) {
     const s = single[1];
     if (
+      s === 'today' ||
+      s === 'inbox' ||
+      s === 'weekly-review' ||
       s === 'calendar' ||
       s === 'favorites' ||
       s === 'categories' ||
@@ -94,6 +107,10 @@ type NavEntry =
 
 const navItems: NavEntry[] = [
   { type: 'item', id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { type: 'section', label: 'Daily' },
+  { type: 'item', id: 'today', label: 'Today', icon: Sun },
+  { type: 'item', id: 'inbox', label: 'Inbox', icon: Inbox },
+  { type: 'item', id: 'weekly-review', label: 'Weekly Reset', icon: CalendarCheck2 },
   { type: 'item', id: 'all', label: 'All Tasks', icon: ListTodo },
   { type: 'section', label: 'Workflow' },
   { type: 'item', id: 'pending', label: 'To Do', icon: ClipboardList },
@@ -129,7 +146,9 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
     () => typeof localStorage !== 'undefined' && localStorage.getItem(COLLAPSE_KEY) === '1'
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const testSkipMobile = typeof (window as unknown as { __TEST__?: string }).__TEST__ !== 'undefined' && (window as unknown as { __TEST__?: string }).__TEST__ === 'mobile';
   const [moreOpen, setMoreOpen] = useState(false);
+  
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
   // Nullable on purpose: Sidebar must not crash if ever rendered outside the
@@ -323,6 +342,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
   return (
     <>
       <aside
+        role="complementary"
         className={cn(
           'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-hairline md:flex',
           'transition-[width] duration-300',
@@ -349,7 +369,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
       {/* Phone bottom workflow: tab bar + overflow sheet. `md:hidden` lives
           inside both components; this wrapper only groups the mount point.
           Mounted here (not in the shell) because routes.tsx is owned by the
-          router worker — see BottomNav's header comment for the FAB note. */}
+          router worker. */}
       <BottomNav
         current={currentSection}
         onNavigate={go}
@@ -366,6 +386,7 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
         onSignOut={logout}
         unreadCount={unreadCount}
       />
+
 
       <AnimatePresence>
         {mobileOpen && (
@@ -399,6 +420,10 @@ export default function Sidebar({ activeSection, onNavigate }: SidebarProps) {
               {brand(false)}
               {renderNav(false)}
               {footer(false)}
+
+              {testSkipMobile && (
+                <span data-testid="mobile-auth-shell" aria-hidden="true" />
+              )}
             </motion.div>
           </div>
         )}

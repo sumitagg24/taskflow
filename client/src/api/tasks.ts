@@ -304,6 +304,66 @@ export const aiSettingsAPI = {
   }): Promise<AxiosResponse> => api.post('/auth/ai-settings/test', data || {}),
 };
 
+// ── Phase 6 daily operating loop (Inbox → Today → resolve → weekly reset) ──
+// Single canonical Task model; these endpoints only read/derive sections.
+
+export interface TodayPayload {
+  date: string;
+  tzOffset: number;
+  counts: { topThree: number; scheduled: number; flexible: number; overdue: number; inbox: number; completedToday: number };
+  topThree: Task[];
+  scheduled: Task[];
+  flexible: Task[];
+  overdue: Task[];
+  completedToday: Task[];
+}
+
+export interface ResolveSummary {
+  completed: number;
+  movedTomorrow: number;
+  scheduled: number;
+  backlogged: number;
+  dismissed: number;
+  total: number;
+}
+
+export interface StarterTemplate {
+  key: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  taskCount: number;
+  tasks: { title: string; description?: string; category?: string; priority?: string; tags?: string[]; estimatedTime?: number; status?: string }[];
+}
+
+const tzOffset = () => new Date().getTimezoneOffset();
+
+export const dailyAPI = {
+  today: (date?: string): Promise<AxiosResponse<TodayPayload>> =>
+    api.get('/daily/today', { params: { date, tzOffset: tzOffset() } }),
+  inbox: (): Promise<AxiosResponse<{ tasks: Task[]; count: number; overdueCount: number }>> =>
+    api.get('/daily/inbox'),
+  quickCapture: (title: string): Promise<AxiosResponse<Task>> =>
+    api.post('/daily/inbox', { title }),
+  triage: (taskIds: string[], updates: Record<string, unknown>, opts?: { moveToToday?: boolean; keepInbox?: boolean; date?: string }): Promise<AxiosResponse<{ updated: Task[]; count: number }>> =>
+    api.post('/daily/triage', { taskIds, updates, moveToToday: opts?.moveToToday, keepInbox: opts?.keepInbox, date: opts?.date, tzOffset: tzOffset() }),
+  setTopThree: (taskIds: string[], date?: string): Promise<AxiosResponse<{ date: string; topThree: Task[]; count: number; max: number }>> =>
+    api.put('/daily/top-three', { taskIds, date, tzOffset: tzOffset() }),
+  reorder: (orders: { _id: string; todayOrder?: number; topThreeOrder?: number }[]): Promise<AxiosResponse> =>
+    api.post('/daily/reorder', { orders }),
+  resolve: (resolutions: { taskId: string; action: string; date?: string }[], date?: string): Promise<AxiosResponse<{ date: string; summary: ResolveSummary; resolved: { taskId: string; action: string; status: string }[]; previous: Record<string, unknown>[] }>> =>
+    api.post('/daily/resolve', { resolutions, date, tzOffset: tzOffset() }),
+  weeklyReview: (): Promise<AxiosResponse<{ inbox: { count: number; sample: Task[]; tasks: Task[] }; overdue: Task[]; overdueCount: number; completedThisWeek: Task[]; completedCount: number; nextWeekCandidates: Task[]; dismissedAt: string | null }>> =>
+    api.get('/daily/weekly-review', { params: { tzOffset: tzOffset() } }),
+  dismissWeekly: (): Promise<AxiosResponse<{ dismissedAt: string }>> =>
+    api.post('/daily/weekly-dismiss'),
+  starters: (): Promise<AxiosResponse<{ starters: StarterTemplate[] }>> =>
+    api.get('/templates/starters'),
+  applyStarter: (key: string): Promise<AxiosResponse<{ starter: string; count: number; tasks: Task[] }>> =>
+    api.post(`/templates/starters/${encodeURIComponent(key)}/apply`),
+};
+
 // ── Growth: plan tiers, usage limits, referrals and invites ────────────────
 // One GET backs the whole surface so the plan shown and the plan enforced come
 // from the same source (server/config/plans.js). Shapes live in

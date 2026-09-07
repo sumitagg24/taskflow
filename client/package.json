@@ -12,7 +12,10 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:mobile": "playwright test --project=mobile",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "dev:e2e": "vite --config e2e/vite.e2e.config.js",
+    "test:e2e:isolated": "node e2e/run-isolated.cjs",
+    "test:e2e:isolated:snapshots": "node e2e/run-isolated.cjs visual --update-snapshots"
   },
   "dependencies": {
     "axios": "^1.7.9",

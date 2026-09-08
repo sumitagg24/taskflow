@@ -5,7 +5,17 @@ import { getNotifications, default as api } from '@/api/tasks';
 import { router } from '@/routes';
 import { useAuth } from './AuthContext';
 
-const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin;
+// Socket.IO endpoint. Follows the API deployment: VITE_SOCKET_URL if set,
+// else the API origin derived from VITE_API_URL (which ends in /api), else
+// same-origin — matching the dev proxy (:3000 → :5000) and the
+// single-process production build that serves the SPA itself.
+const SOCKET_URL = (() => {
+  const explicit = import.meta.env.VITE_SOCKET_URL as string | undefined;
+  if (explicit) return explicit.replace(/\/$/, '');
+  const apiBase = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '');
+  if (apiBase) return apiBase.replace(/\/api$/, '');
+  return import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin;
+})();
 
 const TOAST_TYPES = new Set(['task_assigned', 'task_overdue', 'task_due_soon', 'mention']);
 

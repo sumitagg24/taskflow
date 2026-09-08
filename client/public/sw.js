@@ -18,8 +18,10 @@ self.addEventListener('fetch', (event) => {
       return response || fetch(event.request).then((fetchResponse) => {
         return caches.open(CACHE_NAME).then((cache) => {
           const url = new URL(event.request.url);
-          const isSameOrigin = event.request.url.startsWith(self.location.origin);
+          // API/upload traffic is never cached — the path check works for
+          // any origin because the API always mounts /api and /uploads.
           const isApi = url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/');
+          const isSameOrigin = event.request.url.startsWith(self.location.origin);
           if (isSameOrigin && event.request.method === 'GET' && !isApi) {
             cache.put(event.request, fetchResponse.clone());
           }

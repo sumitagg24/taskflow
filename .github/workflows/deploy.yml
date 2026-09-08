@@ -1,0 +1,59 @@
+# Deploys main to Railway, but only after the CI workflow has passed.
+#
+# Requires repo secrets:
+#   RAILWAY_TOKEN    — Railway → Settings → Tokens (team/workspace token)
+# Optional repo variables:
+#   RAILWAY_SERVICE       — service name inside your Railway project (default "taskflow")
+#   RAILWAY_PUBLIC_DOMAIN — e.g. "taskflow-production.up.railway.app" (no scheme);
+#                           used by the post-deploy smoke check on /api/health.
+#
+# Note: if you connected the repo to Railway via the GitHub app, Railway also
+# auto-deploys on push to main. Pick one path — either disable Railway's
+# auto-deploy (Settings → Deployments → trigger) or remove this workflow.
+name: Deploy
+
+on:
+  # Fires when the CI workflow completes on main; deploys only on success.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The exact commit CI validated, not whatever is HEAD now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || 'taskflow' }}
+        run: railway up --service "$RAILWAY_SERVICE" --detach
+
+      # railway up --detach returns before the release is live; wait until the
+      # new deployment answers /api/health with { status: ok, db: connected }.
+      # Skipped (with a notice) until RAILWAY_PUBLIC_DOMAIN is configured.
+      - name: Smoke check /api/health
+        if: vars.RAILWAY_PUBLIC_DOMAIN != ''
+        env:
+          SMOKE_BASE_URL: https://${{ vars.RAILWAY_PUBLIC_DOMAIN }}
+        run: node scripts/deploy-smoke.cjs --timeout-seconds 600

@@ -291,7 +291,10 @@ to `server/.env` and edit as needed.
 | `MONGO_URI`          | Yes      | —                        | MongoDB connection string |
 | `JWT_SECRET`         | Prod     | —                        | Access-token signing secret |
 | `JWT_REFRESH_SECRET` | Prod     | —                        | Refresh-token signing secret |
+| `AI_KEY_SECRET`      | Prod*    | —                        | Encrypts per-user AI keys at rest (*required once any user saves an AI key) |
 | `CLIENT_URL`         | Prod     | `http://localhost:3000`  | Allowed CORS origin / app URL |
+| `ALLOWED_ORIGINS`    | Prod     | *(deny all)*             | Comma-separated browser origins; production CORS is fail-closed when unset |
+| `TRUST_PROXY`        | No       | `false`                  | `true` only behind a real reverse proxy (Railway, nginx) |
 | `PORT`               | No       | `5000`                   | API port (1–65535) |
 | `NODE_ENV`           | No       | `development`            | `development` or `production` |
 | `GOOGLE_CLIENT_ID`   | No       | —                        | Enables Google Sign-In |
@@ -505,7 +508,13 @@ Run server tests before opening a pull request.
 
 ## Deployment
 
-**Single-process (recommended):** build the client, then start the server — it
+**Railway (single service):** `railway.json` at the repo root deploys the whole
+app to one Railway service — Nixpacks builds the client, the server serves API
++ SPA from one port, and `/api/health` gates the deploy. First-deploy steps,
+env vars, MongoDB Atlas setup, OAuth callback updates, and Redis wiring:
+[docs/ops/railway.md](docs/ops/railway.md).
+
+**Single-process (any host):** build the client, then start the server — it
 serves both the API and the SPA from one port.
 
 ```bash

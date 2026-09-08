@@ -37,11 +37,9 @@ const MODES: readonly AuthMode[] = ['login', 'register'];
 interface AuthPageProps {
   onForgotPassword?: () => void;
   onVerificationNeeded?: (email: string) => void;
-  onGooglePage?: () => void;
-  onAuth0Page?: () => void;
 }
 
-export default function AuthPage({ onForgotPassword, onVerificationNeeded, onGooglePage, onAuth0Page }: AuthPageProps) {
+export default function AuthPage({ onForgotPassword, onVerificationNeeded }: AuthPageProps) {
   // Somebody arriving on an invite link wants to sign up, not sign in.
   const referralCode = useMemo(() => getReferralCode(), []);
   const [mode, setMode] = useState<AuthMode>(referralCode ? 'register' : 'login');
@@ -53,14 +51,13 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded, onGoo
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [socialLoading, setSocialLoading] = useState(false);
   const [error, setError] = useState('');
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
   const [usernameError, setUsernameError] = useState('');
 
-  const { login, register, googleAuth } = useAuth();
+  const { login, register } = useAuth();
   const nameRef = useRef<HTMLInputElement>(null);
   const usernameRef = useRef<HTMLInputElement>(null);
   const identifierRef = useRef<HTMLInputElement>(null);
@@ -194,21 +191,6 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded, onGoo
     setPasswordFocused(false);
     setCapsLockOn(false);
   };
-
-  const handleGoogleCredential = useCallback(
-    async (credential: string) => {
-      setSocialLoading(true);
-      setError('');
-      try {
-        await googleAuth(credential);
-      } catch (err: any) {
-        setError(err.response?.data?.message || 'Google sign-in failed. Please try again.');
-      } finally {
-        setSocialLoading(false);
-      }
-    },
-    [googleAuth]
-  );
 
   const handleSocialError = useCallback((message: string) => setError(message), []);
   const capsHint = capsLockOn ? (
@@ -395,39 +377,12 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded, onGoo
           )}
 
           <div className="pt-2">
-            <AuthSubmit loading={loading} loadingLabel={copy.busy} disabled={socialLoading}>
+            <AuthSubmit loading={loading} loadingLabel={copy.busy}>
               {copy.cta}
             </AuthSubmit>
           </div>
         </form>
-        <SocialAuth
-          mode={mode}
-          onGoogleCredential={handleGoogleCredential}
-          onError={handleSocialError}
-          busy={loading || socialLoading}
-        />
-        {(onGooglePage || onAuth0Page) && (
-          <div className="mt-4 flex flex-wrap justify-center gap-3 text-xs">
-            {onGooglePage && (
-              <button
-                type="button"
-                onClick={onGooglePage}
-                className="flex items-center gap-1.5 text-gray-500 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-700 hover:decoration-gray-400 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200"
-              >
-                Dedicated Google page →
-              </button>
-            )}
-            {onAuth0Page && (
-              <button
-                type="button"
-                onClick={onAuth0Page}
-                className="flex items-center gap-1.5 text-gray-500 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-700 hover:decoration-gray-400 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200"
-              >
-                Dedicated Auth0 page →
-              </button>
-            )}
-          </div>
-        )}
+        <SocialAuth mode={mode} onError={handleSocialError} busy={loading} />
         <p className="mt-7 text-[13px] text-gray-500 dark:text-gray-400">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button

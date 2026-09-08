@@ -139,6 +139,11 @@ async function main() {
         GOOGLE_CLIENT_ID: '',
         GITHUB_CLIENT_ID: '',
         GITHUB_CLIENT_SECRET: '',
+        // Auth0 stays off in the isolated stack: deterministic suites, no
+        // dependency on a real tenant. Blank strings keep dotenv from
+        // filling these in from server/.env.
+        AUTH0_DOMAIN: '',
+        AUTH0_CLIENT_ID: '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     }

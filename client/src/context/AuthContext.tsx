@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useEffect, useRef, ReactNode } fro
 import { toast } from 'sonner';
 import api from '../api/tasks';
 import { useTheme } from './ThemeContext';
-import { googleSignOut } from '../hooks/useGoogleAuth';
 import { clearReferralCode, getReferralCode } from '@/lib/referral';
 
 interface User {
@@ -49,7 +48,6 @@ interface AuthContextType {
   resendVerification: (email: string) => Promise<void>;
   /** Finish a reset link and sign the account straight in. */
   resetPassword: (token: string, password: string) => Promise<string>;
-  googleAuth: (credential: string) => Promise<void>;
   auth0Login: (idToken: string) => Promise<void>;
   /** Trade the one-time code from an OAuth redirect for a real session. */
   exchangeOAuthCode: (code: string) => Promise<void>;
@@ -237,9 +235,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Reset Google session state first — prevents stale One Tap, auto-select,
-    // and session-merge issues on re-login (BIS recommendation).
-    googleSignOut();
     try {
       await api.post('/auth/logout').catch(() => {});
     } finally {
@@ -296,12 +291,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.message || 'Password reset successfully!';
   };
 
-  const googleAuth = async (credential: string) => {
-    const { data } = await api.post<AuthResponse>('/auth/google', { credential });
-    setAuth(data);
-    toast.success(`Welcome, ${data.user.name}!`);
-  };
-
   const auth0Login = async (idToken: string) => {
     const { data } = await api.post<AuthResponse>('/auth/auth0', { id_token: idToken });
     setAuth(data);
@@ -327,7 +316,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyEmail,
       resendVerification,
       resetPassword,
-      googleAuth,
       auth0Login,
       exchangeOAuthCode,
       refreshUser,

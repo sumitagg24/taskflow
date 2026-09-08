@@ -161,7 +161,6 @@ export const authAPI = {
   resetPassword: (token: string, password: string): Promise<AxiosResponse> => api.post('/auth/reset-password', { token, password }),
   verifyEmail: (token: string): Promise<AxiosResponse> => api.post('/auth/verify-email', { token }),
   resendVerification: (email: string): Promise<AxiosResponse> => api.post('/auth/resend-verification', { email }),
-  googleAuth: (credential: string): Promise<AxiosResponse> => api.post('/auth/google', { credential }),
   auth0Login: (id_token: string): Promise<AxiosResponse> => api.post('/auth/auth0', { id_token }),
   exchangeOAuthCode: (code: string): Promise<AxiosResponse> => api.post('/auth/oauth/exchange', { code }),
   getProviders: (): Promise<AxiosResponse<{ google: boolean; github: boolean; auth0: boolean }>> =>

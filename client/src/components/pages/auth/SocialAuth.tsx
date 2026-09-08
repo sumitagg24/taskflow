@@ -5,14 +5,19 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
 /* ============================================================================
-   Social sign-in row — Auth0 only.
+   Social sign-in row — Google, delivered through Auth0.
 
-   Google (and any other social provider) is delivered through Auth0's
-   Universal Login: enable the connection in the Auth0 dashboard and it shows
-   up on Auth0's own screen — no per-provider UI here. The button renders only
-   when BOTH the server has AUTH0 configured (`GET /api/auth/providers`) and
-   the client holds the VITE_AUTH0_* env (needed to open the popup); with none
-   available the whole row disappears and the email form stands alone.
+   The button is Google-branded, but the OAuth dance runs through Auth0: the
+   popup is opened with `connection=google-oauth2`, which sends the user
+   straight to Google's consent screen — Auth0's own login page is never
+   shown. The resulting Google ID token is minted by Auth0 (its `iss` is the
+   tenant), so the server's existing Auth0 JWKS verification accepts it
+   unchanged.
+
+   Only requirement: the Google connection must be enabled in the Auth0
+   dashboard (Authentication → Social → Google). When either side is missing
+   (server without AUTH0_*, client without VITE_AUTH0_*, or connection off)
+   the row hides and the email form stands alone.
    ========================================================================== */
 
 const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN as string | undefined;
@@ -54,15 +59,27 @@ function fetchProviders(): Promise<Providers> {
   return request;
 }
 
-function Auth0Glyph() {
+function GoogleGlyph() {
   return (
-    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+    <svg width="17" height="17" viewBox="0 0 18 18" aria-hidden="true" className="shrink-0">
       <path
-        fill="#EB5424"
-        d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0Zm5.2 16.5h-2.1l-1.1-2.6h-3.9l-1.1 2.6H6.8l4.1-9h2.2l4.1 9Zm-3.3-4.2-1.1-2.7-1.1 2.7h2.2Z"
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.84.86-3.05.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.34A9 9 0 0 0 9 18Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.94H.96a9 9 0 0 0 0 8.12l3.01-2.34Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58Z"
       />
     </svg>
-  );
+ );
 }
 
 interface SocialAuthProps {
@@ -93,7 +110,7 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
 
   const showAuth0 = Boolean(AUTH0_DOMAIN && AUTH0_CLIENT_ID) && providers?.auth0 === true;
 
-  const handleAuth0Popup = useCallback(async () => {
+  const handleGoogleViaAuth0 = useCallback(async () => {
     if (auth0Busy || !AUTH0_DOMAIN || !AUTH0_CLIENT_ID) return;
     setAuth0Busy(true);
     try {
@@ -107,12 +124,15 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
         cacheLocation: 'localstorage',
         useRefreshTokens: true,
       });
-      // Signup mode lands on Universal Login's registration screen; login
-      // forces a fresh credential prompt.
-      const options =
-        mode === 'register'
-          ? { authorizationParams: { screen_hint: 'signup' } }
-          : { authorizationParams: { prompt: 'login' } };
+      // `connection` skips Auth0's Universal Login page and jumps straight to
+      // Google's consent screen — the user never sees Auth0 branding. Signup
+      // mode adds screen_hint so new users get Google's account chooser.
+      const options = {
+        authorizationParams: {
+          connection: 'google-oauth2',
+          ...(mode === 'register' ? { screen_hint: 'signup' } : { prompt: 'login' }),
+        },
+      };
       await client.loginWithPopup(options as never);
       const claims = await client.getIdTokenClaims();
       const raw = (claims as unknown as { __raw?: string })?.__raw;
@@ -127,8 +147,8 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
       const serverMessage = (err as { response?: { data?: { message?: string } } })?.response
         ?.data?.message;
       const msg = closed
-        ? 'Auth0 window was closed before completing sign-in.'
-        : serverMessage || (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
+        ? 'Google sign-in was cancelled before completing.'
+        : serverMessage || (err as Error)?.message || 'Google sign-in failed. Please try again.';
       onError?.(msg);
     } finally {
       if (aliveRef.current) setAuth0Busy(false);
@@ -153,12 +173,12 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
         variant="outline"
         fullWidth
         loading={auth0Busy}
-        icon={!auth0Busy ? <Auth0Glyph /> : undefined}
-        onClick={handleAuth0Popup}
+        icon={!auth0Busy ? <GoogleGlyph /> : undefined}
+        onClick={handleGoogleViaAuth0}
         disabled={disabled}
-        aria-label={`${verb} with Auth0`}
+        aria-label={`${verb} with Google`}
       >
-        {verb} with Auth0
+        {verb} with Google
       </Button>
     </div>
   );

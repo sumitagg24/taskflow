@@ -37,9 +37,10 @@ const MODES: readonly AuthMode[] = ['login', 'register'];
 interface AuthPageProps {
   onForgotPassword?: () => void;
   onVerificationNeeded?: (email: string) => void;
+  onGooglePage?: () => void;
 }
 
-export default function AuthPage({ onForgotPassword, onVerificationNeeded }: AuthPageProps) {
+export default function AuthPage({ onForgotPassword, onVerificationNeeded, onGooglePage }: AuthPageProps) {
   // Somebody arriving on an invite link wants to sign up, not sign in.
   const referralCode = useMemo(() => getReferralCode(), []);
   const [mode, setMode] = useState<AuthMode>(referralCode ? 'register' : 'login');
@@ -403,7 +404,17 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
           onGoogleCredential={handleGoogleCredential}
           onError={handleSocialError}
           busy={loading || socialLoading}
-        />          <p className="mt-7 text-[13px] text-gray-500 dark:text-gray-400">
+        />
+        {onGooglePage && (
+          <button
+            type="button"
+            onClick={onGooglePage}
+            className="mx-auto mt-4 flex items-center gap-1.5 text-xs text-gray-500 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-700 hover:decoration-gray-400 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-200"
+          >
+            Open dedicated Google sign-in page →
+          </button>
+        )}
+        <p className="mt-7 text-[13px] text-gray-500 dark:text-gray-400">
           {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
           <button
             type="button"

@@ -12,6 +12,7 @@ import ForgotPasswordPage from '@/components/pages/ForgotPasswordPage';
 import ResetPasswordPage from '@/components/pages/ResetPasswordPage';
 import VerifyEmailPage from '@/components/pages/VerifyEmailPage';
 import OAuthCallbackPage from '@/components/pages/auth/OAuthCallbackPage';
+import GoogleAuthPage from '@/components/pages/auth/GoogleAuthPage';
 import VerificationNoticePage from '@/components/pages/auth/VerificationNoticePage';
 import { LogoMark } from '@/components/ui';
 import { router, ShellContext, type TaskData } from '@/routes';
@@ -38,6 +39,7 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
   const [showAIAssistant, setShowAIAssistant] = useState(false);
 
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showGooglePage, setShowGooglePage] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The read-only detail drawer, keyed by id so it can fetch the fully
   // populated task itself (comments, dependency titles) rather than reusing the
@@ -54,11 +56,12 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
   // Which auth screen the entry URL asked for. Captured once on mount: the
   // callback and token screens scrub the address bar as they work, and they must
   // not unmount themselves half way through by re-reading window.location.
-  const [authRoute, setAuthRoute] = useState<{ kind: 'oauth' | 'reset' | 'verify' | 'none'; token: string }>(
+  const [authRoute, setAuthRoute] = useState<{ kind: 'oauth' | 'reset' | 'verify' | 'google' | 'none'; token: string }>(
     () => {
       const params = new URLSearchParams(window.location.search);
       const path = window.location.pathname;
       const token = params.get('token') ?? '';
+      if (path.includes('/auth/google')) return { kind: 'google', token: '' };
       if (path.includes('/auth/callback')) return { kind: 'oauth', token: '' };
       if (path.includes('reset-password')) return { kind: 'reset', token };
       if (path.includes('verify-email')) return { kind: 'verify', token };
@@ -224,6 +227,16 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
       </>
     );
 
+    if (authRoute.kind === 'google' || showGooglePage) {
+      return withToaster(
+        <GoogleAuthPage
+          onBack={() => {
+            setShowGooglePage(false);
+            clearAuthRoute();
+          }}
+        />
+      );
+    }
     // The GitHub redirect lands here with a one-time exchange code.
     if (authRoute.kind === 'oauth') {
       return withToaster(<OAuthCallbackPage onDone={clearAuthRoute} />);
@@ -249,6 +262,10 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
       <AuthPage
         onForgotPassword={() => setShowForgotPassword(true)}
         onVerificationNeeded={setPendingVerification}
+        onGooglePage={() => {
+          window.history.pushState({}, '', '/auth/google');
+          setShowGooglePage(true);
+        }}
       />
     );
   }

@@ -1,5 +1,6 @@
 export { default as AuthShell } from './AuthShell';
 export { default as SocialAuth } from './SocialAuth';
+export { default as GoogleAuthPage } from './GoogleAuthPage';
 export { default as OAuthCallbackPage } from './OAuthCallbackPage';
 export { default as VerificationNoticePage } from './VerificationNoticePage';
 export {

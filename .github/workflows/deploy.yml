@@ -35,7 +35,7 @@ jobs:
       # readable inside `if` expressions directly).
       ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The exact commit CI validated, not whatever is HEAD now.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}

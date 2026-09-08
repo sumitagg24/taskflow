@@ -1,9 +1,0 @@
-# Normalize line endings: bash scripts and YAML must always be LF (CRLF breaks
-# `bash` on Linux hosts and can break some YAML parsers).
-* text=auto
-*.sh text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-Caddyfile text eol=lf
-*.conf text eol=lf
-Dockerfile text eol=lf

@@ -47,3 +47,6 @@ e2e/__snapshots__/
 # OS
 .DS_Store
 Thumbs.db
+
+.vercel
+.env*

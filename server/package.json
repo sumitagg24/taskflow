@@ -29,8 +29,7 @@
     "openai": "^6.45.0",
     "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.3.0",
-    "swagger-ui-express": "^5.0.1",
-    "task-tracker": "file:.."
+    "swagger-ui-express": "^5.0.1"
   },
   "overrides": {
     "qs": "^6.16.0"

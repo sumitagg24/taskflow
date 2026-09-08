@@ -55,7 +55,29 @@ Optional: `REDIS_URL` (step 5 — `${{Redis.REDIS_URL}}` reference),
 `RESEND_API_KEY`, `GOOGLE_CLIENT_ID`, `AUTH0_DOMAIN`/`AUTH0_CLIENT_ID`,
 `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`, any `RATE_*` tuning.
 
-CLI alternative:
+CLI alternative — one-shot, idempotent. `scripts/railway-setup.cjs` generates
+the JWT/AI secrets, derives `CLIENT_URL`/`ALLOWED_ORIGINS` from your domain,
+and skips variables that already exist, so re-runs never clobber manual edits:
+
+```bash
+# Preview the plan without changing anything
+npm run railway:setup -- --service taskflow --dry-run
+
+# Interactive (prompts for domain + Atlas URI), asks before applying
+npm run railway:setup
+
+# Fully scripted (still skips existing variables)
+npm run railway:setup -- --service taskflow --domain <your-app>.up.railway.app \
+  --mongo-uri "mongodb+srv://user:pass@taskflow.zsyufjw.mongodb.net/taskflow" \
+  --redis-url "${{Redis.REDIS_URL}}" --yes
+```
+
+Requires the Railway CLI (`npm i -g @railway/cli`) authenticated via
+`railway login` or `RAILWAY_TOKEN`. Without a `--domain`, `CLIENT_URL` and
+`ALLOWED_ORIGINS` are deliberately left unset — the server refuses to boot in
+production without `CLIENT_URL`.
+
+Manual alternative:
 
 ```bash
 railway variables --set "MONGO_URI=..." "CLIENT_URL=..." \

@@ -38,6 +38,12 @@ server/uploads/*
 .vscode/
 .idea/
 
+# Playwright / E2E local artifacts — never push
+client/e2e/.auth/
+client/e2e/__snapshots__/
+e2e/.auth/
+e2e/__snapshots__/
+
 # OS
 .DS_Store
 Thumbs.db

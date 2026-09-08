@@ -219,11 +219,16 @@ export default function SocialAuth({
       if (!raw) throw new Error('No ID token from Auth0');
       await auth0Login(raw);
     } catch (err: unknown) {
-      const msg =
+      const closed =
         (err as { error?: string })?.error === 'popup_closed' ||
-        String((err as Error)?.message || '').includes('Popup closed')
-          ? 'Auth0 window was closed before completing sign-in.'
-          : (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
+        String((err as Error)?.message || '').includes('Popup closed');
+      // Server message first — axios's raw "Request failed with status code
+      // N" tells the user nothing about what to do next.
+      const serverMessage = (err as { response?: { data?: { message?: string } } })?.response
+        ?.data?.message;
+      const msg = closed
+        ? 'Auth0 window was closed before completing sign-in.'
+        : serverMessage || (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
       onError?.(msg);
     } finally {
       if (aliveRef.current) setAuth0Busy(false);

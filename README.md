@@ -295,6 +295,9 @@ to `server/.env` and edit as needed.
 | `PORT`               | No       | `5000`                   | API port (1–65535) |
 | `NODE_ENV`           | No       | `development`            | `development` or `production` |
 | `GOOGLE_CLIENT_ID`   | No       | —                        | Enables Google Sign-In |
+| `AUTH0_DOMAIN`       | No       | —                        | Enables Auth0 SSO (with `AUTH0_CLIENT_ID`); see [Auth0 setup](#auth0-setup) |
+| `AUTH0_CLIENT_ID`    | No       | —                        | Auth0 SPA application ID (mirrors `VITE_AUTH0_CLIENT_ID`) |
+| `AUTH0_AUDIENCE`     | No       | —                        | Auth0 API identifier; defaults to `AUTH0_CLIENT_ID` for ID tokens |
 | `RESEND_API_KEY`     | No       | —                        | Enables transactional email |
 | `REDIS_URL`          | No       | —                        | Enables Redis-backed rate limiting |
 | `VITE_GOOGLE_CLIENT_ID` | No   | —                        | Client-side Google button (`client/.env`) |
@@ -302,6 +305,31 @@ to `server/.env` and edit as needed.
 Secrets are validated on startup — the server refuses to boot if `MONGO_URI` is
 missing, and in production if `JWT_SECRET`, `JWT_REFRESH_SECRET`, or `CLIENT_URL`
 are missing.
+
+### Auth0 setup
+
+Auth0 is an **optional, additive** provider — when unconfigured, the button is
+hidden and nothing else changes. To enable it:
+
+1. **Create a tenant** at [auth0.com](https://auth0.com) (free tier is enough).
+   The tenant domain looks like `your-name.us.auth0.com`.
+2. **Create an application**: Dashboard → Applications → Create Application →
+   type **Single Page Application**.
+3. **Configure the application** (Settings tab):
+   - *Allowed Callback URLs*: `http://localhost:3000`
+   - *Allowed Web Origins*: `http://localhost:3000`
+   - *Allowed Logout URLs*: `http://localhost:3000`
+   - For production, add your deployed origin to all three.
+4. **Copy credentials** into env files (both are gitignored):
+   - `server/.env`: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID` (and optionally
+     `AUTH0_AUDIENCE` if you use a custom API identifier)
+   - `client/.env`: `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`
+5. **Restart the server** and confirm `GET /api/auth/providers` returns
+   `"auth0": true` — the "Continue with Auth0" button then appears on the
+   sign-in page.
+
+The server verifies Auth0 ID tokens (RS256) against the tenant's JWKS
+(`https://<domain>/.well-known/jwks.json`) — no shared secret is involved.
 
 ---
 

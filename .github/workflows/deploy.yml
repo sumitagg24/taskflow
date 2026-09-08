@@ -1,15 +1,15 @@
-# Deploys main to Railway, but only after the CI workflow has passed.
+# Deploys main to the Oracle Cloud Always-Free VM, but only after CI passes.
 #
-# Requires repo secrets:
-#   RAILWAY_TOKEN    — Railway → Settings → Tokens (team/workspace token)
+# Requires repo secrets (the deploy step self-skips, with a notice, until set):
+#   ORACLE_HOST     — VM public IP or hostname
+#   ORACLE_USER     — SSH user (e.g. ubuntu)
+#   ORACLE_SSH_KEY  — private key matching the pubkey installed on the VM
 # Optional repo variables:
-#   RAILWAY_SERVICE       — service name inside your Railway project (default "taskflow")
-#   RAILWAY_PUBLIC_DOMAIN — e.g. "taskflow-production.up.railway.app" (no scheme);
-#                           used by the post-deploy smoke check on /api/health.
+#   ORACLE_PUBLIC_DOMAIN — e.g. "api.taskflow.example.com" (no scheme); enables
+#                          the post-deploy smoke check on /api/health.
 #
-# Note: if you connected the repo to Railway via the GitHub app, Railway also
-# auto-deploys on push to main. Pick one path — either disable Railway's
-# auto-deploy (Settings → Deployments → trigger) or remove this workflow.
+# First-time VM provisioning is documented in docs/ops/oracle-free-tier.md and
+# automated by scripts/oracle-vm-setup.sh.
 name: Deploy
 
 on:
@@ -30,30 +30,41 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
+    env:
+      # Job-level env so step-level `if`s can test secrets (secrets are not
+      # readable inside `if` expressions directly).
+      ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
     steps:
       - uses: actions/checkout@v4
         with:
           # The exact commit CI validated, not whatever is HEAD now.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy to Railway
+      - name: Deploy to Oracle VM
+        if: env.ORACLE_HOST != ''
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || 'taskflow' }}
-        run: railway up --service "$RAILWAY_SERVICE" --detach
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh "$ORACLE_USER@$ORACLE_HOST" "\
+            cd /opt/taskflow && \
+            sudo git pull --ff-only origin main && \
+            sudo docker compose -f deploy/oracle/docker-compose.yml up -d --build"
 
-      # railway up --detach returns before the release is live; wait until the
-      # new deployment answers /api/health with { status: ok, db: connected }.
-      # Skipped (with a notice) until RAILWAY_PUBLIC_DOMAIN is configured.
+      - name: Notice — Oracle deploy not configured yet
+        if: env.ORACLE_HOST == ''
+        run: |
+          echo "::notice::ORACLE_HOST/ORACLE_USER/ORACLE_SSH_KEY repo secrets are not set — deploy self-skipped. See docs/ops/oracle-free-tier.md."
+
+      # The SSH deploy returns before the new containers are live; wait until
+      # the deployment answers /api/health with { status: ok, db: connected }.
+      # Skipped (with a notice) until ORACLE_PUBLIC_DOMAIN is configured.
       - name: Smoke check /api/health
-        if: vars.RAILWAY_PUBLIC_DOMAIN != ''
+        if: vars.ORACLE_PUBLIC_DOMAIN != ''
         env:
-          SMOKE_BASE_URL: https://${{ vars.RAILWAY_PUBLIC_DOMAIN }}
+          SMOKE_BASE_URL: https://${{ vars.ORACLE_PUBLIC_DOMAIN }}
         run: node scripts/deploy-smoke.cjs --timeout-seconds 600

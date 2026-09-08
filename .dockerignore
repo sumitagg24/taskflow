@@ -1,0 +1,22 @@
+# Root .dockerignore for the Oracle deploy image build (build context = repo root).
+# Keeps the context lean (no node_modules / local artifacts / secrets).
+
+node_modules
+**/node_modules
+client/dist
+server/uploads
+server/uploads/*
+**/.mongo-data
+.git
+.gitignore
+*.log
+**/*.log
+.env
+**/.env
+**/.env.prod
+docs
+client/e2e
+client/playwright-report
+client/test-results
+client/.auth
+docker-build.log

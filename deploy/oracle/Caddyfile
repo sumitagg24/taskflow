@@ -1,0 +1,20 @@
+# Caddy v2 edge for the TaskFlow API origin (Oracle Cloud free tier).
+#
+# Replace api.taskflow.example.com with your real domain BEFORE first `up` —
+# Caddy provisions the Let's Encrypt certificate for whatever hostname is here.
+# A raw IP is NOT supported by public CAs; use a free domain (DuckDNS) or your
+# own. See docs/ops/oracle-free-tier.md §2.
+
+api.taskflow.example.com {
+	reverse_proxy app:5000
+	encode gzip
+
+	# Caddy sets X-Forwarded-Proto/Host/For automatically; the server combines
+	# that with TRUST_PROXY=true to issue correct Secure/SameSite cookies and
+	# honour the CSRF origin allowlist.
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-X-Server
+	}
+}

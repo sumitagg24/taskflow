@@ -1,0 +1,55 @@
+# TaskFlow on Oracle Cloud Always-Free (Ampere A1, Ubuntu 24.04).
+#
+# One long-running Node process (API + Socket.IO + background jobs) behind a
+# Caddy edge that terminates TLS and proxies WebSocket upgrades. This matches
+# the single-process architecture the app is designed around (in-memory token
+# denylist, interval jobs, rate limiting).
+#
+# Secrets come from deploy/oracle/.env.prod (chmod 600, never commit).
+#
+# Usage (from repo root on the VM):
+#   cp deploy/oracle/.env.prod.example deploy/oracle/.env.prod  # then fill in
+#   docker compose -f deploy/oracle/docker-compose.yml up -d --build
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/oracle/Dockerfile
+    image: taskflow-api:latest
+    restart: unless-stopped
+    env_file: .env.prod
+    environment:
+      - NODE_ENV=production
+      - TRUST_PROXY=true     # Caddy terminates TLS and forwards X-Forwarded-*
+      - PORT=5000
+    volumes:
+      # Attachments persist across redeploys instead of vanishing (they did on
+      # Railway's ephemeral disk). Back it up with the data export runbook.
+      - uploads:/app/server/uploads
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  uploads:
+  caddy-data:
+  caddy-config:

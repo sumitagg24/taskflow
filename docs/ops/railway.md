@@ -1,5 +1,11 @@
 # Railway deployment (single service)
 
+> **DEPRECATED (2026-09-08):** TaskFlow moved off Railway — the Railway
+> service/domain is retired. The API now runs on the Oracle Cloud Always-Free
+> VM; see [oracle-free-tier.md](oracle-free-tier.md). This document stays as an
+> archived reference; `railway.json` / `scripts/railway-setup.cjs` are inert
+> without a linked Railway project.
+
 TaskFlow deploys to Railway as **one service**: Nixpacks builds the client, and
 the Express server serves both the API and the built SPA from the same origin
 and port. This matches the single-process design in the README — Socket.IO,

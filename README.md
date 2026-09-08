@@ -510,17 +510,19 @@ Run server tests before opening a pull request.
 
 ## Deployment
 
-**Railway (single service):** `railway.json` at the repo root deploys the whole
-app to one Railway service — Nixpacks builds the client, the server serves API
-+ SPA from one port, and `/api/health` gates the deploy. First-deploy steps,
-env vars, MongoDB Atlas setup, OAuth callback updates, and Redis wiring:
-[docs/ops/railway.md](docs/ops/railway.md).
+**Production: Oracle Cloud Always-Free VM ($0) + Vercel SPA + Atlas MongoDB.**
+One Ampere A1 VM runs the API in Docker (Node + Socket.IO + background jobs)
+behind a Caddy edge with automatic HTTPS; the React SPA ships from Vercel; the
+database stays on the existing free Atlas cluster. Setup, env vars, OAuth
+origin rewiring, CD via SSH, and operations: [docs/ops/oracle-free-tier.md](docs/ops/oracle-free-tier.md).
 
-**Vercel (split deploy):** the client also ships as a static SPA on Vercel in
-front of a Railway-hosted API. Build from `client/` with `VITE_API_URL` /
-`VITE_SOCKET_URL` pointing at the API origin; see
-[docs/ops/vercel.md](docs/ops/vercel.md) for the env, CORS, cookie (SameSite /
-Secure), and OAuth origin steps that make cross-origin cookie auth work.
+**Vercel (SPA):** the client builds from `client/` with `VITE_API_URL` /
+`VITE_SOCKET_URL` pointing at the API origin; see [docs/ops/vercel.md](docs/ops/vercel.md)
+for the env, CORS, cookie (SameSite / Secure), and OAuth origin steps that
+make cross-origin cookie auth work.
+
+**Railway:** retired (deprecated runbook kept for reference:
+[docs/ops/railway.md](docs/ops/railway.md)).
 
 **Single-process (any host):** build the client, then start the server — it
 serves both the API and the SPA from one port.
@@ -533,7 +535,7 @@ npm start          # NODE_ENV=production, serves API + SPA on PORT
 Set `NODE_ENV=production`, configure `MONGO_URI`, `JWT_SECRET`,
 `JWT_REFRESH_SECRET`, and `CLIENT_URL`. For rate limiting at scale, set `REDIS_URL`.
 
-**Docker:** `docker-compose up -d` provisions MongoDB, the API, and the client.
+**Docker (local):** `docker-compose up -d` provisions MongoDB, the API, and the client.
 
 Backup/restore runbook: `docs/ops/backup-restore.md`.
 
@@ -552,10 +554,10 @@ Only volunteered when verified against the code — no folklore.
   Node process, and the logout token denylist is an in-memory map. Scale-out
   or serverless hosting needs external cron + shared stores first; rate
   limiting is the one piece already pluggable (`REDIS_URL`).
-- **Vercel is SPA-only — the API stays on a Node host.** The client ships as
+- **Vercel is SPA-only — the API runs on the Oracle VM.** The client ships as
   a static SPA (`client/vercel.json` is a plain rewrite to `/index.html`) and
-  needs `VITE_API_URL`/`VITE_SOCKET_URL` pointed at a real API (e.g. the
-  Railway service). Cross-origin cookie auth requires `SameSite=None; Secure`
+  needs `VITE_API_URL`/`VITE_SOCKET_URL` pointed at the Oracle-hosted API.
+  Cross-origin cookie auth requires `SameSite=None; Secure`
   cookies (already the production default), a browser with third-party
   cookies allowed, `ALLOWED_ORIGINS` on the API including the Vercel origin,
   and the deployed origin added to the OAuth providers. Full setup:

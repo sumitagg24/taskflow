@@ -1,12 +1,14 @@
-# Vercel deployment (SPA in front of the Railway API)
+# Vercel deployment (SPA in front of a remote API)
 
-TaskFlow's primary deploy is **one Railway service** that serves both the API
-and the built SPA from the same origin ([railway.md](railway.md)). That model
-is the simplest and is what the cookie auth flow assumes by default.
+TaskFlow's primary deploy is **one Oracle Cloud Always-Free VM** serving the API
+with the SPA on Vercel — see [oracle-free-tier.md](oracle-free-tier.md). The
+Railway single-service model this page was written for is retired; below,
+`<api-host>` is the API's public hostname (previously a `*.up.railway.app`
+domain).
 
-This guide is for the alternate **split deploy**: the React SPA is served as a
-static site by Vercel, while the Express + Socket.IO API keeps running on
-Railway (or any Node host). Cross-origin cookie auth **does** work — the
+This guide is for the **split deploy**: the React SPA is served as a
+static site by Vercel, while the Express + Socket.IO API keeps running on its
+own host. Cross-origin cookie auth **does** work — the
 server already issues `SameSite=None; Secure` cookies in production and
 performs origin checks against `ALLOWED_ORIGINS` — but every moving part must
 be configured, and there are real browser caveats to accept.
@@ -14,7 +16,7 @@ be configured, and there are real browser caveats to accept.
 ```
 Browser
   │  https://taskflow.vercel.app (SPA)
-  │    └─ axios               baseURL /api ──────────►  https://taskflow.up.railway.app (API)
+  │    └─ axios               baseURL /api ──────────►  https://<api-host> (API)
   │    └─ socket.io-client    SOCKET_URL   ──────────►  same origin, WebSocket upgrade
   │    └─ document.cookie     <- can NOT see the API origin's cookies
 ```
@@ -25,17 +27,17 @@ Browser
 
 | Where | Variable | Value |
 |---|---|---|
-| **Vercel** (project env) | `VITE_API_URL` | `https://<api>.up.railway.app/api` |
-| **Vercel** | `VITE_SOCKET_URL` | `https://<api>.up.railway.app` |
+| **Vercel** (project env) | `VITE_API_URL` | `https://<api-host>/api` |
+| **Vercel** | `VITE_SOCKET_URL` | `https://<api-host>` |
 | **Vercel** | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID` | your Auth0 tenant + SPA client ID |
 | **Vercel** | `VITE_GOOGLE_CLIENT_ID` | (optional, legacy Google button) |
-| **Railway** | `CLIENT_URL` | `https://<spa>.vercel.app` |
-| **Railway** | `ALLOWED_ORIGINS` | `https://<spa>.vercel.app` (+ any custom domains, comma-separated) |
-| **Railway** | `TRUST_PROXY` | `true` |
-| **Railway** | `GITHUB_CALLBACK_URL` | `https://<api>.up.railway.app/api/auth/github/callback` |
+| **Oracle VM** | `CLIENT_URL` | `https://<spa>.vercel.app` |
+| **Oracle VM** | `ALLOWED_ORIGINS` | `https://<spa>.vercel.app` (+ any custom domains, comma-separated) |
+| **Oracle VM** | `TRUST_PROXY` | `true` (Caddy terminates TLS on the VM) |
+| **Oracle VM** | `GITHUB_CALLBACK_URL` | `https://<api-host>/api/auth/github/callback` |
 
 Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
-`AI_KEY_SECRET`, ...) stays exactly as the single-service Railway setup.
+`AI_KEY_SECRET`, ...) stays exactly as the single-service setup.
 
 ---
 
@@ -48,8 +50,8 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
    **Output Directory:** `dist`.
 3. **Environment variables** (all `VITE_*` are *build-time* — changing them
    requires a new deploy):
-   - `VITE_API_URL=https://<api>.up.railway.app/api`
-   - `VITE_SOCKET_URL=https://<api>.up.railway.app`
+   - `VITE_API_URL=https://<api-host>/api`
+   - `VITE_SOCKET_URL=https://<api-host>`
    - `VITE_AUTH0_DOMAIN` / `VITE_AUTH0_CLIENT_ID` (to show the Google/Auth0
      button; must match the server's `AUTH0_*`)
 4. Deploy. `client/vercel.json` rewrites every route to `/index.html` so the
@@ -60,7 +62,7 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 > origin from it (or uses `VITE_SOCKET_URL` directly).
 ---
 
-## 3. Railway side (the API)
+## 3. Oracle side (the API)
 
 1. Set **`CLIENT_URL=https://<spa>.vercel.app`** — this is the redirect target
    for OAuth callbacks and the origin used for password-reset / verification
@@ -68,10 +70,10 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 2. Set **`ALLOWED_ORIGINS=https://<spa>.vercel.app`**. This is a *fail-closed*
    allowlist: production CORS **and** the CSRF origin check both reject any
    browser origin not listed. Add custom domains as a comma-separated list.
-3. Keep `TRUST_PROXY=true` (Railway TLS termination).
-4. Redeploy Railway. Verify:
+3. Keep `TRUST_PROXY=true` (Caddy terminates TLS on the VM).
+4. Redeploy the VM. Verify:
    ```bash
-   curl -s https://<api>.up.railway.app/api/health
+   curl -s https://<api-host>/api/health
    # {"status":"ok","db":"connected",...}
    ```
 
@@ -86,7 +88,7 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
   tokens, so no server change is needed.
 - **GitHub**: the flow starts on the API (`/api/auth/github`), so the browser
   is redirected to GitHub with `redirect_uri` = `GITHUB_CALLBACK_URL`. Set it
-  to the **API** origin: `https://<api>.up.railway.app/api/auth/github/callback`,
+  to the **API** origin: `https://<api-host>/api/auth/github/callback`,
   and register that exact URL in the GitHub OAuth app. After the exchange the
   API redirects to `CLIENT_URL/auth/callback`, which is the Vercel SPA.
 - **Google (direct)**: the UI no longer uses the server's `/api/auth/google`
@@ -100,7 +102,7 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
   `POST /api/auth/refresh-token` with two **httpOnly** cookies (`accessToken`,
   15 min; `refreshToken`, 7 days) plus the readable `tf_session` flag. In
   production these are issued with `Secure` and `SameSite=None`, so they ride
-  on `fetch`/XHR/WebSocket between the Vercel SPA and the Railway API
+  on `fetch`/XHR/WebSocket between the Vercel SPA and the remote API
   (`withCredentials: true` is already set in `client/src/api/tasks.ts`).
 - **CSRF**: every cookie-authenticated mutation from a browser is checked
   against `ALLOWED_ORIGINS` (`server/middleware/csrf.js`) — the Vercel origin
@@ -123,11 +125,11 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 - **Third-party cookies must be allowed.** Safari (ITP) blocks
   `SameSite=None` cookies on cross-site requests by default and Chrome is
   phasing the same in. Visitors using such browsers will see a login loop. If
-  that's unacceptable, use the single-service Railway deploy (same-origin,
-  unaffected).
+  that's unacceptable, use the single-service deploy (API serves the SPA from
+  the same origin — unaffected by third-party cookie policy).
 - **Socket.IO** needs the same third-party cookie permissions for its upgrade
   handshake.
-- Keep `JWT_SECRET`/`JWT_REFRESH_SECRET` stable across Railway re/deploys —
+- Keep `JWT_SECRET`/`JWT_REFRESH_SECRET` stable across re/deploys —
   rotating them signs everyone out.
 
 ---
@@ -138,7 +140,7 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 |---|---|
 | SPA loads but API calls fail with CORS/403 | `ALLOWED_ORIGINS` missing the exact Vercel origin (scheme+host, no trailing slash) |
 | 403 `Cross-origin request forbidden` on mutations | Same — the CSRF origin check uses the same allowlist |
-| Login loop right after sign-in | Browser blocking third-party cookies (caveats above); or `NODE_ENV` not `production` on Railway (cookies must be `SameSite=None; Secure`) |
+| Login loop right after sign-in | Browser blocking third-party cookies (caveats above); or `NODE_ENV` not `production` on the API host (cookies must be `SameSite=None; Secure`) |
 | Auth0 popup rejects the redirect | Add the Vercel origin to Auth0's Allowed Callback/Web/Logout URLs |
 | GitHub sign-in bounces with `STATE_MISMATCH` | `GITHUB_CALLBACK_URL` not registered on GitHub, or mismatched with the API origin |
 | Socket.IO keeps retrying | `VITE_SOCKET_URL` wrong or missing; `ALLOWED_ORIGINS` missing; cookies blocked |
@@ -148,7 +150,8 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 
 ## 7. When to prefer the single-service deploy
 
-Use the Railway-only model unless you specifically want Vercel's global edge
+Use the same-origin single-service model (the Oracle VM can serve the SPA from
+`/app/client/dist` itself) unless you specifically want Vercel's global edge
 for the static shell. Same-origin means: no third-party-cookie dependence, no
 `VITE_API_URL` crossing, simplest Auth0/Google origins, and one URL to share.
 The split model exists so the SPA can live on Vercel; everything in this guide

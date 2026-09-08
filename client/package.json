@@ -18,6 +18,8 @@
     "test:e2e:isolated:snapshots": "node e2e/run-isolated.cjs visual --update-snapshots"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.24.1",
+    "@auth0/auth0-spa-js": "^2.24.1",
     "axios": "^1.7.9",
     "clsx": "^2.1.1",
     "framer-motion": "^12.42.2",

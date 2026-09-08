@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MotionConfig } from 'framer-motion';
+import { Auth0Provider } from '@auth0/auth0-react';
 import App from './App';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { captureReferralCode } from './lib/referral';
@@ -42,12 +43,35 @@ if ('serviceWorker' in navigator) {
   }
 }
 
+const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN as string | undefined;
+const AUTH0_CLIENT_ID = import.meta.env.VITE_AUTH0_CLIENT_ID as string | undefined;
+const AUTH0_AUDIENCE = import.meta.env.VITE_AUTH0_AUDIENCE as string | undefined;
+
+const appNode = (
+  <MotionConfig reducedMotion="user">
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </MotionConfig>
+);
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <MotionConfig reducedMotion="user">
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </MotionConfig>
+    {AUTH0_DOMAIN && AUTH0_CLIENT_ID ? (
+      <Auth0Provider
+        domain={AUTH0_DOMAIN}
+        clientId={AUTH0_CLIENT_ID}
+        authorizationParams={{
+          redirect_uri: window.location.origin,
+          ...(AUTH0_AUDIENCE ? { audience: AUTH0_AUDIENCE } : {}),
+        }}
+        cacheLocation="localstorage"
+        useRefreshTokens
+      >
+        {appNode}
+      </Auth0Provider>
+    ) : (
+      appNode
+    )}
   </React.StrictMode>
 );

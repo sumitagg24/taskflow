@@ -50,6 +50,7 @@ interface AuthContextType {
   /** Finish a reset link and sign the account straight in. */
   resetPassword: (token: string, password: string) => Promise<string>;
   googleAuth: (credential: string) => Promise<void>;
+  auth0Login: (idToken: string) => Promise<void>;
   /** Trade the one-time code from an OAuth redirect for a real session. */
   exchangeOAuthCode: (code: string) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -301,6 +302,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     toast.success(`Welcome, ${data.user.name}!`);
   };
 
+  const auth0Login = async (idToken: string) => {
+    const { data } = await api.post<AuthResponse>('/auth/auth0', { id_token: idToken });
+    setAuth(data);
+    toast.success(`Welcome, ${data.user.name}!`);
+  };
+
   const exchangeOAuthCode = async (code: string) => {
     const { data } = await api.post<AuthResponse>('/auth/oauth/exchange', { code });
     setAuth(data);
@@ -321,6 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       resendVerification,
       resetPassword,
       googleAuth,
+      auth0Login,
       exchangeOAuthCode,
       refreshUser,
     }}>

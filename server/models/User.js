@@ -90,11 +90,12 @@ const userSchema = new mongoose.Schema(
     // Auth provider
     authProvider: {
       type: String,
-      enum: ['local', 'google', 'github'],
+      enum: ['local', 'google', 'github', 'auth0'],
       default: 'local',
     },
     googleId: { type: String, default: undefined, unique: true, sparse: true },
     githubId: { type: String, default: undefined, unique: true, sparse: true },
+    auth0Id: { type: String, default: undefined, unique: true, sparse: true },
 
     // One-time OAuth exchange code. The redirect flow finishes on the server,
     // so we hand the browser a short-lived opaque code instead of putting JWTs

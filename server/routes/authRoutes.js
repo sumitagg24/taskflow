@@ -3,13 +3,13 @@ const router = express.Router();
 const {
   register, login, getProfile, updateProfile, updateFocusTime,
   forgotPassword, resetPassword, verifyEmail, resendVerification,
-  refreshToken, changePassword, googleAuth, logout, checkUsername,
+  refreshToken, changePassword, googleAuth, auth0Auth, logout, checkUsername,
   githubStart, githubCallback, exchangeOAuthCode, getAuthProviders,
 } = require('../controllers/authController');
 const {
   registerValidator, loginValidator, forgotPasswordValidator,
   resetPasswordValidator, verifyEmailValidator, resendVerificationValidator,
-  changePasswordValidator, googleAuthValidator, refreshTokenValidator,
+  changePasswordValidator, googleAuthValidator, auth0Validator, refreshTokenValidator,
   usernameCheckValidator, oauthExchangeValidator,
 } = require('../validators/authValidators');
 const { protect } = require('../middleware/auth');
@@ -28,6 +28,7 @@ router.post('/reset-password', passwordResetLimiter, resetPasswordValidator, res
 router.post('/verify-email', verificationLimiter, verifyEmailValidator, verifyEmail);
 router.post('/resend-verification', emailLimiter, resendVerificationValidator, resendVerification);
 router.post('/google', oauthLimiter, googleAuthValidator, googleAuth);
+router.post('/auth0', oauthLimiter, auth0Validator, auth0Auth);
 router.get('/providers', getAuthProviders);
 router.get('/github', oauthLimiter, githubStart);
 router.get('/github/callback', oauthLimiter, githubCallback);

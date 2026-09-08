@@ -113,7 +113,10 @@ if (process.env.TRUST_PROXY === 'true') {
 
 // ===== Global Middleware (order matters) =====
 
-// 1. Security headers
+// 1. Security headers — allow Auth0 tenant dynamically when configured
+const auth0CSP = process.env.AUTH0_DOMAIN
+  ? `https://${String(process.env.AUTH0_DOMAIN).replace(/^https?:\/\//, '').replace(/\/+$/, '')}`
+  : null;
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -121,18 +124,18 @@ app.use(helmet({
       // Hash allows ONLY Google's GSI inline bootstrap snippet. If Google ever
       // changes that snippet the hash stops matching and behavior degrades to
       // today (blocked snippet, button still renders) — no broadening needed.
-      scriptSrc: ["'self'", "https://accounts.google.com", "'sha256-GV3MzgrEm/WOEDkhHKYcrl36TKzqNh3EhZo4thC6H7k='"],
-      frameSrc: ["'self'", "https://accounts.google.com"],
-      connectSrc: ["'self'", "https://accounts.google.com"],
+      scriptSrc: ["'self'", "https://accounts.google.com", "'sha256-GV3MzgrEm/WOEDkhHKYcrl36TKzqNh3EhZo4thC6H7k='", ...(auth0CSP ? [auth0CSP] : [])],
+      frameSrc: ["'self'", "https://accounts.google.com", ...(auth0CSP ? [auth0CSP] : [])],
+      connectSrc: ["'self'", "https://accounts.google.com", ...(auth0CSP ? [auth0CSP] : [])],
       imgSrc: ["'self'", "data:", "https:"],
       // Google Fonts serves the stylesheet from googleapis and the woff2 files
       // from gstatic; without both, the Newsreader display face silently falls
       // back to a system serif in production.
       // accounts.google.com serves the GSI button stylesheet.
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com", ...(auth0CSP ? [auth0CSP] : [])],
       fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
-      // GitHub sign-in is a top-level redirect to github.com and back.
-      formAction: ["'self'", "https://github.com"],
+      // GitHub + Auth0 are top-level redirects and back.
+      formAction: ["'self'", "https://github.com", ...(auth0CSP ? [auth0CSP] : [])],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       upgradeInsecureRequests: [],

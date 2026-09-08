@@ -115,6 +115,15 @@ const googleAuthValidator = [
     .withMessage('Invalid Google credential'),
 ];
 
+const auth0Validator = [
+  body('id_token')
+    .trim()
+    .notEmpty()
+    .withMessage('Auth0 token is required')
+    .isLength({ max: 8192 })
+    .withMessage('Invalid Auth0 token'),
+];
+
 const refreshTokenValidator = [
   // Optional so cookie-only refresh (no body) passes validation; the handler
   // falls back to the `refreshToken` cookie, while body clients still validate.
@@ -156,6 +165,7 @@ module.exports = {
   resendVerificationValidator,
   changePasswordValidator,
   googleAuthValidator,
+  auth0Validator,
   refreshTokenValidator,
   usernameCheckValidator,
   oauthExchangeValidator,

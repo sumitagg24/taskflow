@@ -3,23 +3,29 @@ import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { authAPI } from '@/api/tasks';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 /* ============================================================================
    Social sign-in row
    ----------------------------------------------------------------------------
-   Two custom buttons rather than Google's rendered widget: GSI's `renderButton`
-   demands ~200px and refuses to shrink, which breaks a 2-up row inside a 26rem
-   column. `useGoogleAuth().signIn()` drives the same popup from our own markup.
+   Three providers (Google, GitHub, Auth0) rendered as custom buttons rather
+   than vendor widgets: Google's `renderButton` demands ~200px and breaks a
+   2-up row, and Auth0's Universal Login is cleaner as a popup. The set that
+   renders is the intersection of the server's configured providers
+   (`GET /api/auth/providers`) and the client's env (browser needs IDs/domains
+   to open popups). With none available the whole block disappears.
 
-   What renders is the intersection of two truths — the server's configured
-   providers (`GET /api/auth/providers`) and the client's `VITE_GOOGLE_CLIENT_ID`
-   (the browser needs the ID to open the popup at all). With neither available
-   the whole block, divider included, disappears.
+   Auth0 is additive and opt-in: when AUTH0_DOMAIN is unset the provider stays
+   hidden and existing Google/GitHub + local flows are untouched. When
+   configured, "Continue with Auth0" appears alongside the others and shares
+   the same TaskFlow session (httpOnly cookies) as the other providers.
    ========================================================================== */
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN as string | undefined;
+const AUTH0_CLIENT_ID = import.meta.env.VITE_AUTH0_CLIENT_ID as string | undefined;
 
-type Providers = { google: boolean; github: boolean };
+type Providers = { google: boolean; github: boolean; auth0: boolean };
 
 // Module-level cache: the answer can't change without a server restart, and
 // several auth pages mount this component in one session.
@@ -33,12 +39,16 @@ function fetchProviders(): Promise<Providers> {
   providersInFlight = authAPI
     .getProviders()
     .then(({ data }) => {
-      providersCache = { google: Boolean(data?.google), github: Boolean(data?.github) };
+      providersCache = {
+        google: Boolean(data?.google),
+        github: Boolean(data?.github),
+        auth0: Boolean((data as unknown as { auth0?: boolean })?.auth0),
+      };
       return providersCache;
     })
     .catch(() => {
       // Unreachable server — hide the buttons rather than offer a dead end.
-      providersCache = { google: false, github: false };
+      providersCache = { google: false, github: false, auth0: false };
       return providersCache;
     })
     .finally(() => {
@@ -79,6 +89,17 @@ function GitHubGlyph() {
   );
 }
 
+function Auth0Glyph() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+      <path
+        fill="#EB5424"
+        d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0Zm5.2 16.5h-2.1l-1.1-2.6h-3.9l-1.1 2.6H6.8l4.1-9h2.2l4.1 9Zm-3.3-4.2-1.1-2.7-1.1 2.7h2.2Z"
+      />
+    </svg>
+  );
+}
+
 interface SocialAuthProps {
   /** 'login' | 'register' — only changes the wording. */
   mode?: 'login' | 'register';
@@ -100,6 +121,8 @@ export default function SocialAuth({
   const [providers, setProviders] = useState<Providers | null>(providersCache);
   const [githubRedirecting, setGithubRedirecting] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [auth0Busy, setAuth0Busy] = useState(false);
+  const { auth0Login } = useAuth();
 
   const {
     ready: googleReady,
@@ -144,11 +167,14 @@ export default function SocialAuth({
 
   const showGoogle = Boolean(GOOGLE_CLIENT_ID) && providers?.google === true && !googleError;
   const showGithub = providers?.github === true;
+  const showAuth0 = Boolean(AUTH0_DOMAIN && AUTH0_CLIENT_ID) && providers?.auth0 === true;
 
-  if (!showGoogle && !showGithub) return null;
+  if (!showGoogle && !showGithub && !showAuth0) return null;
 
-  const disabled = busy || githubRedirecting || googleBusy;
+  const disabled = busy || githubRedirecting || googleBusy || auth0Busy;
   const verb = mode === 'register' ? 'Sign up' : 'Continue';
+  const count = Number(showGoogle) + Number(showGithub) + Number(showAuth0);
+  const gridClass = count === 1 ? 'grid-cols-1' : count === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-3';
 
   const handleGoogle = () => {
     if (disabled || !googleReady) return;
@@ -169,6 +195,41 @@ export default function SocialAuth({
     window.location.assign('/api/auth/github');
   };
 
+  // Popup-based Auth0 handler — creates a lightweight standalone client
+  // so it works even if the top-level Auth0Provider is not mounted (e.g. in
+  // tests or when env is set after build). Server still verifies via JWKS.
+  const handleAuth0Popup = async () => {
+    if (disabled) return;
+    setAuth0Busy(true);
+    try {
+      const { Auth0Client } = await import('@auth0/auth0-spa-js');
+      const client = new Auth0Client({
+        domain: AUTH0_DOMAIN!,
+        clientId: AUTH0_CLIENT_ID!,
+        authorizationParams: {
+          redirect_uri: window.location.origin,
+          ...(AUTH0_DOMAIN ? {} : {}),
+        },
+        cacheLocation: 'localstorage',
+        useRefreshTokens: true,
+      });
+      await client.loginWithPopup({ authorizationParams: { prompt: 'login' } } as never);
+      const claims = await client.getIdTokenClaims();
+      const raw = (claims as unknown as { __raw?: string })?.__raw;
+      if (!raw) throw new Error('No ID token from Auth0');
+      await auth0Login(raw);
+    } catch (err: unknown) {
+      const msg =
+        (err as { error?: string })?.error === 'popup_closed' ||
+        String((err as Error)?.message || '').includes('Popup closed')
+          ? 'Auth0 window was closed before completing sign-in.'
+          : (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
+      onError?.(msg);
+    } finally {
+      if (aliveRef.current) setAuth0Busy(false);
+    }
+  };
+
   return (
     <div className={cn('mt-7', className)}>
       <div className="mb-5 flex items-center gap-4" aria-hidden="true">
@@ -177,7 +238,7 @@ export default function SocialAuth({
         <hr className="rule flex-1" />
       </div>
 
-      <div className={cn('grid gap-3', showGoogle && showGithub ? 'grid-cols-2' : 'grid-cols-1')}>
+      <div className={cn('grid gap-3', gridClass)}>
         {showGoogle && (
           <Button
             type="button"
@@ -205,6 +266,21 @@ export default function SocialAuth({
             aria-label={`${verb} with GitHub`}
           >
             GitHub
+          </Button>
+        )}
+
+        {showAuth0 && (
+          <Button
+            type="button"
+            variant="outline"
+            fullWidth
+            loading={auth0Busy}
+            icon={!auth0Busy ? <Auth0Glyph /> : undefined}
+            onClick={handleAuth0Popup}
+            disabled={disabled}
+            aria-label={`${verb} with Auth0`}
+          >
+            Auth0
           </Button>
         )}
       </div>

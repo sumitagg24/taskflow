@@ -2,6 +2,8 @@ const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken, getCookie, setAuthCookies, clearAuthCookies } = require('../middleware/auth');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const jwksClient = require('jwks-rsa');
 const { OAuth2Client } = require('google-auth-library');
 const { isCommonPassword } = require('../services/passwordService');
 const logger = require('../utils/logger');
@@ -26,6 +28,44 @@ const loginAccountConfig = () => resolveRateLimitConfig(process.env).loginAccoun
 const googleClient = process.env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
   : null;
+
+// Auth0 JWKS client — lazy, only when domain configured. Caches keys and
+// rate-limits JWKS fetches per jwks-rsa defaults.
+const auth0Domain = process.env.AUTH0_DOMAIN ? String(process.env.AUTH0_DOMAIN).replace(/^https?:\/\//, '').replace(/\/+$/, '') : null;
+const auth0JwksClient = auth0Domain
+  ? jwksClient({
+      jwksUri: `https://${auth0Domain}/.well-known/jwks.json`,
+      cache: true,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+    })
+  : null;
+
+function getAuth0SigningKey(header, callback) {
+  if (!auth0JwksClient) return callback(new Error('Auth0 not configured'));
+  auth0JwksClient.getSigningKey(header.kid, (err, key) => {
+    if (err) return callback(err);
+    const signingKey = key.getPublicKey();
+    callback(null, signingKey);
+  });
+}
+
+function verifyAuth0Token(token) {
+  return new Promise((resolve, reject) => {
+    if (!auth0Domain) return reject(new Error('Auth0 not configured'));
+    const opts = {
+      algorithms: ['RS256'],
+      issuer: `https://${auth0Domain}/`,
+    };
+    // Audience: explicit AUTH0_AUDIENCE or fallback to client ID (ID token aud)
+    const audience = process.env.AUTH0_AUDIENCE || process.env.AUTH0_CLIENT_ID;
+    if (audience) opts.audience = audience;
+    jwt.verify(token, getAuth0SigningKey, opts, (err, decoded) => {
+      if (err) return reject(err);
+      resolve(decoded);
+    });
+  });
+}
 
 const validate = (req) => {
   const errors = validationResult(req);
@@ -631,6 +671,110 @@ exports.googleAuth = async (req, res, next) => {
   }
 };
 
+// -------------------- Auth0 (Universal Login) --------------------
+/**
+ * POST /api/auth/auth0 — verify an Auth0 ID token (RS256 via JWKS) and mint
+ * a TaskFlow session. Additive, opt-in: when AUTH0_DOMAIN is unset the
+ * endpoint 500s and the client hides the button. We issue our own httpOnly
+ * cookies (same as Google) so `protect` stays unchanged — no RS256 in the
+ * request path.
+ */
+exports.auth0Auth = async (req, res, next) => {
+  try {
+    validate(req);
+
+    if (!auth0Domain || !auth0JwksClient) {
+      return res.status(500).json({ message: 'Auth0 authentication is not configured' });
+    }
+
+    const { id_token } = req.body;
+    if (!id_token || typeof id_token !== 'string') {
+      return res.status(400).json({ message: 'Auth0 token is required' });
+    }
+    if (id_token.length > 8192) {
+      return res.status(400).json({ message: 'Invalid Auth0 token' });
+    }
+
+    let payload;
+    try {
+      payload = await verifyAuth0Token(id_token);
+    } catch (err) {
+      logger.warn(`Auth0 verify failed: ${err.message}`);
+      return res.status(401).json({ message: 'Invalid Auth0 token' });
+    }
+
+    const sub = payload.sub ? String(payload.sub) : null;
+    const email = payload.email ? String(payload.email).toLowerCase() : null;
+    const name = payload.name ? String(payload.name) : payload.nickname ? String(payload.nickname) : null;
+    const picture = payload.picture ? String(payload.picture) : '';
+    const emailVerified = payload.email_verified !== false;
+
+    if (!sub) {
+      return res.status(400).json({ message: 'Auth0 token missing subject' });
+    }
+    if (!email) {
+      logger.warn('Auth0: no email in token payload');
+      return res.status(400).json({ message: 'Auth0 account must have an email address' });
+    }
+    if (!emailVerified) {
+      logger.warn(`Auth0: email not verified for ${email}`);
+      return res.status(400).json({ message: 'Auth0 email is not verified. Please verify your email with Auth0 first.' });
+    }
+
+    const normalizedEmail = email.toLowerCase();
+    let user = await User.findOne({ $or: [{ auth0Id: sub }, { email: normalizedEmail }] });
+
+    if (user) {
+      if (user.authProvider !== 'auth0' && !user.auth0Id) {
+        logger.warn(`Auth0 conflict: local/google/github account exists for ${normalizedEmail} — rejecting auto-link`);
+        return res.status(409).json({
+          message: 'This email is already registered with another method. Please sign in the way you created it.',
+          code: 'ACCOUNT_EXISTS_WITH_DIFFERENT_PROVIDER',
+        });
+      }
+      if (user.auth0Id && user.auth0Id !== sub) {
+        logger.warn(`Auth0 conflict: different Auth0 subject already linked for ${normalizedEmail}`);
+        return res.status(409).json({
+          message: 'This email is already associated with another account. Please sign in with your existing method.',
+        });
+      }
+      if (picture && user.avatar !== picture) {
+        user.avatar = picture;
+        await user.save();
+      }
+    } else {
+      try {
+        user = await User.create({
+          name: name || normalizedEmail.split('@')[0],
+          username: await deriveUniqueUsername(name || normalizedEmail.split('@')[0]),
+          email: normalizedEmail,
+          authProvider: 'auth0',
+          auth0Id: sub,
+          emailVerified: true,
+          avatar: picture || '',
+        });
+        logger.info(`Auth0: created new user ${normalizedEmail}`);
+      } catch (err) {
+        if (err.code === 11000) {
+          logger.warn(`Auth0: duplicate key for ${normalizedEmail} or ${sub}`);
+          user = await User.findOne({ $or: [{ auth0Id: sub }, { email: normalizedEmail }] });
+          if (!user) {
+            return res.status(409).json({ message: 'Could not complete Auth0 sign-in. Please try again.' });
+          }
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    const auth = await createAuthResponse(user);
+    setAuthCookies(res, auth.accessToken, auth.refreshToken);
+    res.json(auth);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // -------------------- GitHub OAuth --------------------
 /* GitHub has no ID token, so this is the authorization-code dance: we bounce
    the browser to GitHub, it comes back with a `code`, and the server trades
@@ -953,11 +1097,12 @@ exports.exchangeOAuthCode = async (req, res, next) => {
   }
 };
 
-/** GET /api/auth/providers — lets the client hide buttons it cannot fulfil. */
+  /** GET /api/auth/providers — lets the client hide buttons it cannot fulfil. */
 exports.getAuthProviders = (req, res) => {
   res.json({
     google: Boolean(process.env.GOOGLE_CLIENT_ID),
     github: githubConfigured(),
+    auth0: Boolean(auth0Domain),
   });
 };
 

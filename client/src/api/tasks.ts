@@ -61,14 +61,20 @@ interface ProfileData {
   };
 }
 
+// API base: same-origin '/api' by default (dev proxy + single-process prod
+// serving). Set VITE_API_URL to an absolute URL when the SPA and API deploy
+// separately (e.g. Vercel static + Railway API).
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || '/api';
+
 const api: AxiosInstance = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
-  // Cookies (httpOnly access/refresh) ride every same-origin request.
+  // Cookies (httpOnly access/refresh) ride every request; the API must send
+  // CORS with credentials allowed when API_BASE is cross-origin.
   withCredentials: true,
 });
 
-const REFRESH_URL = '/api/auth/refresh-token';
+const REFRESH_URL = `${API_BASE}/auth/refresh-token`;
 
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
@@ -246,7 +252,7 @@ export const timeTrackingAPI = {
     const qs = new URLSearchParams();
     if (startDate) qs.set('startDate', startDate);
     if (endDate) qs.set('endDate', endDate);
-    const base = '/api/time-tracking/export';
+    const base = `${API_BASE}/time-tracking/export`;
     return qs.toString() ? `${base}?${qs.toString()}` : base;
   },
 };
@@ -262,7 +268,7 @@ export const calendarAPI = {
         if (v) qs.set(k, String(v));
       }
     }
-    const base = '/api/calendar/export';
+    const base = `${API_BASE}/calendar/export`;
     return qs.toString() ? `${base}?${qs.toString()}` : base;
   },
   getLinks: (taskId: string): Promise<AxiosResponse> => api.get('/calendar/links', { params: { taskId } }),

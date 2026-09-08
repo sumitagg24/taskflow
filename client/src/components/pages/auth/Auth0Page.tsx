@@ -3,8 +3,12 @@ import { motion } from 'framer-motion';
 import { ShieldCheck, ArrowLeft, Lock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { cn } from '@/lib/utils';
 import AuthShell from './AuthShell';
 import { AuthAlert } from './primitives';
+
+/** Mirrors the main AuthPage mode switch — same tablist, same pill. */
+type AuthMode = 'login' | 'signup';
 
 const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN as string | undefined;
 const AUTH0_CLIENT_ID = import.meta.env.VITE_AUTH0_CLIENT_ID as string | undefined;
@@ -25,41 +29,49 @@ function Auth0Glyph({ size = 20 }: { size?: number }) {
 }
 
 export default function Auth0Page({ onBack }: Auth0PageProps) {
+  const [mode, setMode] = useState<AuthMode>('login');
   const [localError, setLocalError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const { auth0Login } = useAuth();
 
-  const handleAuth0 = useCallback(async () => {
-    if (busy) return;
-    setLocalError(null);
-    setBusy(true);
-    try {
-      const { Auth0Client } = await import('@auth0/auth0-spa-js');
-      const client = new Auth0Client({
-        domain: AUTH0_DOMAIN!,
-        clientId: AUTH0_CLIENT_ID!,
-        authorizationParams: {
-          redirect_uri: window.location.origin,
-        },
-        cacheLocation: 'localstorage',
-        useRefreshTokens: true,
-      });
-      await client.loginWithPopup({ authorizationParams: { prompt: 'login' } } as never);
-      const claims = await client.getIdTokenClaims();
-      const raw = (claims as unknown as { __raw?: string })?.__raw;
-      if (!raw) throw new Error('No ID token from Auth0');
-      await auth0Login(raw);
-    } catch (err: unknown) {
-      const msg =
-        (err as { error?: string })?.error === 'popup_closed' ||
-        String((err as Error)?.message || '').includes('Popup closed')
-          ? 'Auth0 window was closed before completing sign-in.'
-          : (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
-      setLocalError(msg);
-    } finally {
-      setBusy(false);
-    }
-  }, [auth0Login, busy]);
+  const handleAuth0 = useCallback(
+    async (nextMode: AuthMode) => {
+      if (busy) return;
+      setLocalError(null);
+      setBusy(true);
+      try {
+        const { Auth0Client } = await import('@auth0/auth0-spa-js');
+        const client = new Auth0Client({
+          domain: AUTH0_DOMAIN!,
+          clientId: AUTH0_CLIENT_ID!,
+          authorizationParams: {
+            redirect_uri: window.location.origin,
+          },
+          cacheLocation: 'localstorage',
+          useRefreshTokens: true,
+        });
+        // 'signup' hints Universal Login to open on the registration screen;
+        // otherwise force a fresh credential prompt for sign-in.
+        const authorizationParams =
+          nextMode === 'signup' ? { screen_hint: 'signup' } : { prompt: 'login' };
+        await client.loginWithPopup({ authorizationParams } as never);
+        const claims = await client.getIdTokenClaims();
+        const raw = (claims as unknown as { __raw?: string })?.__raw;
+        if (!raw) throw new Error('No ID token from Auth0');
+        await auth0Login(raw);
+      } catch (err: unknown) {
+        const msg =
+          (err as { error?: string })?.error === 'popup_closed' ||
+          String((err as Error)?.message || '').includes('Popup closed')
+            ? 'Auth0 window was closed before completing sign-in.'
+            : (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
+        setLocalError(msg);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [auth0Login, busy]
+  );
 
   useEffect(() => {
     // Auto-triggering popup without user gesture is blocked. Do not auto-open.
@@ -132,9 +144,44 @@ export default function Auth0Page({ onBack }: Auth0PageProps) {
     );
   }
 
+  const isSignup = mode === 'signup';
+
   return (
-    <AuthShell headline="One tap with Auth0 — enterprise-grade sign-in.">
+    <AuthShell headline={isSignup ? 'Create your TaskFlow account with Auth0.' : 'One tap with Auth0 — enterprise-grade sign-in.'}>
       <div className="space-y-6">
+        {/* Mode switch — same hairline segmented control as the main AuthPage. */}
+        <div
+          role="tablist"
+          aria-label="Sign in or create an account"
+          className="inline-flex rounded-lg border border-hairline bg-surface p-1"
+        >
+          {(['login', 'signup'] as const).map((m) => (
+            <button
+              key={m}
+              role="tab"
+              type="button"
+              aria-selected={mode === m}
+              onClick={() => setMode(m)}
+              className={cn(
+                'relative rounded-md px-4 py-1.5 text-[13px] font-medium transition-colors duration-200',
+                'focus-visible:ring-[3px] focus-visible:ring-yellow-400/15',
+                mode === m
+                  ? 'text-gray-900 dark:text-gray-100'
+                  : 'text-gray-600 hover:text-gray-700 dark:hover:text-gray-300'
+              )}
+            >
+              {mode === m && (
+                <motion.span
+                  layoutId="auth0-mode-pill"
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="absolute inset-0 rounded-md bg-card shadow-sm"
+                />
+              )}
+              <span className="relative">{m === 'login' ? 'Sign in' : 'Sign up'}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="text-center">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -145,10 +192,12 @@ export default function Auth0Page({ onBack }: Auth0PageProps) {
             <Auth0Glyph size={32} />
           </motion.div>
           <h2 className="font-display text-xl tracking-tight text-gray-900 dark:text-gray-100">
-            Continue with Auth0
+            {isSignup ? 'Sign up with Auth0' : 'Continue with Auth0'}
           </h2>
           <p className="mx-auto mt-2 max-w-[30ch] text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-            Universal Login with MFA, social, and enterprise connections — then your workspace is ready.
+            {isSignup
+              ? 'Universal Login with MFA, social, and enterprise connections — then your workspace is ready.'
+              : 'Pick up exactly where you left off — no password to remember.'}
           </p>
         </div>
 
@@ -160,12 +209,12 @@ export default function Auth0Page({ onBack }: Auth0PageProps) {
           fullWidth
           loading={busy}
           disabled={busy}
-          onClick={handleAuth0}
+          onClick={() => handleAuth0(mode)}
           icon={!busy ? <Auth0Glyph size={18} /> : undefined}
           className="h-11 justify-center gap-3 border-gray-300 bg-white text-[15px] font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/80"
-          aria-label="Continue with Auth0"
+          aria-label={isSignup ? 'Sign up with Auth0' : 'Continue with Auth0'}
         >
-          {busy ? 'Opening Auth0…' : 'Continue with Auth0'}
+          {busy ? 'Opening Auth0…' : isSignup ? 'Sign up with Auth0' : 'Continue with Auth0'}
         </Button>
 
         <div className="flex items-center justify-center gap-2 text-xs text-gray-500 dark:text-gray-400">

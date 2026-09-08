@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
 import { authAPI } from '@/api/tasks';
+import { hasSessionFlag } from '@/lib/session';
 
 export type Theme = 'dark' | 'light' | 'system';
 export type ResolvedTheme = 'dark' | 'light';
@@ -98,8 +99,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (persistTimer.current) clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(() => {
       try {
-        const hasSession = document.cookie.split(';').some((p) => p.trim() === 'tf_session=1');
-        if (!hasSession) return;
+        // Cross-origin API: the readable flag is not visible from this origin,
+        // so lib/session returns true there and we always attempt the sync
+        // (a 401 from a genuinely signed-out visitor is swallowed below).
+        if (!hasSessionFlag()) return;
       } catch {
         return;
       }

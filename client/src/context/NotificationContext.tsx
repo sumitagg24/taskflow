@@ -80,7 +80,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       const msg = String(err?.message || '');
       if (!/invalid token|authentication required/i.test(msg) || authRetryRef.current) return;
       authRetryRef.current = true;
-      api.post('/api/auth/refresh-token').catch(() => {
+      // NB: no leading `/api` — the axios instance already has that base.
+      api.post('/auth/refresh-token').catch(() => {
         // Refresh failed (e.g. signed out elsewhere) — leave socket.io's
         // backoff alone; it stops mattering once the session is gone.
       });

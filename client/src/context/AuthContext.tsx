@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import api from '../api/tasks';
 import { useTheme } from './ThemeContext';
 import { clearReferralCode, getReferralCode } from '@/lib/referral';
+import { hasSessionFlag } from '@/lib/session';
 
 interface User {
   _id: string;
@@ -90,18 +91,14 @@ function setCachedUser(user: User | null) {
   }
 }
 
-// Readable session flag set by the server alongside the httpOnly cookies.
-// Absent on fresh visits (no session → skip the boot profile fetch entirely,
-// zero requests, straight to login). Present-but-stale still hits the 401
-// path below, so expiry/logout flows are unchanged.
-function hasSessionFlag(): boolean {
-  try {
-    if (typeof document === 'undefined' || !document.cookie) return false;
-    return document.cookie.split(';').some((part) => part.trim() === 'tf_session=1');
-  } catch {
-    return false;
-  }
-}
+// Readable session flag set by the server alongside the httpOnly cookies
+// (`tf_session`). Shared with ThemeContext via `lib/session`; in cross-origin
+// deployments (VITE_API_URL → remote API) the flag can't be seen from this
+// origin, so the helper forces the boot profile fetch and lets the server
+// decide from the httpOnly cookies. Absent on fresh same-origin visits (no
+// session → skip the boot profile fetch entirely, zero requests, straight to
+// login). Present-but-stale still hits the 401 path below, so expiry/logout
+// flows are unchanged.
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Hydrate from cache immediately — synchronous, no waiting.

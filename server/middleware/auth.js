@@ -76,9 +76,25 @@ const setAuthCookies = (res, accessToken, refreshToken) => {
 };
 
 const clearAuthCookies = (res) => {
-  res.clearCookie('accessToken', { path: '/' });
-  res.clearCookie('refreshToken', { path: '/' });
-  res.clearCookie('tf_session', { path: '/' });
+  // Clear with the exact attributes the cookies were issued with: a deletion
+  // Set-Cookie that omits `Secure` (or `SameSite`) can be ignored for a
+  // cookie that carries those attributes in some browsers, silently leaving a
+  // logged-out session alive.
+  const clear = {
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+  };
+  res.clearCookie('accessToken', clear);
+  res.clearCookie('refreshToken', clear);
+  // The readable flag was always issued `sameSite: lax`, non-httpOnly.
+  res.clearCookie('tf_session', {
+    path: '/',
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
 };
 
 const generateAccessToken = (userId) => {

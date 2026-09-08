@@ -785,6 +785,16 @@ exports.auth0Auth = async (req, res, next) => {
 const GITHUB_STATE_COOKIE = 'tf_gh_state';
 const GITHUB_SCOPE = 'read:user user:email';
 
+// Clearing must mirror the attributes the state cookie was set with (Secure,
+// SameSite included) or some browsers ignore the deletion Set-Cookie and the
+// stale state cookie lives on.
+const GITHUB_STATE_CLEAR = {
+  path: '/api/auth',
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+};
+
 const githubConfigured = () =>
   Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
 
@@ -898,7 +908,7 @@ exports.githubStart = (req, res) => {
 exports.githubCallback = async (req, res) => {
   const fail = (error, message, logLine) => {
     if (logLine) logger.warn(`GitHub OAuth: ${logLine}`);
-    res.clearCookie(GITHUB_STATE_COOKIE, { path: '/api/auth' });
+    res.clearCookie(GITHUB_STATE_COOKIE, GITHUB_STATE_CLEAR);
     return res.redirect(authCallbackRedirect({ error, message }));
   };
 
@@ -1052,7 +1062,7 @@ exports.githubCallback = async (req, res) => {
       throw err;
     }
 
-    res.clearCookie(GITHUB_STATE_COOKIE, { path: '/api/auth' });
+    res.clearCookie(GITHUB_STATE_COOKIE, GITHUB_STATE_CLEAR);
     return res.redirect(
       authCallbackRedirect({
         code: exchangeCode,

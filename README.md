@@ -301,7 +301,9 @@ to `server/.env` and edit as needed.
 | `AUTH0_DOMAIN`       | No       | —                        | Enables Auth0 SSO (with `AUTH0_CLIENT_ID`); see [Auth0 setup](#auth0-setup) |
 | `AUTH0_CLIENT_ID`    | No       | —                        | Auth0 SPA application ID (mirrors `VITE_AUTH0_CLIENT_ID`) |
 | `AUTH0_AUDIENCE`     | No       | —                        | Auth0 API identifier; defaults to `AUTH0_CLIENT_ID` for ID tokens |
-| `RESEND_API_KEY`     | No       | —                        | Enables transactional email |
+| `RESEND_API_KEY`     | No       | —                        | Resend HTTP API for transactional email (takes precedence over SMTP) |
+| `EMAIL_HOST`/`EMAIL_USER`/`EMAIL_PASS` | No | — | SMTP transport for transactional email |
+| `EMAIL_FROM`         | No       | `TaskFlow <no-reply@example.com>` | Verified sender for Resend (required); `From` header for SMTP |
 | `REDIS_URL`          | No       | —                        | Enables Redis-backed rate limiting |
 | `VITE_GOOGLE_CLIENT_ID` | No   | —                        | Client-side Google button (`client/.env`) |
 
@@ -514,6 +516,12 @@ app to one Railway service — Nixpacks builds the client, the server serves API
 env vars, MongoDB Atlas setup, OAuth callback updates, and Redis wiring:
 [docs/ops/railway.md](docs/ops/railway.md).
 
+**Vercel (split deploy):** the client also ships as a static SPA on Vercel in
+front of a Railway-hosted API. Build from `client/` with `VITE_API_URL` /
+`VITE_SOCKET_URL` pointing at the API origin; see
+[docs/ops/vercel.md](docs/ops/vercel.md) for the env, CORS, cookie (SameSite /
+Secure), and OAuth origin steps that make cross-origin cookie auth work.
+
 **Single-process (any host):** build the client, then start the server — it
 serves both the API and the SPA from one port.
 
@@ -544,14 +552,18 @@ Only volunteered when verified against the code — no folklore.
   Node process, and the logout token denylist is an in-memory map. Scale-out
   or serverless hosting needs external cron + shared stores first; rate
   limiting is the one piece already pluggable (`REDIS_URL`).
-- **Vercel needs real env.** The client ships as a static SPA
-  (`client/vercel.json` is a plain rewrite to `/index.html`); the API still
-  needs a Node runtime with `MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
-  and `CLIENT_URL` — it refuses to boot in production without them.
-- **Email is best-effort in dev/test.** Without `EMAIL_HOST/USER/PASS` the
-  server falls back to Ethereal (network account creation, ~10s timeout
-  worst case), which is why registration takes seconds in E2E; failures only
-  warn, the user is still created.
+- **Vercel is SPA-only — the API stays on a Node host.** The client ships as
+  a static SPA (`client/vercel.json` is a plain rewrite to `/index.html`) and
+  needs `VITE_API_URL`/`VITE_SOCKET_URL` pointed at a real API (e.g. the
+  Railway service). Cross-origin cookie auth requires `SameSite=None; Secure`
+  cookies (already the production default), a browser with third-party
+  cookies allowed, `ALLOWED_ORIGINS` on the API including the Vercel origin,
+  and the deployed origin added to the OAuth providers. Full setup:
+  [docs/ops/vercel.md](docs/ops/vercel.md).
+- **Email is best-effort in dev/test.** Without `RESEND_API_KEY` or
+  `EMAIL_HOST/USER/PASS` the server falls back to Ethereal (network account
+  creation, ~10s timeout worst case), which is why registration takes seconds
+  in E2E; failures only warn, the user is still created.
 - **Sessions are single-refresh-token.** Each login rotates the one stored
   refresh token and logout denylists the access token until its natural
   (~15 min) expiry — concurrent logins/logouts on the same account invalidate

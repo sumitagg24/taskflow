@@ -1,19 +1,61 @@
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 
-const FROM_EMAIL = 'TaskFlow <no-reply@example.com>';
+const FROM_EMAIL = process.env.EMAIL_FROM || 'TaskFlow <no-reply@example.com>';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
 let transporter = null;
 let emailConfigured = false;
 
-// Real SMTP transport is used when EMAIL_HOST is configured; otherwise we
+// Real SMTP transport is used when EMAIL_HOST is configured; when RESEND_API_KEY
+// is set, Resend's HTTP API is preferred (no SMTP server needed). Otherwise we
 // fall back to Ethereal (dev/test mode). Never log credentials.
 const SMTP_CONFIGURED = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
 
+// Resend transport — keeps the same sendMail contract as nodemailer so the
+// rest of the service is transport-agnostic.
+async function sendViaResend({ to, subject, html }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      // Surface Resend's own message (e.g. unverified sender domain) so the
+      // operator sees an actionable error instead of a bare 4xx.
+      let detail = '';
+      try { detail = await res.text(); } catch { /* non-text error body */ }
+      throw new Error(`Resend API error ${res.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`);
+    }
+    const body = await res.json();
+    return { messageId: body.id, previewUrl: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function getTransporter() {
   if (transporter) return transporter;
+
+  // Resend (HTTP API — no SMTP server needed) is the lowest-friction production
+  // path: just an API key. `sendViaResend` keeps the nodemailer sendMail
+  // contract so the rest of this file is unchanged.
+  if (process.env.RESEND_API_KEY) {
+    transporter = {
+      sendMail: async (mail) => sendViaResend(mail),
+    };
+    emailConfigured = true;
+    logger.info('Email Service initialized with Resend');
+    return transporter;
+  }
 
   if (SMTP_CONFIGURED) {
     transporter = nodemailer.createTransport({
@@ -125,7 +167,8 @@ const sendEmail = async (to, subject, html) => {
     logger.info(`To:        ${Array.isArray(cleanTo) ? cleanTo.join(', ') : cleanTo}`);
     logger.info(`Subject:   ${cleanSubject}`);
     logger.info(`Message ID: ${info.messageId}`);
-    logger.info(`Preview URL: ${previewUrl}`);
+    // Ethereal generates a web preview; Resend/SMTP have no local preview URL.
+    if (previewUrl) logger.info(`Preview URL: ${previewUrl}`);
     logger.info('=================================================');
 
     return { id: info.messageId, previewUrl };
@@ -241,12 +284,15 @@ exports.sendNotificationEmail = async (email, userName, notification) => {
   return sendEmail(email, notification.title, html);
 };
 
-exports.isConfigured = () => emailConfigured || SMTP_CONFIGURED;
+exports.isConfigured = () =>
+  emailConfigured || SMTP_CONFIGURED || Boolean(process.env.RESEND_API_KEY);
 
 exports.getEmailStatus = () => {
   return {
-    provider: SMTP_CONFIGURED ? 'smtp' : 'ethereal',
-    configured: emailConfigured || SMTP_CONFIGURED,
+    provider: process.env.RESEND_API_KEY
+      ? 'resend'
+      : (SMTP_CONFIGURED ? 'smtp' : 'ethereal'),
+    configured: emailConfigured || SMTP_CONFIGURED || Boolean(process.env.RESEND_API_KEY),
     clientUrl: CLIENT_URL,
     environment: NODE_ENV,
   };

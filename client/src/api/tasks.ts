@@ -61,20 +61,14 @@ interface ProfileData {
   };
 }
 
-// API base: same-origin '/api' by default (dev proxy + single-process prod
-// serving). Set VITE_API_URL to an absolute URL when the SPA and API deploy
-// separately (e.g. Vercel static + Railway API).
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || '/api';
-
 const api: AxiosInstance = axios.create({
-  baseURL: API_BASE,
+  baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
-  // Cookies (httpOnly access/refresh) ride every request; the API must send
-  // CORS with credentials allowed when API_BASE is cross-origin.
+  // Cookies (httpOnly access/refresh) ride every same-origin request.
   withCredentials: true,
 });
 
-const REFRESH_URL = `${API_BASE}/auth/refresh-token`;
+const REFRESH_URL = '/api/auth/refresh-token';
 
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
@@ -167,6 +161,7 @@ export const authAPI = {
   resetPassword: (token: string, password: string): Promise<AxiosResponse> => api.post('/auth/reset-password', { token, password }),
   verifyEmail: (token: string): Promise<AxiosResponse> => api.post('/auth/verify-email', { token }),
   resendVerification: (email: string): Promise<AxiosResponse> => api.post('/auth/resend-verification', { email }),
+  googleAuth: (credential: string): Promise<AxiosResponse> => api.post('/auth/google', { credential }),
   auth0Login: (id_token: string): Promise<AxiosResponse> => api.post('/auth/auth0', { id_token }),
   exchangeOAuthCode: (code: string): Promise<AxiosResponse> => api.post('/auth/oauth/exchange', { code }),
   getProviders: (): Promise<AxiosResponse<{ google: boolean; github: boolean; auth0: boolean }>> =>
@@ -252,7 +247,7 @@ export const timeTrackingAPI = {
     const qs = new URLSearchParams();
     if (startDate) qs.set('startDate', startDate);
     if (endDate) qs.set('endDate', endDate);
-    const base = `${API_BASE}/time-tracking/export`;
+    const base = '/api/time-tracking/export';
     return qs.toString() ? `${base}?${qs.toString()}` : base;
   },
 };
@@ -268,7 +263,7 @@ export const calendarAPI = {
         if (v) qs.set(k, String(v));
       }
     }
-    const base = `${API_BASE}/calendar/export`;
+    const base = '/api/calendar/export';
     return qs.toString() ? `${base}?${qs.toString()}` : base;
   },
   getLinks: (taskId: string): Promise<AxiosResponse> => api.get('/calendar/links', { params: { taskId } }),

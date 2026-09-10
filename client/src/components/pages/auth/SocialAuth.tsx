@@ -1,30 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { authAPI } from '@/api/tasks';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
 /* ============================================================================
-   Social sign-in row — Google, delivered through Auth0.
+   Social sign-in row
+   ----------------------------------------------------------------------------
+   Three providers (Google, GitHub, Auth0) rendered as custom buttons rather
+   than vendor widgets: Google's `renderButton` demands ~200px and breaks a
+   2-up row, and Auth0's Universal Login is cleaner as a popup. The set that
+   renders is the intersection of the server's configured providers
+   (`GET /api/auth/providers`) and the client's env (browser needs IDs/domains
+   to open popups). With none available the whole block disappears.
 
-   The button is Google-branded, but the OAuth dance runs through Auth0: the
-   popup is opened with `connection=google-oauth2`, which sends the user
-   straight to Google's consent screen — Auth0's own login page is never
-   shown. The resulting Google ID token is minted by Auth0 (its `iss` is the
-   tenant), so the server's existing Auth0 JWKS verification accepts it
-   unchanged.
-
-   Only requirement: the Google connection must be enabled in the Auth0
-   dashboard (Authentication → Social → Google). When either side is missing
-   (server without AUTH0_*, client without VITE_AUTH0_*, or connection off)
-   the row hides and the email form stands alone.
+   Auth0 is additive and opt-in: when AUTH0_DOMAIN is unset the provider stays
+   hidden and existing Google/GitHub + local flows are untouched. When
+   configured, "Continue with Auth0" appears alongside the others and shares
+   the same TaskFlow session (httpOnly cookies) as the other providers.
    ========================================================================== */
 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN as string | undefined;
 const AUTH0_CLIENT_ID = import.meta.env.VITE_AUTH0_CLIENT_ID as string | undefined;
 
-// Only the flag this row acts on; google/github remain server-side concepts.
-type Providers = { auth0: boolean };
+type Providers = { google: boolean; github: boolean; auth0: boolean };
 
 // Module-level cache: the answer can't change without a server restart, and
 // several auth pages mount this component in one session.
@@ -33,30 +34,28 @@ let providersInFlight: Promise<Providers> | null = null;
 
 function fetchProviders(): Promise<Providers> {
   if (providersCache) return Promise.resolve(providersCache);
-  const inFlight = providersInFlight;
-  if (inFlight) return inFlight;
+  if (providersInFlight) return providersInFlight;
 
-  const request: Promise<Providers> = authAPI
+  providersInFlight = authAPI
     .getProviders()
     .then(({ data }) => {
-      const result: Providers = {
+      providersCache = {
+        google: Boolean(data?.google),
+        github: Boolean(data?.github),
         auth0: Boolean((data as unknown as { auth0?: boolean })?.auth0),
       };
-      providersCache = result;
-      return result;
+      return providersCache;
     })
     .catch(() => {
-      // Unreachable server — hide the button rather than offer a dead end.
-      const offline: Providers = { auth0: false };
-      providersCache = offline;
-      return offline;
+      // Unreachable server ΓÇö hide the buttons rather than offer a dead end.
+      providersCache = { google: false, github: false, auth0: false };
+      return providersCache;
+    })
+    .finally(() => {
+      providersInFlight = null;
     });
 
-  providersInFlight = request;
-  void request.finally(() => {
-    providersInFlight = null;
-  });
-  return request;
+  return providersInFlight;
 }
 
 function GoogleGlyph() {
@@ -79,22 +78,59 @@ function GoogleGlyph() {
         d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58Z"
       />
     </svg>
- );
+  );
+}
+
+function GitHubGlyph() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0 fill-current">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.07-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.42 7.42 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z" />
+    </svg>
+  );
+}
+
+function Auth0Glyph() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" className="shrink-0">
+      <path
+        fill="#EB5424"
+        d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0Zm5.2 16.5h-2.1l-1.1-2.6h-3.9l-1.1 2.6H6.8l4.1-9h2.2l4.1 9Zm-3.3-4.2-1.1-2.7-1.1 2.7h2.2Z"
+      />
+    </svg>
+  );
 }
 
 interface SocialAuthProps {
-  /** 'login' | 'register' — only changes the wording. */
+  /** 'login' | 'register' ΓÇö only changes the wording. */
   mode?: 'login' | 'register';
+  /** Called with a Google ID token; usually `AuthContext.googleAuth`. */
+  onGoogleCredential: (credential: string) => void | Promise<void>;
   onError?: (message: string) => void;
   /** Suppress interaction while the parent is mid-request. */
   busy?: boolean;
   className?: string;
 }
 
-export default function SocialAuth({ mode = 'login', onError, busy = false, className }: SocialAuthProps) {
+export default function SocialAuth({
+  mode = 'login',
+  onGoogleCredential,
+  onError,
+  busy = false,
+  className,
+}: SocialAuthProps) {
   const [providers, setProviders] = useState<Providers | null>(providersCache);
+  const [githubRedirecting, setGithubRedirecting] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [auth0Busy, setAuth0Busy] = useState(false);
   const { auth0Login } = useAuth();
+
+  const {
+    ready: googleReady,
+    error: googleError,
+    signIn,
+    onCredentialCallback,
+    onUnmount,
+  } = useGoogleAuth(GOOGLE_CLIENT_ID);
 
   const aliveRef = useRef(true);
 
@@ -108,57 +144,91 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
     };
   }, []);
 
+  const handleCredential = useCallback(
+    (credential: string) => {
+      setGoogleBusy(false);
+      void onGoogleCredential(credential);
+    },
+    [onGoogleCredential]
+  );
+
+  useEffect(() => {
+    onCredentialCallback(handleCredential);
+  }, [handleCredential, onCredentialCallback]);
+
+  useEffect(() => () => onUnmount(), [onUnmount]);
+
+  useEffect(() => {
+    if (googleError) {
+      setGoogleBusy(false);
+      onError?.('Google sign-in is unavailable right now. Use your email instead.');
+    }
+  }, [googleError, onError]);
+
+  const showGoogle = Boolean(GOOGLE_CLIENT_ID) && providers?.google === true && !googleError;
+  const showGithub = providers?.github === true;
   const showAuth0 = Boolean(AUTH0_DOMAIN && AUTH0_CLIENT_ID) && providers?.auth0 === true;
 
-  const handleGoogleViaAuth0 = useCallback(async () => {
-    if (auth0Busy || !AUTH0_DOMAIN || !AUTH0_CLIENT_ID) return;
+  if (!showGoogle && !showGithub && !showAuth0) return null;
+
+  const disabled = busy || githubRedirecting || googleBusy || auth0Busy;
+  const verb = mode === 'register' ? 'Sign up' : 'Continue';
+  const count = Number(showGoogle) + Number(showGithub) + Number(showAuth0);
+  const gridClass = count === 1 ? 'grid-cols-1' : count === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-3';
+
+  const handleGoogle = () => {
+    if (disabled || !googleReady) return;
+    setGoogleBusy(true);
+    signIn();
+    // signIn()'s own 5s safety net resets its internal busy flag; mirror it
+    // here so the button never stays stuck if the user closes the popup.
+    window.setTimeout(() => {
+      if (aliveRef.current) setGoogleBusy(false);
+    }, 5000);
+  };
+
+  const handleGithub = () => {
+    if (disabled) return;
+    setGithubRedirecting(true);
+    // Full-page handoff: the server holds the client secret and sets the CSRF
+    // state cookie, so this cannot be done with fetch.
+    window.location.assign('/api/auth/github');
+  };
+
+  // Popup-based Auth0 handler ΓÇö creates a lightweight standalone client
+  // so it works even if the top-level Auth0Provider is not mounted (e.g. in
+  // tests or when env is set after build). Server still verifies via JWKS.
+  const handleAuth0Popup = async () => {
+    if (disabled) return;
     setAuth0Busy(true);
     try {
       const { Auth0Client } = await import('@auth0/auth0-spa-js');
       const client = new Auth0Client({
-        domain: AUTH0_DOMAIN,
-        clientId: AUTH0_CLIENT_ID,
+        domain: AUTH0_DOMAIN!,
+        clientId: AUTH0_CLIENT_ID!,
         authorizationParams: {
           redirect_uri: window.location.origin,
+          ...(AUTH0_DOMAIN ? {} : {}),
         },
         cacheLocation: 'localstorage',
         useRefreshTokens: true,
       });
-      // `connection` skips Auth0's Universal Login page and jumps straight to
-      // Google's consent screen — the user never sees Auth0 branding. Signup
-      // mode adds screen_hint so new users get Google's account chooser.
-      const options = {
-        authorizationParams: {
-          connection: 'google-oauth2',
-          ...(mode === 'register' ? { screen_hint: 'signup' } : { prompt: 'login' }),
-        },
-      };
-      await client.loginWithPopup(options as never);
+      await client.loginWithPopup({ authorizationParams: { prompt: 'login' } } as never);
       const claims = await client.getIdTokenClaims();
       const raw = (claims as unknown as { __raw?: string })?.__raw;
       if (!raw) throw new Error('No ID token from Auth0');
       await auth0Login(raw);
     } catch (err: unknown) {
-      const closed =
+      const msg =
         (err as { error?: string })?.error === 'popup_closed' ||
-        String((err as Error)?.message || '').includes('Popup closed');
-      // Server message first — axios's raw "Request failed with status code
-      // N" tells the user nothing about what to do next.
-      const serverMessage = (err as { response?: { data?: { message?: string } } })?.response
-        ?.data?.message;
-      const msg = closed
-        ? 'Google sign-in was cancelled before completing.'
-        : serverMessage || (err as Error)?.message || 'Google sign-in failed. Please try again.';
+        String((err as Error)?.message || '').includes('Popup closed')
+          ? 'Auth0 window was closed before completing sign-in.'
+          : (err as Error)?.message || 'Auth0 sign-in failed. Please try again.';
       onError?.(msg);
     } finally {
       if (aliveRef.current) setAuth0Busy(false);
     }
-  }, [auth0Busy, auth0Login, mode, onError]);
-
-  if (!showAuth0) return null;
-
-  const disabled = busy || auth0Busy;
-  const verb = mode === 'register' ? 'Sign up' : 'Continue';
+  };
 
   return (
     <div className={cn('mt-7', className)}>
@@ -168,18 +238,53 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
         <hr className="rule flex-1" />
       </div>
 
-      <Button
-        type="button"
-        variant="outline"
-        fullWidth
-        loading={auth0Busy}
-        icon={!auth0Busy ? <GoogleGlyph /> : undefined}
-        onClick={handleGoogleViaAuth0}
-        disabled={disabled}
-        aria-label={`${verb} with Google`}
-      >
-        {verb} with Google
-      </Button>
+      <div className={cn('grid gap-3', gridClass)}>
+        {showGoogle && (
+          <Button
+            type="button"
+            variant="outline"
+            fullWidth
+            loading={googleBusy}
+            icon={!googleBusy ? <GoogleGlyph /> : undefined}
+            onClick={handleGoogle}
+            disabled={disabled || !googleReady}
+            aria-label={`${verb} with Google`}
+          >
+            Google
+          </Button>
+        )}
+
+        {showGithub && (
+          <Button
+            type="button"
+            variant="outline"
+            fullWidth
+            loading={githubRedirecting}
+            icon={!githubRedirecting ? <GitHubGlyph /> : undefined}
+            onClick={handleGithub}
+            disabled={disabled}
+            aria-label={`${verb} with GitHub`}
+          >
+            GitHub
+          </Button>
+        )}
+
+        {showAuth0 && (
+          <Button
+            type="button"
+            variant="outline"
+            fullWidth
+            loading={auth0Busy}
+            icon={!auth0Busy ? <Auth0Glyph /> : undefined}
+            onClick={handleAuth0Popup}
+            disabled={disabled}
+            aria-label={`${verb} with Auth0`}
+          >
+            Auth0
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
+

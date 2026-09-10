@@ -3,4 +3,28 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.js'],
   testTimeout: 60000,
   verbose: true,
+  collectCoverageFrom: [
+    '*.js',
+    'config/**/*.js',
+    'middleware/**/*.js',
+    'models/**/*.js',
+    'routes/**/*.js',
+    'services/**/*.js',
+    'utils/**/*.js',
+    '!server.js',
+    '!__tests__/**',
+    '!node_modules/**',
+    '!data/**',
+    '!uploads/**',
+    '!migrations/**',
+    '!*.test.js',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 50,
+      functions: 55,
+      lines: 60,
+      statements: 60,
+    },
+  },
 };

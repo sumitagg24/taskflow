@@ -4,6 +4,16 @@ const fs = require('fs');
 const { spawnSync } = require('child_process');
 const logger = require('../utils/logger');
 
+// ── Local-DB fallback gate ─────────────────────────────────────────────────
+// The on-disk MongoMemoryServer fallback exists ONLY for developer convenience
+// (e.g. Atlas unreachable on a train). It must NEVER engage in production or
+// in any environment that did not explicitly opt in via ALLOW_LOCAL_DB_FALLBACK
+// — a silent fallback swaps the real database for an empty local one, which
+// reads as "all my data vanished" to the user and loses writes permanently.
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const IS_TEST = process.env.NODE_ENV === 'test';
+const ALLOW_LOCAL_DB_FALLBACK = process.env.ALLOW_LOCAL_DB_FALLBACK === 'true';
+
 // Kill any orphaned mongod still bound to our on-disk data path so a new
 // instance can acquire the lock (e.g. after a nodemon/process restart).
 // Only kills if mongod is actually running — never deletes a lock file
@@ -27,6 +37,15 @@ function killStaleMongods(dbPath) {
       spawnSync('pkill', ['-f', dbPath]);
     }
   } catch { /* best effort */ }
+}
+
+/**
+ * Decide whether the local-disk fallback may run. Pure function of env so
+ * tests can drive every branch without spawning mongod.
+ */
+function fallbackAllowed() {
+  if (IS_PRODUCTION) return false; // production: NEVER, no override
+  return ALLOW_LOCAL_DB_FALLBACK;  // dev/test: only with the explicit flag
 }
 
 const connectDB = async () => {
@@ -67,11 +86,25 @@ const connectDB = async () => {
         error.cause.stack.split('\n').forEach(line => logger.error(`  ${line}`));
       }
       logger.error('==========================================');
-      logger.info('Falling back to on-disk MongoDB...');
+
+      if (!fallbackAllowed()) {
+        // Fail the startup: no silent database switch. The process supervisor
+        // (docker/systemd/pm2) restarts and the readiness probe stays 503 so
+        // the orchestrator never routes traffic to an empty database.
+        const reason = IS_PRODUCTION
+          ? 'production never falls back to a local database'
+          : 'ALLOW_LOCAL_DB_FALLBACK is not enabled';
+        throw new Error(
+          `MongoDB connection failed (${error.message}). ` +
+          `Refusing to start with a local fallback database: ${reason}.`
+        );
+      }
+      logger.warn('ALLOW_LOCAL_DB_FALLBACK=true — falling back to on-disk MongoDB (development only).');
     }
   }
 
-  // Use a persistent on-disk store so users/tasks survive server restarts.
+  // The fallback below runs ONLY when fallbackAllowed() returned true on the
+  // failure path above. It must never be reachable from production.
   const dbPath = path.join(__dirname, '..', '.mongo-data');
   fs.mkdirSync(dbPath, { recursive: true });
 
@@ -101,3 +134,5 @@ const connectDB = async () => {
 };
 
 module.exports = connectDB;
+module.exports.fallbackAllowed = fallbackAllowed;
+module.exports._internals = { IS_PRODUCTION, IS_TEST, ALLOW_LOCAL_DB_FALLBACK };

@@ -6,6 +6,7 @@ const { encrypt, decrypt } = require('../utils/keyCrypto');
 const { createProvider, getProviderMetadata, getProviderDirectory } = require('../services/aiProviders');
 const response = require('../utils/response');
 const { sanitizeErrorMessage } = require('../middleware/errorHandler');
+const { validateOutboundUrl } = require('../utils/ssrfGuard');
 
 // Built-in providers have a fixed baseURL set in PROVIDER_METADATA, so any
 // user-supplied baseURL override must point to an allowlisted hostname.
@@ -53,6 +54,25 @@ function isAllowedBaseUrl(raw) {
   } catch {
     return false;
   }
+}
+
+// Layer 1 (fast): hostname allowlist + loopback-http rules.
+// Layer 2 (deep): DNS resolution + per-IP private/loopback/metadata checks
+// via ssrfGuard — blocks DNS-rebinding to internal addresses. Returns a
+// 400 response when rejected, or null when the URL is acceptable.
+async function rejectUnsafeBaseUrl(res, raw) {
+  if (!isAllowedBaseUrl(raw)) {
+    res.status(400).json({
+      message: 'Base URL must use https:// (or http://localhost) and point to a known provider host.',
+    });
+    return true;
+  }
+  const verdict = await validateOutboundUrl(raw, { allowHttpLoopback: true });
+  if (!verdict.ok) {
+    res.status(400).json({ message: `Base URL rejected: ${verdict.reason}` });
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -132,10 +152,8 @@ exports.updateAiSettings = async (req, res, next) => {
     }
 
     if (aiBaseUrl !== undefined) {
-      if (aiBaseUrl !== '' && !isAllowedBaseUrl(aiBaseUrl)) {
-        return res.status(400).json({
-          message: 'Base URL must use https:// (or http://localhost) and point to a known provider host.',
-        });
+      if (aiBaseUrl !== '' && (await rejectUnsafeBaseUrl(res, aiBaseUrl))) {
+        return;
       }
       update.aiBaseUrl = aiBaseUrl;
     }
@@ -210,13 +228,11 @@ exports.testAiConnection = async (req, res, next) => {
     }
 
     const incomingBaseUrl = req.body.aiBaseUrl ?? user.aiBaseUrl ?? '';
-    // Re-validate the base URL using the same allowlist the save path uses —
-    // the test endpoint should not be a back door for SSRF.
-    if (incomingBaseUrl && !isAllowedBaseUrl(incomingBaseUrl)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Base URL must use https:// (or http://localhost) and point to a known provider host.',
-      });
+    // Re-validate the base URL with BOTH the allowlist and the deep SSRF
+    // guard (DNS + resolved-IP checks) — the test endpoint must not be a
+    // back door for SSRF.
+    if (incomingBaseUrl && (await rejectUnsafeBaseUrl(res, incomingBaseUrl))) {
+      return;
     }
 
     // Use provided settings or fall back to saved (stored key is decrypted;

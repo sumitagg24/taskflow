@@ -31,6 +31,14 @@ const CLOCK_SKEW_SECONDS = 30;
 const ACCESS_COOKIE_MAX_AGE = 15 * 60 * 1000;
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
+// `__Host-` prefix (Phase 6): the browser enforces Secure + Path=/ + no
+// Domain attribute, so a compromised subdomain cannot set our auth cookies.
+// Only used in production — `__Host-` cookies are rejected over plain http,
+// which would break local development. Legacy names are always cleared too.
+const IS_PROD = process.env.NODE_ENV === 'production';
+const ACCESS_COOKIE_NAME = IS_PROD ? '__Host-accessToken' : 'accessToken';
+const REFRESH_COOKIE_NAME = IS_PROD ? '__Host-refreshToken' : 'refreshToken';
+
 // Minimal cookie parser (~8 lines, no new dependencies).
 const parseCookies = (req) => {
   const header = req.headers && req.headers.cookie;
@@ -48,6 +56,15 @@ const parseCookies = (req) => {
 
 const getCookie = (req, name) => parseCookies(req)[name] || null;
 
+// Read an auth cookie regardless of the `__Host-` prefix state (production
+// sets prefixed names, dev/legacy clients may still carry the plain names).
+const getAuthCookie = (req, kind) => {
+  if (kind === 'access') {
+    return getCookie(req, ACCESS_COOKIE_NAME) || getCookie(req, 'accessToken');
+  }
+  return getCookie(req, REFRESH_COOKIE_NAME) || getCookie(req, 'refreshToken');
+};
+
 // Single-process same-origin deploy per README, so `lax` suffices in dev;
 // cross-site production frontends need `none` + `secure`. Bearer fallback
 // is retained for native/API consumers that cannot use cookies.
@@ -60,8 +77,8 @@ const cookieOptions = (maxAge) => ({
 });
 
 const setAuthCookies = (res, accessToken, refreshToken) => {
-  res.cookie('accessToken', accessToken, cookieOptions(ACCESS_COOKIE_MAX_AGE));
-  res.cookie('refreshToken', refreshToken, cookieOptions(REFRESH_COOKIE_MAX_AGE));
+  res.cookie(ACCESS_COOKIE_NAME, accessToken, cookieOptions(ACCESS_COOKIE_MAX_AGE));
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, cookieOptions(REFRESH_COOKIE_MAX_AGE));
   // Readable session flag (NOT httpOnly) so the SPA can skip the boot
   // GET /auth/profile when no session exists — kills the expected-401 noise
   // on public screens. Stale flags still hit the 401 path, so expiry/logout
@@ -86,8 +103,14 @@ const clearAuthCookies = (res) => {
     secure: process.env.NODE_ENV === 'production',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   };
-  res.clearCookie('accessToken', clear);
-  res.clearCookie('refreshToken', clear);
+  res.clearCookie(ACCESS_COOKIE_NAME, clear);
+  res.clearCookie(REFRESH_COOKIE_NAME, clear);
+  // Also clear the legacy plain names so a client that somehow received
+  // non-prefixed cookies (pre-migration) is fully logged out in production.
+  if (IS_PROD) {
+    res.clearCookie('accessToken', clear);
+    res.clearCookie('refreshToken', clear);
+  }
   // The readable flag was always issued `sameSite: lax`, non-httpOnly.
   res.clearCookie('tf_session', {
     path: '/',
@@ -142,7 +165,7 @@ const verifyRefreshToken = (token) => {
 
 const protect = async (req, res, next) => {
   // Cookie-first, Bearer fallback (keeps header-based API clients working).
-  let token = getCookie(req, 'accessToken');
+  let token = getAuthCookie(req, 'access');
 
   if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
@@ -195,9 +218,12 @@ module.exports = {
   verifyRefreshToken,
   parseCookies,
   getCookie,
+  getAuthCookie,
   cookieOptions,
   setAuthCookies,
   clearAuthCookies,
+  ACCESS_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
   ACCESS_COOKIE_MAX_AGE,
   REFRESH_COOKIE_MAX_AGE,
 };

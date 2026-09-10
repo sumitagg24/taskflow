@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken, getCookie, setAuthCookies, clearAuthCookies } = require('../middleware/auth');
+const { generateAccessToken, generateRefreshToken, verifyAccessToken, verifyRefreshToken, getCookie, getAuthCookie, setAuthCookies, clearAuthCookies } = require('../middleware/auth');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
@@ -454,7 +454,7 @@ exports.refreshToken = async (req, res, next) => {
     validate(req);
 
     // Cookie-first, body fallback (keeps rotation/reuse tests green).
-    const refreshToken = getCookie(req, 'refreshToken') || (req.body && req.body.refreshToken);
+    const refreshToken = getAuthCookie(req, 'refresh') || (req.body && req.body.refreshToken);
     if (!refreshToken) {
       return res.status(401).json({ message: 'Invalid or expired refresh token', code: 'REFRESH_INVALID' });
     }
@@ -1120,7 +1120,7 @@ exports.getAuthProviders = (req, res) => {
 exports.logout = async (req, res, next) => {
   try {
     // Body-first, cookie fallback (cookie-only clients send no body).
-    const refreshToken = (req.body && req.body.refreshToken) || getCookie(req, 'refreshToken');
+    const refreshToken = (req.body && req.body.refreshToken) || getAuthCookie(req, 'refresh');
 
     // Deny the presented access token for its remaining lifetime so a
     // logged-out JWT cannot be reused until its natural expiry. This route
@@ -1128,7 +1128,7 @@ exports.logout = async (req, res, next) => {
     // invalid, or already-expired token simply skips denylisting while the
     // refresh-token invalidation below still proceeds.
     const authHeader = req.headers.authorization;
-    const cookieAccess = getCookie(req, 'accessToken');
+    const cookieAccess = getAuthCookie(req, 'access');
     const candidate =
       authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : cookieAccess;
     if (candidate) {

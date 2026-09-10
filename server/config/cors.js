@@ -2,6 +2,22 @@
 // In production, origins are restricted to ALLOWED_ORIGINS (comma-separated).
 // In development, a fixed set of local origins is allowed, plus any network IP on common ports.
 // Requests without an Origin header (server-to-server, curl, mobile) are allowed.
+const CLIENT_URL_FALLBACK_WARNING =
+  'CLIENT_URL is not set — same-origin requests are derived from the Host header. Set CLIENT_URL in production.';
+
+let warnedMissingClientUrl = false;
+
+function normalizeOrigin(value) {
+  if (!value) return '';
+  const trimmed = String(value).trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.toLowerCase();
+  }
+}
+
 
 function getAllowedOrigins() {
   if (process.env.NODE_ENV === 'production') {

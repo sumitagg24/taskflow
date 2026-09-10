@@ -208,6 +208,8 @@ const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(clientDistPath));
 
 // ===== Health Check (rate limited) =====
+// Liveness: the process is up and can serve responses. Does NOT guarantee
+// dependencies are healthy — use /api/ready for that.
 app.get('/api/health', apiLimiter, (req, res) => {
   // mongoose readyState: 0 disconnected, 1 connected, 2 connecting, 3 disconnecting.
   const readyState = require('mongoose').connection.readyState;
@@ -218,6 +220,32 @@ app.get('/api/health', apiLimiter, (req, res) => {
     requestId: req.requestId,
     db: readyState === 1 ? 'connected' : readyState === 2 ? 'connecting' : 'disconnected',
   });
+});
+
+// ===== Readiness Probe =====
+// Deep dependency check: MongoDB, auth config, rate limiter backend,
+// storage config, runtime config. Returns 503 when ANY check fails so the
+// orchestrator (docker/Railway/Kubernetes) stops routing traffic.
+// Does NOT expose secrets — only boolean/enum states.
+app.get('/api/ready', apiLimiter, async (req, res) => {
+  try {
+    const { checkReadiness } = require('./config/readiness');
+    const { ready, checks } = await checkReadiness();
+    res.status(ready ? 200 : 503).json({
+      status: ready ? 'ready' : 'not-ready',
+      timestamp: new Date().toISOString(),
+      requestId: req.requestId,
+      checks,
+    });
+  } catch (err) {
+    logger.error('Readiness check error:', err.message);
+    res.status(503).json({
+      status: 'not-ready',
+      timestamp: new Date().toISOString(),
+      requestId: req.requestId,
+      error: 'readiness check failed',
+    });
+  }
 });
 
 // ===== Development Diagnostics =====
@@ -315,6 +343,12 @@ app.use(errorHandler);
 
 // ===== Connect to DB and Start Server =====
 connectDB().then(async () => {
+  // Initialize the rate limit store BEFORE the server accepts traffic.
+  // In production with REDIS_URL, a failed Redis connection throws and the
+  // process exits (fail closed) rather than silently degrading to MemoryStore.
+  const { initRateLimitStore } = require('./middleware/rateLimiter');
+  await initRateLimitStore();
+
   try {
     await migrateUsernames();
   } catch (err) {

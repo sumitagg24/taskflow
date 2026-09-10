@@ -2,8 +2,8 @@ import { createContext, useContext, useState, useEffect, useRef, ReactNode } fro
 import { toast } from 'sonner';
 import api from '../api/tasks';
 import { useTheme } from './ThemeContext';
-import { googleSignOut } from '../hooks/useGoogleAuth';
 import { clearReferralCode, getReferralCode } from '@/lib/referral';
+import { hasSessionFlag } from '@/lib/session';
 
 interface User {
   _id: string;
@@ -49,7 +49,6 @@ interface AuthContextType {
   resendVerification: (email: string) => Promise<void>;
   /** Finish a reset link and sign the account straight in. */
   resetPassword: (token: string, password: string) => Promise<string>;
-  googleAuth: (credential: string) => Promise<void>;
   auth0Login: (idToken: string) => Promise<void>;
   /** Trade the one-time code from an OAuth redirect for a real session. */
   exchangeOAuthCode: (code: string) => Promise<void>;
@@ -92,18 +91,14 @@ function setCachedUser(user: User | null) {
   }
 }
 
-// Readable session flag set by the server alongside the httpOnly cookies.
-// Absent on fresh visits (no session → skip the boot profile fetch entirely,
-// zero requests, straight to login). Present-but-stale still hits the 401
-// path below, so expiry/logout flows are unchanged.
-function hasSessionFlag(): boolean {
-  try {
-    if (typeof document === 'undefined' || !document.cookie) return false;
-    return document.cookie.split(';').some((part) => part.trim() === 'tf_session=1');
-  } catch {
-    return false;
-  }
-}
+// Readable session flag set by the server alongside the httpOnly cookies
+// (`tf_session`). Shared with ThemeContext via `lib/session`; in cross-origin
+// deployments (VITE_API_URL → remote API) the flag can't be seen from this
+// origin, so the helper forces the boot profile fetch and lets the server
+// decide from the httpOnly cookies. Absent on fresh same-origin visits (no
+// session → skip the boot profile fetch entirely, zero requests, straight to
+// login). Present-but-stale still hits the 401 path below, so expiry/logout
+// flows are unchanged.
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   // Hydrate from cache immediately — synchronous, no waiting.
@@ -237,9 +232,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Reset Google session state first — prevents stale One Tap, auto-select,
-    // and session-merge issues on re-login (BIS recommendation).
-    googleSignOut();
     try {
       await api.post('/auth/logout').catch(() => {});
     } finally {
@@ -296,12 +288,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.message || 'Password reset successfully!';
   };
 
-  const googleAuth = async (credential: string) => {
-    const { data } = await api.post<AuthResponse>('/auth/google', { credential });
-    setAuth(data);
-    toast.success(`Welcome, ${data.user.name}!`);
-  };
-
   const auth0Login = async (idToken: string) => {
     const { data } = await api.post<AuthResponse>('/auth/auth0', { id_token: idToken });
     setAuth(data);
@@ -327,7 +313,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyEmail,
       resendVerification,
       resetPassword,
-      googleAuth,
       auth0Login,
       exchangeOAuthCode,
       refreshUser,

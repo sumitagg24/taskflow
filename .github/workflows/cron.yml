@@ -1,0 +1,86 @@
+# Scheduled jobs — replaces in-process setInterval ticks in production.
+#
+# The API exposes idempotent job endpoints (POST|GET /api/cron/:job, Bearer
+# $CRON_SECRET): recurring, trash-purge, focus-reset, notifications. This
+# workflow is the reliable scheduler for BOTH deploy models (persistent VM API
+# and root-directory Vercel serverless functions) — no Vercel Pro cron plan
+# needed, no duplicated sweeps across replicas.
+#
+# Required repo secrets/variables:
+#   secrets.CRON_SECRET   — same value as the API's CRON_SECRET env
+#   vars.CRON_BASE_URL    — API origin, e.g. https://api.example.com (no /api)
+# Until both are set the job self-skips with a notice (like deploy.yml).
+#
+# Cadence (single 15-min tick, steps gate on UTC time):
+#   notifications : every tick (dedupe per task/user/day server-side)
+#   recurring     : hourly (top of hour tick)
+#   focus-reset   : hourly (top of hour tick)
+#   trash-purge   : daily (~02:15 UTC tick)
+
+name: Cron
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: cron-jobs
+  cancel-in-progress: false
+
+jobs:
+  jobs:
+    runs-on: ubuntu-latest
+    if: ${{ vars.CRON_BASE_URL != '' }}
+    env:
+      CRON_BASE_URL: ${{ vars.CRON_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Check scheduler configured
+        if: env.CRON_SECRET == ''
+        run: |
+          echo "::notice::CRON_SECRET repo secret is not set — cron self-skipped. Set secrets.CRON_SECRET (== API CRON_SECRET) and vars.CRON_BASE_URL."
+          exit 0
+
+      - name: Run due-date notifications (every tick)
+        if: env.CRON_SECRET != ''
+        run: |
+          code=$(curl -s -o /tmp/cron-notif.json -w '%{http_code}' -X POST \
+            "$CRON_BASE_URL/api/cron/notifications" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H 'Content-Type: application/json')
+          cat /tmp/cron-notif.json
+          test "$code" = "200"
+
+      - name: Run hourly jobs (recurring + focus-reset)
+        if: env.CRON_SECRET != ''
+        run: |
+          minute=$(date -u +%M)
+          if [ "$minute" -ge 15 ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "Not a top-of-hour tick (minute=$minute) — skipping hourly jobs."
+            exit 0
+          fi
+          for job in recurring focus-reset; do
+            echo "--- job: $job ---"
+            code=$(curl -s -o /tmp/cron-hourly.json -w '%{http_code}' -X POST \
+              "$CRON_BASE_URL/api/cron/$job" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              -H 'Content-Type: application/json')
+            cat /tmp/cron-hourly.json
+            test "$code" = "200"
+          done
+
+      - name: Run daily trash purge (~02:15 UTC)
+        if: env.CRON_SECRET != ''
+        run: |
+          hour=$(date -u +%H); minute=$(date -u +%M)
+          if [ "${{ github.event_name }}" = "schedule" ] && { [ "$hour" != "02" ] || [ "$minute" -ge 30 ]; }; then
+            echo "Not the daily tick (UTC $hour:$minute) — skipping trash-purge."
+            exit 0
+          fi
+          code=$(curl -s -o /tmp/cron-trash.json -w '%{http_code}' -X POST \
+            "$CRON_BASE_URL/api/cron/trash-purge" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H 'Content-Type: application/json')
+          cat /tmp/cron-trash.json
+          test "$code" = "200"

@@ -60,3 +60,5 @@ jobs:
         run: npm run typecheck --prefix client
       - name: Build client
         run: npm run build --prefix client
+      - name: Check Vercel project config
+        run: npm run check:vercel

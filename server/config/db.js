@@ -48,6 +48,41 @@ function fallbackAllowed() {
   return ALLOW_LOCAL_DB_FALLBACK;  // dev/test: only with the explicit flag
 }
 
+/**
+ * Serverless-safe connection reuse.
+ *
+ * Vercel functions freeze/thaw between invocations: opening a NEW Mongoose
+ * connection per invocation exhausts the Atlas connection pool within
+ * minutes. The cache below (process-global, survives warm invocations) keeps
+ * exactly one connection per lambda instance: concurrent warm invocations
+ * share the in-flight promise instead of racing to connect.
+ *
+ * Persistent deploys (server.js) keep using connectDB() below, which adds
+ * the dev-only on-disk fallback. Serverless MUST use ensureConnection()
+ * (no fallback — production never swaps in an empty local database).
+ */
+let cachedConnectionPromise = null;
+
+async function ensureConnection(uri) {
+  const mongoUri = uri || process.env.MONGO_URI;
+  if (!mongoUri) {
+    throw new Error('MONGO_URI environment variable is required but not set');
+  }
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+  if (!cachedConnectionPromise) {
+    cachedConnectionPromise = mongoose
+      .connect(mongoUri, { serverSelectionTimeoutMS: 5000 })
+      .then(() => mongoose.connection)
+      .catch((err) => {
+        cachedConnectionPromise = null;
+        throw err;
+      });
+  }
+  return cachedConnectionPromise;
+}
+
 const connectDB = async () => {
   if (process.env.MONGO_URI) {
 	
@@ -134,5 +169,6 @@ const connectDB = async () => {
 };
 
 module.exports = connectDB;
+module.exports.ensureConnection = ensureConnection;
 module.exports.fallbackAllowed = fallbackAllowed;
 module.exports._internals = { IS_PRODUCTION, IS_TEST, ALLOW_LOCAL_DB_FALLBACK };

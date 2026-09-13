@@ -74,7 +74,7 @@ npm run railway:setup
 
 # Fully scripted (still skips existing variables)
 npm run railway:setup -- --service taskflow --domain <your-app>.up.railway.app \
-  --mongo-uri "mongodb+srv://user:pass@taskflow.zsyufjw.mongodb.net/taskflow" \
+  --mongo-uri "mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/taskflow" \
   --redis-url "${{Redis.REDIS_URL}}" --yes
 ```
 

@@ -550,18 +550,23 @@ Only volunteered when verified against the code — no folklore.
   with an `index.html` fallback, but there is no offline mutation queue or
   sync: task/notification writes fail without connectivity.
 - **Single-process server.** Recurring-task generation, trash purge,
-  focus-time reset, and due-soon reminders are `setInterval` jobs inside the
-  Node process, and the logout token denylist is an in-memory map. Scale-out
-  or serverless hosting needs external cron + shared stores first; rate
+  focus-time reset, and due-soon reminders are idempotent callables
+  (`server/jobs/index.js`) behind authed `POST|GET /api/cron/:job`, with
+  in-process `setInterval` ticks kept as the single-instance default
+  (disable with `DISABLE_INTERVAL_JOBS=true` when `.github/workflows/cron.yml`
+  owns the schedule). The logout token denylist is an in-memory map; rate
   limiting is the one piece already pluggable (`REDIS_URL`).
-- **Vercel is SPA-only — the API runs on the Oracle VM.** The client ships as
+- **Vercel: SPA by default, serverless API optional.** The client ships as
   a static SPA (`client/vercel.json` is a plain rewrite to `/index.html`) and
   needs `VITE_API_URL`/`VITE_SOCKET_URL` pointed at the Oracle-hosted API.
   Cross-origin cookie auth requires `SameSite=None; Secure`
   cookies (already the production default), a browser with third-party
   cookies allowed, `ALLOWED_ORIGINS` on the API including the Vercel origin,
-  and the deployed origin added to the OAuth providers. Full setup:
-  [docs/ops/vercel.md](docs/ops/vercel.md).
+  and the deployed origin added to the OAuth providers. A root-directory
+  project can additionally run the API as stateless functions
+  (`api/index.js`, realtime excluded). Full setup, risk audit, and limits:
+  [docs/ops/vercel.md](docs/ops/vercel.md),
+  [docs/ops/vercel-audit.md](docs/ops/vercel-audit.md).
 - **Email is best-effort in dev/test.** Without `RESEND_API_KEY` or
   `EMAIL_HOST/USER/PASS` the server falls back to Ethereal (network account
   creation, ~10s timeout worst case), which is why registration takes seconds

@@ -2,6 +2,9 @@
   "name": "task-tracker",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --prefix server",
@@ -16,6 +19,9 @@
     "test:e2e:mobile": "npm run test:e2e:mobile --prefix client",
     "test:e2e:isolated": "npm run test:e2e:isolated --prefix client",
     "smoke:deploy": "node scripts/deploy-smoke.cjs",
+    "smoke:spa-config": "node scripts/spa-config-check.cjs",
+    "check:vercel": "node scripts/vercel-config-check.cjs",
+    "migrate": "npm run migrate --prefix server",
     "railway:setup": "node scripts/railway-setup.cjs",
     "verify": "npm run typecheck && npm test"
   },

@@ -15,7 +15,8 @@ const logger = require('../utils/logger');
 
 async function migrateUsernames() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/task-tracker');
+    const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/task-tracker';
+    await mongoose.connect(mongoUri);
     logger.info('Connected to MongoDB');
 
     // Find users without usernames or with undefined/null username

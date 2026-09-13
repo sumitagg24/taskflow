@@ -199,7 +199,7 @@ async function main() {
   if (domain && !/^[a-z0-9.-]+(:\d+)?$/i.test(domain)) fail(`Invalid domain: ${domain}`);
 
   console.log(c.dim('\nPaste your MongoDB Atlas URI. It must include the real password and the'));
-  console.log(c.dim('database name, e.g. mongodb+srv://user:pass@taskflow.zsyufjw.mongodb.net/taskflow'));
+  console.log(c.dim('database name, e.g. mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/taskflow'));
   const mongoUri = await askOrFlag('MONGO_URI', '', args.mongoUri);
   if (!validMongoUri(mongoUri)) {
     fail(

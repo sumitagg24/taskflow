@@ -6,7 +6,7 @@
 # Vercel sets its own VITE_API_URL/VITE_SOCKET_URL at its build time.
 
 # ── Stage 1: build the client (SPA) ─────────────────────────────────────
-FROM node:20-alpine AS client-build
+FROM node:22-alpine AS client-build
 WORKDIR /app/client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci
@@ -14,7 +14,7 @@ COPY client/ ./
 RUN npm run build
 
 # ── Stage 2: server (API + Socket.IO + background jobs) ──────────────────
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app/server
 COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev

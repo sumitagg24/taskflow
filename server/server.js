@@ -1,29 +1,27 @@
+/**
+ * Persistent runtime entrypoint: HTTP + Socket.IO + background intervals.
+ *
+ * Request handling lives in app.js (createApp, shared with the serverless
+ * handler). This file owns ONLY process concerns: env validation, DB
+ * connect, rate-limit store init, realtime attach, listen(), intervals, and
+ * graceful shutdown.
+ *
+ * Vercel/serverless MUST NOT use this file (no server.listen() there — see
+ * api/index.js). Socket.IO, local /uploads serving and setInterval ticks
+ * require a long-lived process and stay here (or on the Oracle VM).
+ *
+ * - Migrations NEVER run implicitly: set RUN_MIGRATIONS_ON_BOOT=true to run
+ *   the legacy boot migration, or (preferred) run `npm run migrate --prefix
+ *   server` as an explicit deploy step.
+ * - Intervals are skipped when DISABLE_INTERVAL_JOBS=true (external
+ *   scheduler POSTs /api/cron/:job instead — see server/jobs + cronRoutes).
+ */
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
 const http = require('http');
-const path = require('path');
-const helmet = require('helmet');
-const compression = require('compression');
-const morgan = require('morgan');
 const connectDB = require('./config/db');
-const taskRoutes = require('./routes/taskRoutes');
-const authRoutes = require('./routes/authRoutes');
-const aiRoutes = require('./routes/aiRoutes');
-const systemRoutes = require('./routes/systemRoutes');
-const templateRoutes = require('./routes/templateRoutes');
-const calendarRoutes = require('./routes/calendarRoutes');
-const timeTrackingRoutes = require('./routes/timeTrackingRoutes');
-const notificationRoutes = require('./routes/notificationRoutes');
-const growthRoutes = require('./routes/growthRoutes');
-const errorHandler = require('./middleware/errorHandler');
-const requestId = require('./middleware/requestId');
-const { apiLimiter, aiLimiter, uploadLimiter } = require('./middleware/rateLimiter');
+const { createApp } = require('./app');
 const { setupGracefulShutdown } = require('./utils/shutdown');
 const { initializeSocket } = require('./services/socketService');
-const upload = require('./config/upload');
-const { validateFileSignature } = require('./config/upload');
-const fs = require('fs');
 const User = require('./models/User');
 const logger = require('./utils/logger');
 
@@ -90,7 +88,7 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
-const app = express();
+const app = createApp({ enableSpaFallback: true });
 const server = http.createServer(app);
 
 // Validate PORT — default to 5000, but enforce a valid port range if overridden.
@@ -102,263 +100,45 @@ if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
   );
 }
 
-// Trust proxy for rate limiting behind a reverse proxy.
-// Off by default: the server may be exposed directly, and blindly trusting
-// X-Forwarded-For lets anyone rotate IPs to bypass rate limits. Set
-// TRUST_PROXY=true only when a real reverse proxy (e.g. the docker client
-// nginx) is in front of this server.
-if (process.env.TRUST_PROXY === 'true') {
-  app.set('trust proxy', 1);
-}
-
-// ===== Global Middleware (order matters) =====
-
-// 1. Security headers — allow Auth0 tenant dynamically when configured
-const auth0CSP = process.env.AUTH0_DOMAIN
-  ? `https://${String(process.env.AUTH0_DOMAIN).replace(/^https?:\/\//, '').replace(/\/+$/, '')}`
-  : null;
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      // Hash allows ONLY Google's GSI inline bootstrap snippet. If Google ever
-      // changes that snippet the hash stops matching and behavior degrades to
-      // today (blocked snippet, button still renders) — no broadening needed.
-      scriptSrc: ["'self'", "https://accounts.google.com", "'sha256-GV3MzgrEm/WOEDkhHKYcrl36TKzqNh3EhZo4thC6H7k='", ...(auth0CSP ? [auth0CSP] : [])],
-      frameSrc: ["'self'", "https://accounts.google.com", ...(auth0CSP ? [auth0CSP] : [])],
-      connectSrc: ["'self'", "https://accounts.google.com", ...(auth0CSP ? [auth0CSP] : [])],
-      imgSrc: ["'self'", "data:", "https:"],
-      // Google Fonts serves the stylesheet from googleapis and the woff2 files
-      // from gstatic; without both, the Newsreader display face silently falls
-      // back to a system serif in production.
-      // accounts.google.com serves the GSI button stylesheet.
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com", ...(auth0CSP ? [auth0CSP] : [])],
-      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
-      // GitHub + Auth0 are top-level redirects and back.
-      formAction: ["'self'", "https://github.com", ...(auth0CSP ? [auth0CSP] : [])],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      upgradeInsecureRequests: [],
-    },
-  },
-  // Google Identity Services opens a popup that posts the credential back to
-  // the opener, which a strict `same-origin` COOP severs.
-  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
-  crossOriginResourcePolicy: { policy: 'same-origin' },
-}));
-
-// 2. Request ID tracking (adds X-Request-Id to every response)
-app.use(requestId);
-
-// 3. Response compression
-app.use(compression());
-
-// 4. Request logging
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-
-// 5. CORS - restrict in production
-const { isOriginAllowed } = require('./config/cors');
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
-  exposedHeaders: ['X-Request-Id', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset'],
-}));
-
-// 6. Body parsing with size limits
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
-
-// 7. CSRF origin check for cookie-authed mutations (GET/HEAD/OPTIONS untouched)
-const csrfProtection = require('./middleware/csrf');
-app.use(csrfProtection);
-
-// Initialize Socket.io
+// Initialize Socket.io (persistent process only — serverless uses api/index.js
+// which never attaches realtime).
 const io = initializeSocket(server);
 app.set('io', io);
 
-// Static files for uploads — random names are unguessable; nosniff blocks
-// MIME sniffing so a stray HTML/SVG file can't run in the browser.
-// Served as attachments under a sandboxed (opaque-origin) CSP so even a
-// smuggled HTML/SVG file downloads instead of executing in our origin.
-// Uploads stay under the app dir (instead of outside the web root) because
-// random unguessable names + attachment disposition + sandbox + no-execute
-// (express.static never executes) is the isolated equivalent; moving paths
-// would break stored `/uploads/...` URLs (migration cost).
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
-  dotfiles: 'deny',
-  index: false,
-  setHeaders: (res) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', 'attachment');
-    res.setHeader('Content-Security-Policy', 'sandbox');
-  },
-}));
+// In-process intervals are the single-process fallback (see
+// config/runtime.js — off when DISABLE_INTERVAL_JOBS=true or serverless,
+// so an external scheduler can never double-run production jobs).
+const { intervalsEnabled, shouldRunBootMigrations } = require('./config/runtime');
 
-// ===== Built Client (SPA) =====
-const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
-app.use(express.static(clientDistPath));
-
-// ===== Health Check (rate limited) =====
-// Liveness: the process is up and can serve responses. Does NOT guarantee
-// dependencies are healthy — use /api/ready for that.
-app.get('/api/health', apiLimiter, (req, res) => {
-  // mongoose readyState: 0 disconnected, 1 connected, 2 connecting, 3 disconnecting.
-  const readyState = require('mongoose').connection.readyState;
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    requestId: req.requestId,
-    db: readyState === 1 ? 'connected' : readyState === 2 ? 'connecting' : 'disconnected',
-  });
-});
-
-// ===== Readiness Probe =====
-// Deep dependency check: MongoDB, auth config, rate limiter backend,
-// storage config, runtime config. Returns 503 when ANY check fails so the
-// orchestrator (docker/Railway/Kubernetes) stops routing traffic.
-// Does NOT expose secrets — only boolean/enum states.
-app.get('/api/ready', apiLimiter, async (req, res) => {
-  try {
-    const { checkReadiness } = require('./config/readiness');
-    const { ready, checks } = await checkReadiness();
-    res.status(ready ? 200 : 503).json({
-      status: ready ? 'ready' : 'not-ready',
-      timestamp: new Date().toISOString(),
-      requestId: req.requestId,
-      checks,
-    });
-  } catch (err) {
-    logger.error('Readiness check error:', err.message);
-    res.status(503).json({
-      status: 'not-ready',
-      timestamp: new Date().toISOString(),
-      requestId: req.requestId,
-      error: 'readiness check failed',
-    });
+function startIntervals() {
+  if (!intervalsEnabled()) {
+    logger.info('Background intervals disabled (DISABLE_INTERVAL_JOBS=true or serverless runtime) — jobs run via POST /api/cron/:job');
+    return;
   }
-});
 
-// ===== Development Diagnostics =====
-app.use('/api/system', systemRoutes);
+  // Recurring tasks check (runs every hour). The `running` flag skips a tick
+  // while the previous one is still in flight — with >1 replica each instance
+  // still runs its own sweep, but a slow sweep never stacks up locally.
+  const { processRecurringTasks, purgeExpiredTrash } = require('./controllers/taskController');
+  let recurringRunning = false;
+  setInterval(() => {
+    if (recurringRunning) return;
+    recurringRunning = true;
+    processRecurringTasks()
+      .catch(err => logger.error('Recurring task processing failed:', err))
+      .finally(() => { recurringRunning = false; });
+  }, 60 * 60 * 1000);
 
-// ===== Rate Limited Routes =====
-app.use('/api/auth', authRoutes);
-app.use('/api/tasks', apiLimiter, taskRoutes);
-app.use('/api/notifications', apiLimiter, notificationRoutes);
-
-// New feature routes
-app.use('/api/templates', apiLimiter, templateRoutes);
-app.use('/api/calendar', apiLimiter, calendarRoutes);
-app.use('/api/time-tracking', apiLimiter, timeTrackingRoutes);
-app.use('/api/growth', apiLimiter, growthRoutes);
-// Phase 6 daily operating loop (Inbox → Today → resolve → weekly reset)
-// (Starters live on templateRoutes before `/:id` — see routes/templateRoutes.)
-const dailyRoutes = require('./routes/dailyRoutes');
-app.use('/api/daily', apiLimiter, dailyRoutes);
-
-app.use('/api/ai', aiLimiter, aiRoutes);
-
-// AI Settings routes (protected, rate limited)
-const aiSettingsRoutes = require('./routes/aiSettingsRoutes');
-app.use('/api/auth/ai-settings', apiLimiter, aiSettingsRoutes);
-
-// File upload route (protected + rate limited)
-const { protect } = require('./middleware/auth');
-app.post('/api/upload', protect, uploadLimiter, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: 'No file uploaded' });
-  }
-  const ext = path.extname(req.file.filename).toLowerCase();
-  if (!validateFileSignature(req.file.path, ext)) {
-    try {
-      fs.unlinkSync(req.file.path);
-    } catch {
-      // Best-effort cleanup; the rejection below is what matters.
-    }
-    return res.status(400).json({ message: 'File content does not match its type' });
-  }
-  res.json({
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    path: `/uploads/${req.file.filename}`,
-    size: req.file.size,
-    mimeType: req.file.mimetype,
-  });
-});
-
-// Recurring tasks check (runs every hour). The `running` flag skips a tick
-// while the previous one is still in flight — with >1 replica each instance
-// still runs its own sweep, but a slow sweep never stacks up locally.
-const { processRecurringTasks, purgeExpiredTrash } = require('./controllers/taskController');
-let recurringRunning = false;
-setInterval(() => {
-  if (recurringRunning) return;
-  recurringRunning = true;
-  processRecurringTasks()
-    .catch(err => logger.error('Recurring task processing failed:', err))
-    .finally(() => { recurringRunning = false; });
-}, 60 * 60 * 1000);
-
-// Trash retention sweep (runs every 6 hours). Soft-deleted tasks are restorable
-// for 30 days; this is what makes that promise finite.
-let purgeRunning = false;
-setInterval(() => {
-  if (purgeRunning) return;
-  purgeRunning = true;
-  purgeExpiredTrash()
-    .catch(err => logger.error('Trash purge failed:', err))
-    .finally(() => { purgeRunning = false; });
-}, 6 * 60 * 60 * 1000);
-
-// ===== API Documentation (rate limited) =====
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./config/swagger');
-app.use('/api/docs', apiLimiter, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'TaskFlow API Docs',
-}));
-
-app.get('/api/docs.json', apiLimiter, (req, res) => res.json(swaggerSpec));
-
-// ===== SPA Fallback (serve index.html for any non-API route) =====
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api')) {
-    return res.status(404).json({ message: 'API endpoint not found' });
-  }
-  res.sendFile(path.join(clientDistPath, 'index.html'));
-});
-
-// ===== Error Handler (must be last) =====
-app.use(errorHandler);
-
-// ===== Connect to DB and Start Server =====
-connectDB().then(async () => {
-  // Initialize the rate limit store BEFORE the server accepts traffic.
-  // In production with REDIS_URL, a failed Redis connection throws and the
-  // process exits (fail closed) rather than silently degrading to MemoryStore.
-  const { initRateLimitStore } = require('./middleware/rateLimiter');
-  await initRateLimitStore();
-
-  try {
-    await migrateUsernames();
-  } catch (err) {
-    logger.error('Username migration failed:', err);
-  }
-  server.listen(parsedPort, () => {
-    logger.info(`Server running at http://localhost:${parsedPort}`);
-    logger.info(`WebSocket server initialized`);
-    logger.info(`API Docs available at http://localhost:${parsedPort}/api/docs`);
-  });
+  // Trash retention sweep (runs every 6 hours). Soft-deleted tasks are restorable
+  // for 30 days; this is what makes that promise finite.
+  let purgeRunning = false;
+  setInterval(() => {
+    if (purgeRunning) return;
+    purgeRunning = true;
+    purgeExpiredTrash()
+      .catch(err => logger.error('Trash purge failed:', err))
+      .finally(() => { purgeRunning = false; });
+  }, 6 * 60 * 60 * 1000);
 
   // Daily reset of focus time
   let focusResetRunning = false;
@@ -366,9 +146,9 @@ connectDB().then(async () => {
     if (focusResetRunning) return;
     focusResetRunning = true;
     try {
-      const User = require('./models/User');
+      const UserModel = require('./models/User');
       const yesterday = new Date(Date.now() - 86400000).toDateString();
-      await User.updateMany(
+      await UserModel.updateMany(
         { lastActiveDate: { $lt: new Date(yesterday) } },
         { focusTimeToday: 0 }
       );
@@ -392,6 +172,36 @@ connectDB().then(async () => {
       .catch((err) => logger.error('Notification reminder run failed:', err))
       .finally(() => { notifyRunning = false; });
   }, 15 * 60 * 1000);
+}
+
+// ===== Connect to DB and Start Server =====
+connectDB().then(async () => {
+  // Initialize the rate limit store BEFORE the server accepts traffic.
+  // In production with REDIS_URL, a failed Redis connection throws and the
+  // process exits (fail closed) rather than silently degrading to MemoryStore.
+  const { initRateLimitStore } = require('./middleware/rateLimiter');
+  await initRateLimitStore();
+
+  // One-time migrations are an explicit deploy step (`npm run migrate
+  // --prefix server`), NOT a boot side effect. The legacy inline migration
+  // runs only when explicitly opted in (default safe: off).
+  if (shouldRunBootMigrations()) {
+    try {
+      await migrateUsernames();
+    } catch (err) {
+      logger.error('Username migration failed:', err);
+    }
+  } else {
+    logger.info('Boot migrations skipped (set RUN_MIGRATIONS_ON_BOOT=true or run `npm run migrate --prefix server`)');
+  }
+
+  server.listen(parsedPort, () => {
+    logger.info(`Server running at http://localhost:${parsedPort}`);
+    logger.info(`WebSocket server initialized`);
+    logger.info(`API Docs available at http://localhost:${parsedPort}/api/docs`);
+  });
+
+  startIntervals();
 
   setupGracefulShutdown(server, io);
 });

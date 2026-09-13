@@ -215,6 +215,52 @@ async function main() {
         );
       }
     }
+
+    // Stricter check for genuine API candidates: absolute bundle URLs that are
+    // a bare origin (`VITE_SOCKET_URL` bakes in exactly that form) or whose
+    // path targets /api (`VITE_API_URL` form) are configured API origins, not
+    // documentation links — library/app doc links always carry a real path
+    // (/docs/…, /en/…, /login/…). Such a host MUST answer /api/health with
+    // the TaskFlow healthy payload — anything else (Railway's JSON
+    // "Application not found", a hosting HTML 404 page, a non-ok status)
+    // means the deploy is wired to a dead backend even though the domain
+    // still resolves.
+    const apiHosts = new Set();
+    const absRe = /https:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d{1,5})?(?:\/[^\s"'`\\]*)?/g;
+    for (const m of bundle.matchAll(absRe)) {
+      let url;
+      try {
+        url = new URL(m[0]);
+      } catch { continue; /* skip malformed */ }
+      const hostname = url.hostname.toLowerCase();
+      if (hostname === 'socket.io' || hostname === 'www.socket.io') continue;
+      if (url.pathname === '/' || url.pathname === '' || url.pathname.startsWith('/api')) {
+        apiHosts.add(url.origin);
+      }
+    }
+    for (const host of apiHosts) {
+      const h = new URL(host).hostname;
+      if (h === spaHost || /(^|\.)localhost$/.test(h) || h === '127.0.0.1' || h.endsWith('.example.com')) {
+        continue; // guard-text examples, never real endpoints
+      }
+      try {
+        const health = await fetchText(`${host}/api/health`);
+        let body = null;
+        try { body = JSON.parse(health.text); } catch { /* HTML error page etc. */ }
+        if (health.status !== 200 || !body || body.status !== 'ok') {
+          const detail = body ? JSON.stringify(body).slice(0, 160) : '(non-JSON response)';
+          failures.push(
+            `bundle is wired to API host ${host} but ${host}/api/health → HTTP ${health.status} ${detail} — ` +
+            'the baked-in API endpoint is dead or unhealthy'
+          );
+        }
+      } catch (err) {
+        failures.push(
+          `bundle is wired to API host ${host} but it is unreachable (${err.message}) — ` +
+          'a dead API endpoint is baked into the deploy'
+        );
+      }
+    }
   }
 
   // ── 4. /api/health placement ──────────────────────────────────────────────

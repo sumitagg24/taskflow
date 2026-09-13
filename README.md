@@ -305,7 +305,6 @@ to `server/.env` and edit as needed.
 | `EMAIL_HOST`/`EMAIL_USER`/`EMAIL_PASS` | No | — | SMTP transport for transactional email |
 | `EMAIL_FROM`         | No       | `TaskFlow <no-reply@example.com>` | Verified sender for Resend (required); `From` header for SMTP |
 | `REDIS_URL`          | No       | —                        | Enables Redis-backed rate limiting |
-| `VITE_GOOGLE_CLIENT_ID` | No   | —                        | Client-side Google button (`client/.env`) |
 
 Secrets are validated on startup — the server refuses to boot if `MONGO_URI` is
 missing, and in production if `JWT_SECRET`, `JWT_REFRESH_SECRET`, or `CLIENT_URL`

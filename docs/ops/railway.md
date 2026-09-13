@@ -115,7 +115,7 @@ dashboards:
 
 The client reads `VITE_*` vars at **build time** — add them as Railway
 variables before the build that should include them (e.g. `VITE_AUTH0_DOMAIN`,
-`VITE_AUTH0_CLIENT_ID`, `VITE_GOOGLE_CLIENT_ID`). No `VITE_API_URL` is needed:
+`VITE_AUTH0_CLIENT_ID`). No `VITE_API_URL` is needed:
 SPA and API share the origin.
 
 ## 5. Redis rate limiting (optional but wired)

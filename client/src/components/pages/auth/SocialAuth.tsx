@@ -24,7 +24,10 @@ const AUTH0_DOMAIN = import.meta.env.VITE_AUTH0_DOMAIN as string | undefined;
 const AUTH0_CLIENT_ID = import.meta.env.VITE_AUTH0_CLIENT_ID as string | undefined;
 
 // Only the flag this row acts on; google/github remain server-side concepts.
-type Providers = { auth0: boolean };
+// `unreachable` marks an indeterminate answer: the providers request failed
+// OR the response wasn't a real providers payload (e.g. an edge/hosting 404
+// from a dead API host). Indeterminate must NOT be treated as "auth0 off".
+type Providers = { auth0: boolean; unreachable?: boolean };
 
 // Module-level cache: the answer can't change without a server restart, and
 // several auth pages mount this component in one session.
@@ -39,17 +42,23 @@ function fetchProviders(): Promise<Providers> {
   const request: Promise<Providers> = authAPI
     .getProviders()
     .then(({ data }) => {
-      const result: Providers = {
-        auth0: Boolean((data as unknown as { auth0?: boolean })?.auth0),
-      };
+      const raw = data as unknown as { auth0?: unknown };
+      if (typeof raw?.auth0 !== 'boolean') {
+        // Not a real providers payload (hosting-level 404/HTML, proxy error
+        // page, stale API host). The API didn't answer the question, so this
+        // is indeterminate — deliberately NOT cached and NOT a negative.
+        throw new Error('Unexpected providers response shape');
+      }
+      const result: Providers = { auth0: raw.auth0 };
       providersCache = result;
       return result;
     })
     .catch(() => {
-      // Unreachable server — hide the button rather than offer a dead end.
-      const offline: Providers = { auth0: false };
-      providersCache = offline;
-      return offline;
+      // Unreachable server (or a non-providers response from a dead host) —
+      // report indeterminate rather than a negative. Deliberately NOT cached:
+      // a transient outage at page load must not hide the button for the
+      // rest of the session once the API recovers.
+      return { auth0: false, unreachable: true as const };
     });
 
   providersInFlight = request;
@@ -108,7 +117,15 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
     };
   }, []);
 
-  const showAuth0 = Boolean(AUTH0_DOMAIN && AUTH0_CLIENT_ID) && providers?.auth0 === true;
+  // Show when the client is configured AND the server confirms Auth0 — or
+  // when the providers answer is indeterminate (unreachable API / unexpected
+  // response). An indeterminate answer must not permanently hide the button:
+  // clicking surfaces the real error via onError instead of silently hiding
+  // authentication. Only a definitive `auth0: false` from a live server hides.
+  const showAuth0 =
+    Boolean(AUTH0_DOMAIN && AUTH0_CLIENT_ID) &&
+    (providers?.auth0 === true || providers?.unreachable === true);
+  const providersUnreachable = providers?.unreachable === true;
 
   const handleGoogleViaAuth0 = useCallback(async () => {
     if (auth0Busy || !AUTH0_DOMAIN || !AUTH0_CLIENT_ID) return;
@@ -180,6 +197,15 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
       >
         {verb} with Google
       </Button>
+      {providersUnreachable && (
+        <p
+          role="status"
+          className="mt-3 text-center text-xs leading-relaxed text-gray-400 dark:text-gray-500"
+        >
+          Couldn’t reach the sign-in service to confirm options — if this fails, the service may be
+          down. Try again shortly.
+        </p>
+      )}
     </div>
   );
 }

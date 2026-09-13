@@ -36,7 +36,6 @@ Browser
 | **Vercel** (project env) | `VITE_API_URL` | `https://<api-host>/api` |
 | **Vercel** | `VITE_SOCKET_URL` | `https://<api-host>` |
 | **Vercel** | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID` | your Auth0 tenant + SPA client ID |
-| **Vercel** | `VITE_GOOGLE_CLIENT_ID` | (optional, legacy Google button) |
 | **Oracle VM** | `CLIENT_URL` | `https://<spa>.vercel.app` |
 | **Oracle VM** | `ALLOWED_ORIGINS` | `https://<spa>.vercel.app` (+ any custom domains, comma-separated) |
 | **Oracle VM** | `TRUST_PROXY` | `true` (Caddy terminates TLS on the VM) |

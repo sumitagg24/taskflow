@@ -187,7 +187,8 @@ async function main() {
 
   // ── 3. bundle wiring checks ───────────────────────────────────────────────
   if (bundle) {
-    const hasProdGuard = bundle.includes('Cross-origin production build is pointing at a localhost API');
+    const PROD_GUARD = 'Cross-origin production build is pointing at a localhost API';
+    const hasProdGuard = bundle.includes(PROD_GUARD);
     if (!hasProdGuard) {
       failures.push(
         'bundle does not contain the apiConfig production guard — it was built from a tree ' +
@@ -216,27 +217,38 @@ async function main() {
       }
     }
 
-    // Stricter check for genuine API candidates: absolute bundle URLs that are
-    // a bare origin (`VITE_SOCKET_URL` bakes in exactly that form) or whose
-    // path targets /api (`VITE_API_URL` form) are configured API origins, not
-    // documentation links — library/app doc links always carry a real path
-    // (/docs/…, /en/…, /login/…). Such a host MUST answer /api/health with
-    // the TaskFlow healthy payload — anything else (Railway's JSON
-    // "Application not found", a hosting HTML 404 page, a non-ok status)
-    // means the deploy is wired to a dead backend even though the domain
-    // still resolves.
+    // Stricter check for genuine API candidates — absolute bundle URLs whose
+    // path targets /api (`VITE_API_URL` bakes in exactly that form) are
+    // configured API origins wherever they appear. A bare origin
+    // (`VITE_SOCKET_URL` form) is only a candidate when it shares a chunk
+    // with the apiConfig guard: the VITE_* literals live in the apiConfig
+    // module next to the guard, while identity-library embeds (e.g. an IdP
+    // origin inside auth0-spa-js) live in other chunks. Documentation links
+    // always carry a real path (/docs/…, /en/…, /login/…) and are never
+    // candidates. A candidate host MUST answer /api/health with the TaskFlow
+    // healthy payload — anything else (Railway's JSON "Application not
+    // found", a hosting HTML 404 page, a non-ok status) means the deploy is
+    // wired to a dead backend even though the domain still resolves.
     const apiHosts = new Set();
     const absRe = /https:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d{1,5})?(?:\/[^\s"'`\\]*)?/g;
-    for (const m of bundle.matchAll(absRe)) {
-      let url;
-      try {
-        url = new URL(m[0]);
-      } catch { continue; /* skip malformed */ }
-      const hostname = url.hostname.toLowerCase();
-      if (hostname === 'socket.io' || hostname === 'www.socket.io') continue;
-      if (url.pathname === '/' || url.pathname === '' || url.pathname.startsWith('/api')) {
-        apiHosts.add(url.origin);
+    const collectCandidates = (text, bareAllowed) => {
+      for (const m of text.matchAll(absRe)) {
+        let url;
+        try {
+          url = new URL(m[0]);
+        } catch { continue; /* skip malformed */ }
+        const hostname = url.hostname.toLowerCase();
+        if (hostname === 'socket.io' || hostname === 'www.socket.io') continue;
+        if (url.pathname.startsWith('/api')) {
+          apiHosts.add(url.origin);
+        } else if (bareAllowed && (url.pathname === '/' || url.pathname === '')) {
+          apiHosts.add(url.origin);
+        }
       }
+    };
+    collectCandidates(bundle, false);
+    for (const part of bundleParts) {
+      if (part.includes(PROD_GUARD)) collectCandidates(part, true);
     }
     for (const host of apiHosts) {
       const h = new URL(host).hostname;

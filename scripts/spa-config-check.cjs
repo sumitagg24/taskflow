@@ -80,14 +80,43 @@ function extractEntryScript(html) {
   return matches[0][1];
 }
 
+/**
+ * Every JS chunk the page can execute: the module entry plus all
+ * modulepreload chunks. Rollup/Vite may hoist shared code (e.g. the
+ * apiConfig module) out of the entry chunk, so scanning the entry alone
+ * yields false negatives — the guard must be searched across all of these.
+ */
+function extractJsAssets(html) {
+  const out = [];
+  const seen = new Set();
+  const push = (src) => {
+    if (!src || seen.has(src)) return;
+    seen.add(src);
+    out.push(src);
+  };
+  for (const m of html.matchAll(/<script[^>]+src="([^"]+)"/g)) push(m[1]);
+  for (const m of html.matchAll(/<link[^>]+rel="modulepreload"[^>]+href="([^"]+)"/g)) push(m[1]);
+  return out.filter((s) => s.endsWith('.js'));
+}
+
 /** Absolute http(s) hosts mentioned in a bundle (deduped, own origin excluded is caller's job). */
 function extractAbsoluteHosts(bundleText) {
   const hosts = new Set();
-  const re = /https:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d{1,5})?/g;
+  const re = /https:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d{1,5})?(?:\/[^\s"'`\\]*)?/g;
   for (const m of bundleText.matchAll(re)) {
+    let url;
     try {
-      hosts.add(new URL(m[0]).origin);
-    } catch { /* skip */ }
+      url = new URL(m[0]);
+    } catch { continue; /* skip */ }
+    // Library documentation links are not API endpoints: socket.io-client
+    // embeds https://socket.io/docs/… in comments/errors, and any /docs
+    // link can never be the configured API origin. Checking them would fail
+    // every healthy deploy (false positive), so they are skipped — the check
+    // targets baked-in API origins (VITE_API_URL / VITE_SOCKET_URL values).
+    const host = url.hostname.toLowerCase();
+    if (host === 'socket.io' || host === 'www.socket.io') continue;
+    if (url.pathname.startsWith('/docs')) continue;
+    hosts.add(url.origin);
   }
   return [...hosts];
 }
@@ -129,23 +158,31 @@ async function main() {
     failures.push(`GET ${spaOrigin}/ → HTTP ${index.status} (${index.contentType || 'no content-type'}) — expected 200 text/html`);
   }
 
-  // ── 2. entry bundle exists and is reachable ───────────────────────────────
+  // ── 2. JS chunks exist and are reachable ────────────────────────────────
   const entrySrc = index.text ? extractEntryScript(index.text) : null;
-  let bundle = null;
   if (!entrySrc) {
     failures.push('index.html contains no <script type="module" src=…> entry — SPA build looks wrong');
-  } else {
-    const entryUrl = entrySrc.startsWith('http') ? entrySrc : `${spaOrigin}${entrySrc}`;
+  }
+  // Scan the entry AND every preloaded chunk: shared modules (like the
+  // apiConfig guard) may be hoisted out of the entry chunk by the bundler.
+  const assetSrcs = index.text ? extractJsAssets(index.text) : [];
+  const bundleParts = [];
+  for (const src of assetSrcs) {
+    const assetUrl = src.startsWith('http') ? src : `${spaOrigin}${src}`;
     try {
-      const res = await fetchText(entryUrl);
+      const res = await fetchText(assetUrl);
       if (res.status !== 200) {
-        failures.push(`entry bundle ${entryUrl} → HTTP ${res.status}`);
+        failures.push(`bundle asset ${assetUrl} → HTTP ${res.status}`);
       } else {
-        bundle = res.text;
+        bundleParts.push(res.text);
       }
     } catch (err) {
-      failures.push(`entry bundle ${entryUrl} unreachable: ${err.message}`);
+      failures.push(`bundle asset ${assetUrl} unreachable: ${err.message}`);
     }
+  }
+  const bundle = bundleParts.length > 0 ? bundleParts.join('\n') : null;
+  if (!bundle && entrySrc) {
+    failures.push('no JS bundles could be fetched — SPA build looks wrong');
   }
 
   // ── 3. bundle wiring checks ───────────────────────────────────────────────

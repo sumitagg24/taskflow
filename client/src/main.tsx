@@ -5,7 +5,12 @@ import { Auth0Provider } from '@auth0/auth0-react';
 import App from './App';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { captureReferralCode } from './lib/referral';
+import { assertApiConfigUsable } from './lib/apiConfig';
 import './styles/index.css';
+
+// Fail fast in production when the resolved API config is broken (e.g. a
+// cross-origin deploy built without VITE_API_URL). Dev builds are exempt.
+assertApiConfigUsable();
 
 // Runs before the first render so `?ref=CODE` is banked and stripped from the
 // URL no matter which screen the invite link lands on.

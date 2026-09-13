@@ -23,7 +23,11 @@ export function generateTestUser() {
 
 /** Create a user via the API and return the full auth response (tokens + user). */
 export async function createUserViaApi(user: { name: string; username: string; email: string; password: string }) {
-  const res = await fetch(`${API_BASE}/auth/register`, {
+  // `tokenResponse=bearer` = documented non-browser API-client response shape.
+  // Browser responses no longer carry raw tokens (cookie-only, XSS-safe);
+  // Node's fetch sends no Sec-Fetch-Site, so the server classifies these
+  // calls as API clients and honours the opt-in.
+  const res = await fetch(`${API_BASE}/auth/register?tokenResponse=bearer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(user),
@@ -86,7 +90,8 @@ async function markEmailVerifiedViaDb(email: string): Promise<void> {
 
 /** Log in and return the auth response. */
 export async function loginViaApi(identifier: string, password: string) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+  // See createUserViaApi: non-browser API-client shape via tokenResponse=bearer.
+  const res = await fetch(`${API_BASE}/auth/login?tokenResponse=bearer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ identifier, password }),

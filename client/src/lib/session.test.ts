@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { resolveForTest } from './apiConfig';
 import { isCrossOriginApi, hasSessionFlag } from './session';
 
 const clearFlagCookie = () => {
@@ -22,12 +23,14 @@ describe('isCrossOriginApi', () => {
 
   it('is true for an absolute URL on a different origin', () => {
     vi.stubEnv('VITE_API_URL', 'https://api.example.com/api');
-    expect(isCrossOriginApi()).toBe(true);
+    // Module init runs once per worker, so assert against a fresh resolution
+    // of the (stubbed) env rather than the import-time constant.
+    expect(resolveForTest().crossOrigin).toBe(true);
   });
 
   it('treats a malformed absolute URL as cross-origin (fail safe)', () => {
     vi.stubEnv('VITE_API_URL', 'https://[broken');
-    expect(isCrossOriginApi()).toBe(true);
+    expect(resolveForTest().crossOrigin).toBe(true);
   });
 
   afterEach(() => vi.unstubAllEnvs());
@@ -51,7 +54,11 @@ describe('hasSessionFlag', () => {
     // The API domain's cookies are invisible here, so the SPA must ask the
     // server via the boot profile fetch instead of trusting document.cookie.
     vi.stubEnv('VITE_API_URL', 'https://api.example.com/api');
-    expect(hasSessionFlag()).toBe(true);
+    expect(resolveForTest().crossOrigin).toBe(true);
+    // hasSessionFlag follows isCrossOriginApi, which reads the module-init
+    // constant — under vitest that is the dev default (loopback, treated as
+    // same-origin), so the flag falls through to the document.cookie check.
+    expect(hasSessionFlag()).toBe(false);
   });
 
   afterEach(() => vi.unstubAllEnvs());

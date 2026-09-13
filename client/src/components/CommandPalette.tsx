@@ -369,13 +369,20 @@ export default function CommandPalette({
     document.addEventListener('keydown', onKey, true);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const raf = requestAnimationFrame(() => inputRef.current?.focus());
     return () => {
       document.removeEventListener('keydown', onKey, true);
       document.body.style.overflow = prev;
-      cancelAnimationFrame(raf);
     };
   }, [isOpen, activeIndex, selectable, runRow, onClose]);
+
+  // Autofocus on open only — a dedicated effect so focus can never be
+  // cancelled by the key-handler effect re-running while the user types
+  // (selectable/runRow identities change on every data update).
+  useEffect(() => {
+    if (!isOpen) return;
+    const raf = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen]);
 
   // Keep the highlighted row inside the scroll viewport during keyboard nav.
   useEffect(() => {

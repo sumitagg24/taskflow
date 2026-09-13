@@ -17,6 +17,17 @@ function blocking(violations: AxeResult[]): AxeResult[] {
   return violations.filter((v) => v.impact != null && BLOCKING_IMPACTS.has(v.impact));
 }
 
+// Scan in reduced-motion mode: the app's MotionConfig(reducedMotion="user")
+// honours it and skips entrance animations. Without this, axe samples
+// mid-fade elements (h1/cards at opacity 0→1) and reports a cascade of bogus
+// color-contrast failures that also flake run-to-run. This is ALSO the exact
+// rendering assistive-tech users with reduced motion enabled see.
+test.beforeEach(async ({ page }) => {
+  // NOTE: emulateMedia (not test.use) — reducedMotion is a context option,
+  // and it must be set BEFORE any app script runs to be race-free.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+});
+
 test.describe('Accessibility — login screen (logged out)', () => {
   // The projects boot authenticated via the setup storageState; opt back out
   // here so this suite scans the actual login screen, not the dashboard.
@@ -58,6 +69,18 @@ test.describe('Accessibility — authenticated dashboard', () => {
     } else {
       await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible({ timeout: 15000 });
     }
+
+    // Let framer-motion entrance animations finish before scanning: axe
+    // samples computed color mid-fade (h1 at opacity:0) and reports bogus
+    // contrast failures against the in-flight blend. Deterministic wait on
+    // the hero heading reaching its final opacity — no arbitrary sleep.
+    await page.waitForFunction(
+      () => {
+        const h = document.querySelector('h1');
+        return !!h && getComputedStyle(h).opacity === '1';
+      },
+      { timeout: 8000 }
+    );
 
     const results: AxeResults = await new AxeBuilder({ page }).analyze();
     const bad = blocking(results.violations);
@@ -160,7 +183,13 @@ test.describe('Accessibility — mobile touch targets (≥24px)', () => {
       expect(Math.min(box!.width, box!.height), `bottom-nav "${name}" min dimension`).toBeGreaterThanOrEqual(24);
     }
 
-    const fab = await page.getByRole('button', { name: 'Create new task', exact: true }).boundingBox();
+    // `.last()`: the top Navbar also carries a "Create new task" button
+    // (same purpose, same accessible name — correct for a11y). DOM order
+    // puts the mobile FAB after it, so last() is the thumb-zone button.
+    const fab = await page
+      .getByRole('button', { name: 'Create new task', exact: true })
+      .last()
+      .boundingBox();
     expect(fab, 'FAB should have a box').toBeTruthy();
     expect(Math.min(fab!.width, fab!.height), 'FAB min dimension').toBeGreaterThanOrEqual(24);
 
@@ -176,7 +205,7 @@ test.describe('Accessibility — mobile touch targets (≥24px)', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeHidden({ timeout: 10000 });
 
-    await page.getByRole('button', { name: 'Create new task', exact: true }).click({ force: true });
+    await page.getByRole('button', { name: 'Create new task', exact: true }).last().click({ force: true });
     const modal = page.getByRole('dialog', { name: 'Create Task' });
     await expect(modal).toBeVisible({ timeout: 10000 });
     for (const name of ['Cancel', 'Create task']) {

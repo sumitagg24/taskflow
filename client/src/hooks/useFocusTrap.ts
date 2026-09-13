@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -14,6 +14,15 @@ export function useFocusTrap(
   isOpen: boolean,
   onClose: () => void
 ) {
+  // Keep the latest onClose without re-subscribing: consumers pass inline
+  // arrows that change identity every parent render. Re-running this effect
+  // would restore "previously focused" repeatedly (focus flicker on mobile,
+  // where soft-keyboard open/close re-renders the shell).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
@@ -21,7 +30,7 @@ export function useFocusTrap(
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== 'Tab' || !panelRef.current) return;
@@ -55,5 +64,8 @@ export function useFocusTrap(
       document.removeEventListener('keydown', handleKeyDown, true);
       previouslyFocused?.focus?.({ preventScroll: true });
     };
-  }, [isOpen, onClose, panelRef]);
+    // Only open/close transitions subscribe: refs are stable, onClose is read
+    // via onCloseRef.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 }

@@ -58,11 +58,21 @@ const getCookie = (req, name) => parseCookies(req)[name] || null;
 
 // Read an auth cookie regardless of the `__Host-` prefix state (production
 // sets prefixed names, dev/legacy clients may still carry the plain names).
+// All three spellings are attempted so callers (HTTP middleware, the Socket.IO
+// handshake reader) are prefix-agnostic.
 const getAuthCookie = (req, kind) => {
   if (kind === 'access') {
-    return getCookie(req, ACCESS_COOKIE_NAME) || getCookie(req, 'accessToken');
+    return (
+      getCookie(req, ACCESS_COOKIE_NAME) ||
+      getCookie(req, '__Host-accessToken') ||
+      getCookie(req, 'accessToken')
+    );
   }
-  return getCookie(req, REFRESH_COOKIE_NAME) || getCookie(req, 'refreshToken');
+  return (
+    getCookie(req, REFRESH_COOKIE_NAME) ||
+    getCookie(req, '__Host-refreshToken') ||
+    getCookie(req, 'refreshToken')
+  );
 };
 
 // Single-process same-origin deploy per README, so `lax` suffices in dev;

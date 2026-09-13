@@ -33,13 +33,29 @@ const validRegister = {
 // REGISTER
 // ========================================================================
 describe('POST /api/auth/register', () => {
-  it('registers a new user and returns tokens', async () => {
+  it('registers a new user and returns a safe cookie-session payload (no tokens in JSON)', async () => {
     const res = await request(app).post('/api/auth/register').send(validRegister);
     expect(res.status).toBe(201);
-    expect(res.body).toHaveProperty('accessToken');
-    expect(res.body).toHaveProperty('refreshToken');
+    // Cookie-auth is the browser flow: tokens ride httpOnly Set-Cookie, so
+    // the JSON body must NOT carry them (XSS/logging exposure surface).
+    expect(res.body).not.toHaveProperty('accessToken');
+    expect(res.body).not.toHaveProperty('refreshToken');
+    const cookies = res.headers['set-cookie'].map((c) => String(c));
+    expect(cookies.some((c) => c.startsWith('accessToken='))).toBe(true);
+    expect(cookies.some((c) => c.startsWith('refreshToken='))).toBe(true);
     expect(res.body.user).toMatchObject({ name: 'New User', email: 'new@example.com' });
     expect(res.body.message).toMatch(/verify/i);
+  });
+
+  it('returns the token pair only for explicit bearer-token API clients', async () => {
+    const res = await request(app)
+      .post('/api/auth/register?tokenResponse=bearer')
+      .send(validRegister);
+    expect(res.status).toBe(201);
+    // Supertest sends no Sec-Fetch headers and no Origin, so this is treated
+    // as a native client and the tokens are returned in the body.
+    expect(res.body).toHaveProperty('accessToken');
+    expect(res.body).toHaveProperty('refreshToken');
   });
 
   it('rejects duplicate email', async () => {
@@ -130,13 +146,15 @@ describe('POST /api/auth/login', () => {
     await createTestUser({ email: 'login@example.com' });
   });
 
-  it('logs in with valid credentials', async () => {
+  it('logs in with valid credentials and sets httpOnly cookies (no tokens in JSON)', async () => {
     const res = await request(app)
       .post('/api/auth/login')
       .send({ identifier: 'login@example.com', password: TEST_PASSWORD });
     expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('accessToken');
-    expect(res.body).toHaveProperty('refreshToken');
+    expect(res.body).not.toHaveProperty('accessToken');
+    expect(res.body).not.toHaveProperty('refreshToken');
+    const cookies = res.headers['set-cookie'].map((c) => String(c));
+    expect(cookies.some((c) => c.startsWith('accessToken='))).toBe(true);
     expect(res.body.user.email).toBe('login@example.com');
   });
 
@@ -180,7 +198,7 @@ describe('POST /api/auth/login', () => {
 
   it('access token contains proper JWT claims', async () => {
     const res = await request(app)
-      .post('/api/auth/login')
+      .post('/api/auth/login?tokenResponse=bearer')
       .send({ identifier: 'login@example.com', password: TEST_PASSWORD });
     const decoded = jwt.decode(res.body.accessToken);
     expect(decoded).toHaveProperty('sub');
@@ -563,11 +581,11 @@ describe('POST /api/auth/change-password', () => {
     expect(after.status).toBe(401);
   });
 
-  it('change-password returns a usable fresh token pair', async () => {
+  it('change-password returns a usable fresh token pair for bearer clients', async () => {
     const { accessToken } = await createTestUser({ email: 'cpfresh@example.com' });
 
     const res = await request(app)
-      .post('/api/auth/change-password')
+      .post('/api/auth/change-password?tokenResponse=bearer')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ currentPassword: TEST_PASSWORD, newPassword: 'NewStr0ng$!' });
 
@@ -579,6 +597,20 @@ describe('POST /api/auth/change-password', () => {
       .get('/api/auth/profile')
       .set('Authorization', `Bearer ${res.body.accessToken}`);
     expect(profile.status).toBe(200);
+  });
+
+  it('change-password keeps tokens out of the JSON body for cookie clients', async () => {
+    const { accessToken } = await createTestUser({ email: 'cpcookie@example.com' });
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ currentPassword: TEST_PASSWORD, newPassword: 'NewStr0ng$!' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('accessToken');
+    expect(res.body).not.toHaveProperty('refreshToken');
+    expect(res.body.message).toMatch(/changed/i);
   });
 
   it('revokes pre-change access tokens on password reset', async () => {
@@ -645,10 +677,13 @@ describe('POST /api/auth/google', () => {
     OAuth2Client._mockVerify.mockResolvedValue({
       getPayload: () => mockGooglePayload(),
     });
-    const res = await request(app).post('/api/auth/google').send({ credential: 'valid-token' });
+    const res = await request(app)
+      .post('/api/auth/google?tokenResponse=bearer')
+      .send({ credential: 'valid-token' });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('accessToken');
     expect(res.body).toHaveProperty('refreshToken');
+    expect(res.body.user).toBeDefined();
     expect(res.body.user).toMatchObject({
       email: 'googleuser@example.com', name: 'Google User', authProvider: 'google', emailVerified: true,
     });

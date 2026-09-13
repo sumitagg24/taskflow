@@ -107,7 +107,9 @@ describe('POST /api/auth/login exponential backoff', () => {
       .post('/api/auth/login')
       .send({ identifier: 'backoff@example.com', password: TEST_PASSWORD });
     expect(ok.status).toBe(200);
-    expect(ok.body).toHaveProperty('accessToken');
+    // Cookie-flow response: tokens live in httpOnly cookies, not the body.
+    const okCookies = ok.headers['set-cookie'].map((c) => String(c));
+    expect(okCookies.some((c) => c.startsWith('accessToken='))).toBe(true);
     user = await User.findOne({ email: 'backoff@example.com' });
     expect(user.lockoutLevel).toBe(0);
     expect(user.loginAttempts).toBe(0);

@@ -186,6 +186,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.preferences, syncThemeFromUser]);
 
+  // Session-expired events (dispatched by the axios interceptor when a refresh
+  // is rejected — see api/tasks.ts). Clears local auth state so the app routes
+  // to sign-in without a full-page reload, preserving any drafts and UI state.
+  // De-duplicated: the interceptor fires once per expired batch, but several
+  // queued requests can reject in the same tick.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onSessionExpired = () => {
+      if (timer) return; // one toast per burst
+      timer = setTimeout(() => { timer = null; }, 1000);
+      clearAllTokens();
+      setUser(null);
+      setCachedUser(null);
+      toast.error('Your session expired. Please sign in again.');
+    };
+    window.addEventListener('taskflow:session-expired', onSessionExpired);
+    return () => {
+      window.removeEventListener('taskflow:session-expired', onSessionExpired);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   const refreshUser = async () => {
     try {
       const { data } = await api.get('/auth/profile');

@@ -6,7 +6,7 @@
  * the SPA can decide to skip the boot profile fetch entirely — zero requests,
  * straight to login on fresh visits.
  *
- * Cross-origin deploy (e.g. Vercel SPA in front of a Railway API): the SPA's
+ * Cross-origin deploy (e.g. Vercel SPA in front of a remote API): the SPA's
  * `document.cookie` can never see the API domain's cookies, so the readable
  * flag is invisible from this origin no matter what. The only reliable signal
  * is the server's answer to `GET /auth/profile`, so `hasSessionFlag()` returns
@@ -14,15 +14,12 @@
  * (SameSite=None; Secure) ride along and the server decides.
  */
 
+import { apiConfig } from './apiConfig';
+
 export function isCrossOriginApi(): boolean {
-  const base = import.meta.env.VITE_API_URL as string | undefined;
-  if (!base || base === '/api') return false;
-  if (!/^https?:\/\//i.test(base)) return false; // relative path = same origin
-  try {
-    return new URL(base).origin !== window.location.origin;
-  } catch {
-    return true; // absolute-but-malformed → treat as remote to stay safe
-  }
+  // Single config source (apiConfig.ts) so this check can never drift from
+  // the axios/socket clients.
+  return apiConfig.crossOrigin;
 }
 
 export function hasSessionFlag(): boolean {

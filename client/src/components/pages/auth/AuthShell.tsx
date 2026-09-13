@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Logo, LogoMark, ThemeToggle } from '@/components/ui';
 
 /* ============================================================================
@@ -26,6 +26,14 @@ const reveal = {
   }),
 };
 
+// Reduced-motion variant: skip the staggered fade entirely (MotionConfig's
+// "user" mode still animates opacity, which assistive-tech users shouldn't
+// be shown and axe can sample mid-fade).
+const revealStatic = {
+  hidden: { opacity: 1, y: 0 },
+  visible: (i: number) => ({ opacity: 1, y: 0, transition: { duration: 0 } }),
+};
+
 interface AuthShellProps {
   children: ReactNode;
   /** Serif line in the brand panel. */
@@ -38,10 +46,13 @@ export default function AuthShell({
   headline = 'Plan the work, then work the plan.',
   points = DEFAULT_POINTS,
 }: AuthShellProps) {
+  const reduceMotion = useReducedMotion();
+  const enter = reduceMotion ? revealStatic : reveal;
+
   return (
     <div className="canvas-grain relative min-h-screen bg-canvas lg:grid lg:grid-cols-2">
       <aside className="relative hidden flex-col justify-between border-r border-hairline px-12 py-12 lg:flex xl:px-16">
-        <motion.div initial="hidden" animate="visible" variants={reveal} custom={0}>
+        <motion.div initial="hidden" animate="visible" variants={enter} custom={0}>
           <Logo size={36} wordmarkSize={22} animate />
         </motion.div>
 
@@ -49,7 +60,7 @@ export default function AuthShell({
           <motion.h1
             initial="hidden"
             animate="visible"
-            variants={reveal}
+            variants={enter}
             custom={1}
             className="font-display text-4xl leading-[1.12] tracking-tight text-gray-900 dark:text-gray-100"
           >
@@ -69,7 +80,7 @@ export default function AuthShell({
                 key={point}
                 initial="hidden"
                 animate="visible"
-                variants={reveal}
+                variants={enter}
                 custom={3 + i}
                 className="flex items-start gap-3 text-[15px] leading-snug text-gray-600 dark:text-gray-400"
               >
@@ -85,7 +96,7 @@ export default function AuthShell({
         <motion.p
           initial="hidden"
           animate="visible"
-          variants={reveal}
+          variants={enter}
           custom={7}
           className="text-xs text-gray-500 dark:text-gray-400"
         >

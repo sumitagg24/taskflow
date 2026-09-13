@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { API_BASE } from './helpers';
 
 // client/ is ESM ("type": "module"), so __dirname is unavailable — derive it.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -61,7 +62,7 @@ test.describe('Auth fixture (setup storageState)', () => {
     await expect(page.getByRole('tab', { name: 'Sign in' })).toHaveCount(0);
   });
 
-  test('can log out and back in via UI', async ({ page }) => {
+  test('can log out and back in via UI', async ({ page, request }) => {
     const { email, password } = readFixtureCredentials();
 
     await page.goto('/');
@@ -72,7 +73,8 @@ test.describe('Auth fixture (setup storageState)', () => {
 
     await page.getByLabel('Email or username').fill(email);
     await page.getByRole('textbox', { name: 'Password' }).fill(password);
-    // Capture the login response: its body carries the fresh token pair.
+    // Capture the login response: the BROWSER body must carry NO tokens —
+    // auth is cookie-only for browsers (the raw pair would be XSS-readable).
     const loginResponse = page.waitForResponse(
       (res) => res.url().endsWith('/api/auth/login') && res.ok()
     );
@@ -81,19 +83,31 @@ test.describe('Auth fixture (setup storageState)', () => {
     const loginBody = (await response.json().catch(() => null)) as {
       accessToken?: string;
       refreshToken?: string;
+      user?: unknown;
     } | null;
 
     await expect(inApp(page)).toBeVisible({ timeout: 15000 });
 
+    // Security contract: browser login responses expose no token material.
+    expect(loginBody?.accessToken, 'browser login must not return accessToken').toBeUndefined();
+    expect(loginBody?.refreshToken, 'browser login must not return refreshToken').toBeUndefined();
+    expect(loginBody?.user, 'browser login should return the session user').toBeTruthy();
+
     // Self-healing fixture: the UI logout above denylisted the SHARED session
     // (server-side token denylist), which would 401 every test running after
-    // this one. Persist the just-minted pair + cookies so the fixture files
-    // describe a live session again for all later tests in the run.
-    const accessToken = loginBody?.accessToken;
-    const refreshToken = loginBody?.refreshToken;
-    expect(accessToken, 'UI login should return an access token').toBeTruthy();
-    expect(refreshToken, 'UI login should return a refresh token').toBeTruthy();
-    fs.writeFileSync(TOKENS_PATH, JSON.stringify({ accessToken, refreshToken }));
+    // this one. Mint a fresh pair through the documented non-browser path
+    // (no Sec-Fetch-Site on Playwright's isolated request context = API
+    // client) and persist it so tokens.json describes a live session.
+    // NOTE: `request` (not page.request) — a cookie-less context. A cookie-
+    // bearing POST without Origin would rightly trip the CSRF middleware.
+    const apiLogin = await request.post(`${API_BASE}/auth/login?tokenResponse=bearer`, {
+      data: { identifier: email, password },
+    });
+    expect(apiLogin.ok(), 'non-browser token login should succeed').toBeTruthy();
+    const apiBody = (await apiLogin.json()) as { accessToken?: string; refreshToken?: string };
+    expect(apiBody.accessToken, 'API-client login should return an access token').toBeTruthy();
+    expect(apiBody.refreshToken, 'API-client login should return a refresh token').toBeTruthy();
+    fs.writeFileSync(TOKENS_PATH, JSON.stringify({ accessToken: apiBody.accessToken, refreshToken: apiBody.refreshToken }));
     await page.context().storageState({ path: STORAGE_STATE_PATH });
   });
 });

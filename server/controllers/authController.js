@@ -107,6 +107,45 @@ const createAuthResponse = async (user) => {
   };
 };
 
+/**
+ * Cookie-auth is the browser flow, so the JSON body must NOT carry the raw
+ * access/refresh tokens — leaking them into `res.json()` would expose them
+ * to any XSS, devtools extension, or logging layer for no benefit (the
+ * httpOnly cookies ride automatically and are what `protect` reads first).
+ *
+ * Token-body responses remain ONLY for non-browser API clients that
+ * explicitly ask with `?tokenResponse=bearer`: those requests carry an
+ * `Authorization` header (or no Origin header at all), which the CSRF
+ * middleware already treats as the non-browser path. A browser page cannot
+ * opt into this — its requests always present cookies and a browser-y
+ * Sec-Fetch-* header set, so `isBrowserRequest` is true and the tokens are
+ * withheld regardless of the query string.
+ */
+const isBrowserRequest = (req) => {
+  const secFetchSite = req.headers['sec-fetch-site'];
+  // Browsers always attach Sec-Fetch-Site on fetch/XHR; anything present
+  // means a browser sent it. Absent headers are the legacy/native case.
+  if (typeof secFetchSite === 'string') return true;
+  // Older browsers omit Fetch Metadata; a same-origin request through the
+  // SPA always carries a matching Origin on POST/PUT, which is also browser
+  // evidence.
+  return false;
+};
+
+const sendAuthResponse = (req, res, auth, extra = {}) => {
+  const status = typeof extra._status === 'number' ? extra._status : undefined;
+  const rest = { ...extra };
+  delete rest._status;
+  const wantsBearer = req.query?.tokenResponse === 'bearer' && !isBrowserRequest(req);
+  const payload = wantsBearer
+    ? { accessToken: auth.accessToken, refreshToken: auth.refreshToken, user: auth.user, ...rest }
+    : { user: auth.user, ...rest };
+  if (status !== undefined) {
+    return res.status(status).json(payload);
+  }
+  return res.json(payload);
+};
+
 const USER_FIELDS =
   '_id name username email avatar bio preferences pomodoroSettings focusTimeToday streak emailVerified authProvider';
 
@@ -174,8 +213,8 @@ exports.register = async (req, res, next) => {
     const auth = await createAuthResponse(user);
 
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.status(201).json({
-      ...auth,
+    sendAuthResponse(req, res, auth, {
+      _status: 201,
       message: 'Account created! Please check your email to verify your account.',
     });
   } catch (error) {
@@ -287,7 +326,7 @@ exports.login = async (req, res, next) => {
     const auth = await createAuthResponse(user);
 
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.json(auth);
+    sendAuthResponse(req, res, auth);
   } catch (error) {
     next(error);
   }
@@ -439,9 +478,8 @@ exports.resetPassword = async (req, res, next) => {
     const auth = await createAuthResponse(user);
 
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.json({
+    sendAuthResponse(req, res, auth, {
       message: 'Password reset successful. You can now sign in with your new password.',
-      ...auth,
     });
   } catch (error) {
     next(error);
@@ -488,6 +526,9 @@ exports.refreshToken = async (req, res, next) => {
     const auth = await createAuthResponse(user);
 
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
+    // Refresh keeps a token body for legacy header-based clients (the SPA and
+    // browsers never read it — httpOnly cookies carry the new pair). The user
+    // object is intentionally omitted; refresh never needs it.
     res.json({
       accessToken: auth.accessToken,
       refreshToken: auth.refreshToken,
@@ -538,9 +579,8 @@ exports.changePassword = async (req, res, next) => {
     const auth = await createAuthResponse(user);
 
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.json({
+    sendAuthResponse(req, res, auth, {
       message: 'Password changed successfully',
-      ...auth,
     });
   } catch (error) {
     next(error);
@@ -665,7 +705,7 @@ exports.googleAuth = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.json(auth);
+    sendAuthResponse(req, res, auth);
   } catch (error) {
     next(error);
   }
@@ -769,7 +809,7 @@ exports.auth0Auth = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.json(auth);
+    sendAuthResponse(req, res, auth);
   } catch (error) {
     next(error);
   }
@@ -1101,7 +1141,7 @@ exports.exchangeOAuthCode = async (req, res, next) => {
 
     const auth = await createAuthResponse(user);
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    res.json(auth);
+    sendAuthResponse(req, res, auth);
   } catch (error) {
     next(error);
   }

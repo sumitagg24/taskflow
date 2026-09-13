@@ -110,7 +110,11 @@ setup('authenticate (verified fixture user)', async ({ page }) => {
   }
 
   // Login AFTER verification: unverified logins 403 (EMAIL_NOT_VERIFIED).
-  const login = await page.request.post(`${API_BASE}/auth/login`, {
+  // `tokenResponse=bearer` selects the non-browser API-client response shape
+  // (the browser path withholds raw tokens now). Playwright's request context
+  // sends no Sec-Fetch-Site header, so the server classifies it as non-browser
+  // — this is the documented API-consumer contract, not a bypass.
+  const login = await page.request.post(`${API_BASE}/auth/login?tokenResponse=bearer`, {
     data: { identifier: user.email, password: user.password },
   });
   if (!login.ok()) {

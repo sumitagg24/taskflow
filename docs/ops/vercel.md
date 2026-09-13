@@ -64,9 +64,38 @@ Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 4. Deploy. `client/vercel.json` rewrites every route to `/index.html` so the
    React Router paths and `/auth/callback` deep links work on refresh.
 
-> `VITE_API_URL` ends with `/api` on purpose — `client/src/api/tasks.ts`
-> derives the base URL from it and `NotificationContext` derives the Socket.IO
-> origin from it (or uses `VITE_SOCKET_URL` directly).
+> `VITE_API_URL` ends with `/api` on purpose — `client/src/lib/apiConfig.ts`
+> is the single source of truth: `client/src/api/tasks.ts` (axios) and
+> `client/src/context/NotificationContext.tsx` (Socket.IO) both derive from
+> it, and `client/src/main.tsx` calls `assertApiConfigUsable()` so a
+> cross-origin deploy built **without** `VITE_API_URL` throws at startup
+> instead of silently calling `/api` on the SPA's own origin.
+
+## 2b. Deploy-time verification (run this after every SPA deploy)
+
+A static bundle can look healthy while every API call 404s against the
+SPA's own origin — that exact failure shipped once. Two automated checks
+make it impossible to miss:
+
+```bash
+# Fails when the live bundle lacks the apiConfig production guard, when any
+# baked-in absolute host is unreachable (e.g. a retired Railway URL), or when
+# the SPA origin answers /api/health as if it were the API.
+npm run smoke:spa-config -- --url https://<spa>.vercel.app --api-url https://<api-host>
+```
+
+In CI, add a step after the Vercel deploy:
+
+```yaml
+- name: Verify deployed SPA wiring
+  env:
+    SPA_BASE_URL: https://<spa>.vercel.app
+    API_BASE_URL: https://<api-host>
+  run: node scripts/spa-config-check.cjs
+```
+
+The API-side health poll stays `scripts/deploy-smoke.cjs` (used by
+`.github/workflows/deploy.yml` after the Oracle deploy).
 ---
 
 ## 3. Oracle side (the API)

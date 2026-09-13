@@ -519,7 +519,11 @@ origin rewiring, CD via SSH, and operations: [docs/ops/oracle-free-tier.md](docs
 **Vercel (SPA):** the client builds from `client/` with `VITE_API_URL` /
 `VITE_SOCKET_URL` pointing at the API origin; see [docs/ops/vercel.md](docs/ops/vercel.md)
 for the env, CORS, cookie (SameSite / Secure), and OAuth origin steps that
-make cross-origin cookie auth work.
+make cross-origin cookie auth work. Client endpoint wiring has a single
+source of truth (`client/src/lib/apiConfig.ts`) with a runtime guard:
+a cross-origin production build without `VITE_API_URL` throws at startup
+rather than silently calling `/api` on the SPA's own origin. Verify every
+SPA deploy with `npm run smoke:spa-config -- --url <spa> --api-url <api>`.
 
 **Railway:** retired (deprecated runbook kept for reference:
 [docs/ops/railway.md](docs/ops/railway.md)).

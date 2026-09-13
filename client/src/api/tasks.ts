@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import type { GrowthState, Task } from '@/lib/domain';
+import { apiConfig } from '@/lib/apiConfig';
 
 // Single source of truth lives in `@/lib/domain` — re-exported here so
 // existing `import type { … } from '@/api/tasks'` call sites keep working.
@@ -62,13 +63,16 @@ interface ProfileData {
 }
 
 const api: AxiosInstance = axios.create({
-  baseURL: '/api',
+  // Single config source (client/src/lib/apiConfig.ts): explicit VITE_API_URL
+  // in split deploys, /api same-origin otherwise. Never hardcode a host here.
+  baseURL: apiConfig.apiBaseUrl,
   headers: { 'Content-Type': 'application/json' },
-  // Cookies (httpOnly access/refresh) ride every same-origin request.
+  // Cookies (httpOnly access/refresh) ride every request, same- or
+  // cross-origin (the server issues SameSite=None; Secure in production).
   withCredentials: true,
 });
 
-const REFRESH_URL = '/api/auth/refresh-token';
+const REFRESH_URL = `${apiConfig.apiBaseUrl}/auth/refresh-token`;
 
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
@@ -85,9 +89,14 @@ const processQueue = (error: any) => {
 };
 
 api.interceptors.request.use((config) => {
-  // Cookie-first: httpOnly cookies ride via withCredentials, so no token
-  // handling is needed here. Legacy Bearer fallback for native/API consumers
-  // (and existing header-based tests) that still hold a token in storage.
+  // Cookie-first: httpOnly cookies ride via withCredentials and are what the
+  // server actually reads. The Bearer header is a legacy fallback ONLY for
+  // same-origin/local harnesses that still hold a token in storage —
+  // explicitly NOT sent in cross-origin production deploys, where (a) the
+  // header would disable the server's CSRF origin check for cookie sessions
+  // (middleware/csrf.js skips it when Authorization is present) and (b) a
+  // stale localStorage token could shadow the valid cookie pair.
+  if (apiConfig.crossOrigin) return config;
   try {
     const token = localStorage.getItem('accessToken');
     if (token && config.headers) {
@@ -128,18 +137,24 @@ api.interceptors.response.use(
             return Promise.reject(err);
           });
       }
-
       isRefreshing = true;
 
       try {
         // Cookie-only refresh: httpOnly `refreshToken` cookie rides via
-        // withCredentials, no body, no token juggling — just retry.
+        // withCredentials, no body, no token juggling. A bare axios call —
+        // NOT `api` — so the refresh response can never re-enter this
+        // interceptor and recurse (the refresh endpoint returns 200 even on
+        // rejection, but defense against interceptor loops must not depend
+        // on the server's status code).
         await axios.post(REFRESH_URL, {}, { withCredentials: true });
         processQueue(null);
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
-        window.location.reload();
+        // Session is unrecoverable (refresh rejected). Surface it and let
+        // AuthContext's listener clear `user` so the app routes to sign-in
+        // — a full-page reload would throw away in-progress UI + drafts.
+        window.dispatchEvent(new CustomEvent('taskflow:session-expired'));
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -247,7 +262,9 @@ export const timeTrackingAPI = {
     const qs = new URLSearchParams();
     if (startDate) qs.set('startDate', startDate);
     if (endDate) qs.set('endDate', endDate);
-    const base = '/api/time-tracking/export';
+    // Absolute via the shared config — in split deploys a relative /api path
+    // would target the SPA origin (Vercel), which has no API.
+    const base = `${apiConfig.apiBaseUrl}/time-tracking/export`;
     return qs.toString() ? `${base}?${qs.toString()}` : base;
   },
 };
@@ -263,7 +280,7 @@ export const calendarAPI = {
         if (v) qs.set(k, String(v));
       }
     }
-    const base = '/api/calendar/export';
+    const base = `${apiConfig.apiBaseUrl}/calendar/export`;
     return qs.toString() ? `${base}?${qs.toString()}` : base;
   },
   getLinks: (taskId: string): Promise<AxiosResponse> => api.get('/calendar/links', { params: { taskId } }),

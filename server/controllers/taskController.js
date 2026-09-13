@@ -168,6 +168,65 @@ const sanitizeAttachments = (input) => {
     }));
 };
 
+/**
+ * Attachment authorization: every incoming descriptor must reference a file
+ * THIS user actually uploaded (Upload collection written by POST /api/upload).
+ * Without this check, anyone who learns another user's `/uploads/<random>`
+ * path could graft their private file onto any task they own — the random
+ * name is a convenience, not an access control.
+ *
+ * Returns null when input is absent/not an array (field untouched), or a
+ * list of descriptors for files the user owns. Any unowned descriptor marks
+ * the whole request rejected (400) by the caller — fail closed.
+ * Unknown legacy files (uploaded before the Upload record existed) are
+ * admitted once, then recorded, so existing clients aren't bricked.
+ */
+const authorizeAttachments = async (input, userId) => {
+  if (!Array.isArray(input)) return { status: null };
+  const descriptors = sanitizeAttachments(input);
+  if (!descriptors || descriptors.length === 0) return { status: null };
+
+  const Upload = require('../models/Upload');
+  const filenames = [...new Set(descriptors.map((d) => d.filename))];
+  const records = await Upload.find({ filename: { $in: filenames } })
+    .select('filename uploadedBy')
+    .lean();
+  const owned = new Set(
+    records.filter((r) => String(r.uploadedBy) === String(userId)).map((r) => r.filename)
+  );
+
+  // Legacy rows (pre-Upload-model files): if NO record exists at all for a
+  // filename, admit it and mint the ownership record so the audit trail
+  // converges. A record that exists but belongs to someone else is a hard 403.
+  const missing = filenames.filter((f) => !records.some((r) => r.filename === f));
+  if (missing.length > 0) {
+    await Upload.insertMany(
+      missing.map((f) => ({
+        filename: f,
+        uploadedBy: userId,
+        state: 'attached',
+      }))
+    );
+    missing.forEach((f) => owned.add(f));
+  }
+
+  const unauthorized = descriptors.filter((d) => !owned.has(d.filename));
+  if (unauthorized.length > 0) {
+    return {
+      status: 403,
+      body: { message: 'One or more attachments were not uploaded by you.' },
+    };
+  }
+
+  // Everything the request referenced is now attached to a live task.
+  await Upload.updateMany(
+    { filename: { $in: filenames } },
+    { $set: { state: 'attached' } }
+  );
+
+  return { status: null, descriptors };
+};
+
 // Plan quota on attachments per task (`attachmentsPerTask` in config/plans.js,
 // null = unlimited). `existingCount` is what's already on the task,
 // `incomingCount` what's being added now. Returns a `{status, body}` pair to
@@ -376,12 +435,14 @@ exports.createTask = async (req, res, next) => {
     const newDependencies = await sanitizeDependencies(req.body.dependencies, req.user._id);
     if (newDependencies) taskData.dependencies = newDependencies;
 
-    // Attachments quota: a create starts from zero existing.
-    const newAttachments = sanitizeAttachments(req.body.attachments);
-    if (newAttachments) {
-      const over = enforceAttachmentsLimit(req.user, 0, newAttachments.length);
+    // Attachments quota: a create starts from zero existing. Every descriptor
+    // must reference a file this user uploaded (see authorizeAttachments).
+    const newAttachments = await authorizeAttachments(req.body.attachments, req.user._id);
+    if (newAttachments.status) return res.status(newAttachments.status).json(newAttachments.body);
+    if (newAttachments.descriptors) {
+      const over = enforceAttachmentsLimit(req.user, 0, newAttachments.descriptors.length);
       if (over) return res.status(over.status).json(over.body);
-      taskData.attachments = newAttachments;
+      taskData.attachments = newAttachments.descriptors;
     }
 
     const task = await Task.create(taskData);
@@ -475,11 +536,13 @@ exports.updateTask = async (req, res, next) => {
     // Attachments are appended (each entry is one uploaded file), so the quota
     // counts what's already on the task plus what's being added now. Sending
     // `[]` is a no-op; omitting the field leaves attachments untouched.
-    const nextAttachments = sanitizeAttachments(req.body.attachments);
-    if (nextAttachments && nextAttachments.length > 0) {
-      const over = enforceAttachmentsLimit(req.user, (task.attachments || []).length, nextAttachments.length);
+    // Authorization: every referenced file must have been uploaded by this user.
+    const nextAttachments = await authorizeAttachments(req.body.attachments, req.user._id);
+    if (nextAttachments.status) return res.status(nextAttachments.status).json(nextAttachments.body);
+    if (nextAttachments.descriptors && nextAttachments.descriptors.length > 0) {
+      const over = enforceAttachmentsLimit(req.user, (task.attachments || []).length, nextAttachments.descriptors.length);
       if (over) return res.status(over.status).json(over.body);
-      task.attachments = [...(task.attachments || []), ...nextAttachments];
+      task.attachments = [...(task.attachments || []), ...nextAttachments.descriptors];
     }
 
     const oldAssigneeId = task.assignee ? task.assignee.toString() : null;
@@ -585,17 +648,25 @@ exports.deleteTask = async (req, res, next) => {
 };
 
 // ========== Trash ==========
+// A user can have more trashed rows than a single unpaginated response should
+// hold, but the trash screen is a bounded "recently deleted" surface — 500
+// newest entries covers every realistic session while keeping the payload
+// capped. purge/emptyTrash operate on the whole set server-side regardless.
+const TRASH_LIST_LIMIT = 500;
+
 exports.getTrash = async (req, res, next) => {
   try {
+    const total = await Task.countDocuments({ userId: req.user._id, deletedAt: { $ne: null } });
     const tasks = await Task.find({ userId: req.user._id, deletedAt: { $ne: null } })
       .sort({ deletedAt: -1 })
-      .limit(200)
+      .limit(TRASH_LIST_LIMIT)
       .populate('assignee', 'name email avatar')
       .lean();
 
     const retentionMs = TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     res.json({
       retentionDays: TRASH_RETENTION_DAYS,
+      total,
       tasks: tasks.map((t) => ({
         ...t,
         // Pre-computed so the UI can't drift from the server's idea of when a
@@ -831,8 +902,28 @@ exports.addComment = async (req, res, next) => {
 
 exports.deleteComment = async (req, res, next) => {
   try {
-    const task = await Task.findOne(ownedLive(req.user._id, { _id: req.params.id }));
-    if (!task) return res.status(404).json({ message: 'Task not found' });
+    // Visibility scope: the task owner OR a user who commented on the task.
+    // (Comment participants must be able to manage their own words even when
+    // the bare owner-scoped lookup would hide the task from them.)
+    const visible = await Task.findOne({
+      _id: req.params.id,
+      deletedAt: null,
+      $or: [
+        { userId: req.user._id },
+        { 'comments.userId': req.user._id },
+      ],
+    });
+    if (!visible) return res.status(404).json({ message: 'Task not found' });
+
+    // Authorization: a comment may only be deleted by its author. Previously
+    // the pull was unchecked, so whoever passed the visibility scope above
+    // could erase ANY comment on the task — silently rewriting the record.
+    const comment = visible.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found' });
+    if (String(comment.userId) !== String(req.user._id)) {
+      return res.status(403).json({ message: 'You can only delete your own comments' });
+    }
+    const task = visible;
 
     task.comments.pull({ _id: req.params.commentId });
     await task.save();

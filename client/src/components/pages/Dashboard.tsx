@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   Calendar, Clock, Quote, Bell, Flame, Check, X, Plus, Pencil, Trash2,
 } from 'lucide-react';
@@ -196,6 +196,8 @@ function TaskRow({
 
 export default function Dashboard({ tasks, loading = false, onRefresh, onEditTask, onDeleteTask, onNewTask, onNavigate }: DashboardProps) {
   const { user } = useAuth();
+  // Hooks before any early return (React rules-of-hooks).
+  const reduceMotionHook = useReducedMotion();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [digest, setDigest] = useState<DayDigest | null>(null);
   const [recentNotifications, setRecentNotifications] = useState<DashboardNotification[]>([]);
@@ -317,11 +319,22 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
 
   const firstName = user?.name?.trim().split(/\s+/)[0];
   const overdue: number = stats?.overdue || 0;
+  // Entrance fade goes fully static under reduced motion. MotionConfig's
+  // "user" mode only strips transforms — opacity still animates, which axe
+  // legitimately samples mid-fade as a contrast failure (and which assistive-
+  // tech users shouldn't be shown anyway).
+  const reduceMotion = reduceMotionHook;
+  const reveal = reduceMotion
+    ? { hidden: { opacity: 1 }, show: { opacity: 1, transition: { staggerChildren: 0 } } }
+    : container;
+  const revealItem = reduceMotion
+    ? { hidden: { opacity: 1, y: 0 }, show: { opacity: 1, y: 0 } }
+    : item;
 
   return (
-    <motion.div variants={container} initial="hidden" animate="show" className="space-y-5 p-4 pb-24 md:p-6">
+    <motion.div variants={reveal} initial="hidden" animate="show" className="space-y-5 p-4 pb-24 md:p-6">
       {/* Hero — the date, a greeting, and the three numbers worth knowing on sight. */}
-      <motion.div variants={item}>
+      <motion.div variants={revealItem}>
         <Card
           padding="lg"
           className="border-yellow-200/70 bg-yellow-50/40 dark:border-yellow-500/15 dark:bg-yellow-500/[0.04]"
@@ -393,13 +406,13 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
         </Card>
       </motion.div>
 
-      <motion.div variants={item}>
+      <motion.div variants={revealItem}>
         <WeeklyResetBanner onOpen={() => setShowWeekly(true)} />
       </motion.div>
       <WeeklyReset open={showWeekly} onClose={() => setShowWeekly(false)} onNavigate={onNavigate} />
 
       {/* Quick capture — one entry point: the global Inbox modal (Q). */}
-      <motion.div variants={item}>
+      <motion.div variants={revealItem}>
         <Card padding="md">
           <p className="caption-upper mb-2">Quick capture</p>
           <button
@@ -415,7 +428,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
       </motion.div>
 
       {/* Up next — overdue first, then today, then the next 3 dated tasks. */}
-      <motion.div variants={item}>
+      <motion.div variants={revealItem}>
         <Card padding="md">
           <CardHeader
             eyebrow="Up next"
@@ -468,7 +481,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
       </motion.div>
 
       {showOnboarding && (
-        <motion.div variants={item}>
+        <motion.div variants={revealItem}>
           <Card padding="md">
             <CardHeader
               eyebrow="Getting started"
@@ -523,7 +536,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
           (status overview / priority mix), so they were cut — this page now
           answers only "what do I do today". The stats hook stays: the hero
           strip and the onboarding checklist still read from it. */}
-      <motion.div variants={item} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <motion.div variants={revealItem} className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Card padding="md">
           <CardHeader
             eyebrow="Deadlines"
@@ -583,7 +596,7 @@ export default function Dashboard({ tasks, loading = false, onRefresh, onEditTas
         <CalendarWidget tasks={visibleTasks} />
       </motion.div>
 
-      <motion.div variants={item}>
+      <motion.div variants={revealItem}>
         <Card padding="md">
           <CardHeader
             eyebrow="Activity"

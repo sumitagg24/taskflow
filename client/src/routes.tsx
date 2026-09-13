@@ -39,6 +39,8 @@ const TeamPage = lazy(() => import('@/components/pages/TeamPage'));
 const TemplatesPage = lazy(() => import('@/components/pages/TemplatesPage'));
 const InsightsPage = lazy(() => import('@/components/pages/InsightsPage'));
 const TrashPage = lazy(() => import('@/components/pages/TrashPage'));
+import PrivacyPolicyPage from '@/components/pages/legal/PrivacyPolicyPage';
+import TermsOfServicePage from '@/components/pages/legal/TermsOfServicePage';
 
 export interface TaskData {
   _id: string;
@@ -529,6 +531,9 @@ function TeamRoute(): ReactNode {
 }
 
 export const router = createBrowserRouter([
+  // Public legal pages (also rendered pre-auth in App.tsx for logged-out visits).
+  { path: '/privacy', element: <PrivacyPolicyPage /> },
+  { path: '/terms', element: <TermsOfServicePage /> },
   {
     path: '/',
     element: <ProtectedShell />,

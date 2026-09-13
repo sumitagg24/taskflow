@@ -13,6 +13,8 @@ import ResetPasswordPage from '@/components/pages/ResetPasswordPage';
 import VerifyEmailPage from '@/components/pages/VerifyEmailPage';
 import OAuthCallbackPage from '@/components/pages/auth/OAuthCallbackPage';
 import VerificationNoticePage from '@/components/pages/auth/VerificationNoticePage';
+import PrivacyPolicyPage from '@/components/pages/legal/PrivacyPolicyPage';
+import TermsOfServicePage from '@/components/pages/legal/TermsOfServicePage';
 import { LogoMark } from '@/components/ui';
 import { router, ShellContext, type TaskData } from '@/routes';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -65,6 +67,16 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
       return { kind: 'none', token: '' };
     }
   );
+
+  // Public legal pages: must render logged-out (consent-screen deep links
+  // like /privacy land here with no session) and logged-in alike, so they are
+  // handled before the auth gate — mirroring the /auth/callback approach.
+  const [legalRoute] = useState<'privacy' | 'terms' | null>(() => {
+    const path = window.location.pathname;
+    if (path.includes('/privacy')) return 'privacy';
+    if (path.includes('/terms')) return 'terms';
+    return null;
+  });
 
   // Leave the token screens: drop the query and fall back to the sign-in form.
   const clearAuthRoute = useCallback(() => {
@@ -214,6 +226,24 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
     const incoming = task as unknown as TaskData;
     setTasks((prev) => prev.map((t) => (t._id === incoming._id ? ({ ...t, ...incoming }) : t)));
   }, []);
+
+  // --- Public legal pages (no account needed) ---
+  if (legalRoute === 'privacy') {
+    return (
+      <>
+        <PrivacyPolicyPage />
+        <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
+      </>
+    );
+  }
+  if (legalRoute === 'terms') {
+    return (
+      <>
+        <TermsOfServicePage />
+        <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
+      </>
+    );
+  }
 
   // --- Auth routing ---
   if (!isAuthenticated) {

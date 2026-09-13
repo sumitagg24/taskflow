@@ -947,6 +947,28 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Legal */}
+        <div className="card p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Shield size={18} className="text-yellow-500" />
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Legal</h3>
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+            <a
+              href="/privacy"
+              className="text-gray-600 underline decoration-gray-300 underline-offset-4 transition-colors hover:text-gray-900 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-100"
+            >
+              Privacy Policy
+            </a>
+            <a
+              href="/terms"
+              className="text-gray-600 underline decoration-gray-300 underline-offset-4 transition-colors hover:text-gray-900 dark:text-gray-400 dark:decoration-gray-600 dark:hover:text-gray-100"
+            >
+              Terms of Service
+            </a>
+          </div>
+        </div>
+
         {/* Save Button */}
         <div className="flex justify-end">
           <Button onClick={handleSaveProfile} loading={saving} icon={<Save size={16} />}>

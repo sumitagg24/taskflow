@@ -393,6 +393,22 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
             {mode === 'login' ? 'Create one' : 'Sign in'}
           </button>
         </p>
+        <p className="mt-3 text-center text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+          By continuing you agree to our{' '}
+          <a
+            href="/terms"
+            className="rounded underline decoration-gray-300 underline-offset-[3px] transition-colors hover:text-gray-600 focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:decoration-gray-600 dark:hover:text-gray-300"
+          >
+            Terms of Service
+          </a>{' '}
+          and{' '}
+          <a
+            href="/privacy"
+            className="rounded underline decoration-gray-300 underline-offset-[3px] transition-colors hover:text-gray-600 focus-visible:ring-[3px] focus-visible:ring-yellow-400/15 dark:decoration-gray-600 dark:hover:text-gray-300"
+          >
+            Privacy Policy
+          </a>
+          .
       </motion.div>
     </AuthShell>
   );

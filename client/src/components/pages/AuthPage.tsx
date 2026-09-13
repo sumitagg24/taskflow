@@ -409,6 +409,7 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
             Privacy Policy
           </a>
           .
+        </p>
       </motion.div>
     </AuthShell>
   );

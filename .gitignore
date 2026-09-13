@@ -34,9 +34,12 @@ logs/
 # Locally uploaded attachments (created at runtime; the server mkdirs it)
 server/uploads/*
 
-# IDE
+# IDE and agent-tool configs
 .vscode/
 .idea/
+.claude/
+.opencode/
+.cursor/
 
 # Playwright / E2E local artifacts — never push
 client/e2e/.auth/

@@ -40,7 +40,6 @@ interface AuthCredentials {
 
 interface RegisterData {
   name: string;
-  username: string;
   email: string;
   password: string;
 }
@@ -92,7 +91,6 @@ const REFRESH_URL = `${apiConfig.apiBaseUrl}/auth/refresh-token`;
 const NO_REFRESH_PATHS = [
   '/auth/login',
   '/auth/register',
-  '/auth/check-username',
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/verify-email',
@@ -210,7 +208,6 @@ api.interceptors.response.use(
 export const authAPI = {
   login: (data: AuthCredentials): Promise<AxiosResponse> => api.post('/auth/login', data),
   register: (data: RegisterData): Promise<AxiosResponse> => api.post('/auth/register', data),
-  checkUsername: (username: string): Promise<AxiosResponse> => api.post('/auth/check-username', { username }),
   getProfile: (): Promise<AxiosResponse> => api.get('/auth/profile'),
   updateProfile: (data: ProfileData): Promise<AxiosResponse> => api.put('/auth/profile', data),
   updateFocusTime: (minutes: number): Promise<AxiosResponse> => api.post('/auth/focus-time', { minutes }),

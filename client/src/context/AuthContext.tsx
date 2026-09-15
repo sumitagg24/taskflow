@@ -10,7 +10,6 @@ import { hasSessionFlag } from '@/lib/session';
 interface User {
   _id: string;
   name: string;
-  username: string;
   email: string;
   avatar: string;
   bio: string;
@@ -43,7 +42,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isInitializing: boolean;
   login: (identifier: string, password: string) => Promise<void>;
-  register: (name: string, username: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   updateProfile: (data: Partial<User>) => Promise<void>;
   updateFocusTime: (minutes: number) => Promise<void>;
@@ -263,13 +262,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     toast.success(`Welcome back, ${data.user.name}!`);
   };
 
-  const register = async (name: string, username: string, email: string, password: string) => {
+  const register = async (name: string, email: string, password: string) => {
     // Referral attribution is best-effort on the server too, so a stale code
     // can't block the signup — send it if we have one and drop it either way.
     const referralCode = getReferralCode();
     const { data } = await api.post<AuthResponse & { message: string }>('/auth/register', {
       name,
-      username,
       email,
       password,
       ...(referralCode ? { referralCode } : {}),

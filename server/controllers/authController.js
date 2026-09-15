@@ -147,9 +147,26 @@ const sendAuthResponse = (req, res, auth, extra = {}) => {
 };
 
 const USER_FIELDS =
-  '_id name username email avatar bio preferences pomodoroSettings focusTimeToday streak emailVerified authProvider';
+  '_id name email avatar bio preferences pomodoroSettings focusTimeToday streak emailVerified authProvider';
 
-// -------------------- Check Username --------------------
+const deriveUniqueUsername = async (base) => {
+  const sanitized = String(base || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+  if (sanitized.length < 3) return null;
+  if (!(await User.exists({ username: sanitized }))) return sanitized;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const suffix = String(crypto.randomInt(1000, 10000));
+    const withSuffix = `${sanitized.slice(0, 29 - suffix.length)}_${suffix}`;
+    if (!(await User.exists({ username: withSuffix }))) return withSuffix;
+  }
+  return `user_${crypto.randomBytes(6).toString('hex')}`;
+};
+
+// -------------------- Check Username (deprecated - kept for compatibility) --------------------
 exports.checkUsername = async (req, res, next) => {
   try {
     validate(req);
@@ -169,19 +186,18 @@ exports.register = async (req, res, next) => {
   try {
     validate(req);
 
-    const { name, username, email, password } = req.body;
-    const normalizedUsername = username.toLowerCase().trim();
+    const { name, email, password } = req.body;
     const normalizedEmail = email.toLowerCase().trim();
 
     const existingUser = await User.findOne({
-      $or: [{ email: normalizedEmail }, { username: normalizedUsername }],
+      email: normalizedEmail,
     });
     if (existingUser) {
-      return res.status(400).json({ message: 'An account with this email or username already exists' });
+      return res.status(400).json({ message: 'An account with this email already exists' });
     }
 
-    if (passwordMatchesIdentity(password, normalizedEmail, normalizedUsername)) {
-      return res.status(400).json({ message: 'Password must not contain your email or username' });
+    if (passwordMatchesIdentity(password, normalizedEmail, '')) {
+      return res.status(400).json({ message: 'Password must not contain your email' });
     }
 
     if (isCommonPassword(password)) {
@@ -190,7 +206,6 @@ exports.register = async (req, res, next) => {
 
     const user = await User.create({
       name,
-      username: normalizedUsername,
       email: normalizedEmail,
       password,
       authProvider: 'local',
@@ -229,7 +244,6 @@ exports.login = async (req, res, next) => {
 
     const { identifier, password } = req.body;
     const trimmed = identifier.trim();
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 
     // Per-IP brute-force backoff (complements per-account lockout below).
     // Same 429 shape as an account lockout so a blocked IP is
@@ -245,20 +259,15 @@ exports.login = async (req, res, next) => {
       });
     }
 
-    let user;
-    if (isEmail) {
-      user = await User.findOne({ email: trimmed.toLowerCase() }).select('+password');
-    } else {
-      user = await User.findOne({ username: trimmed.toLowerCase() }).select('+password');
-    }
+    const user = await User.findOne({ email: trimmed.toLowerCase() }).select('+password');
 
     if (!user) {
       recordFail(ip);
-      return res.status(401).json({ message: 'Invalid email/username or password' });
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
     if (user.authProvider !== 'local') {
-      return res.status(401).json({ message: 'Invalid email/username or password' });
+      return res.status(401).json({ message: 'Invalid email or password' });
     }
 
     // Check account backoff lock
@@ -462,8 +471,8 @@ exports.resetPassword = async (req, res, next) => {
       return res.status(400).json({ message: 'This password is too common. Please choose a stronger password.' });
     }
 
-    if (passwordMatchesIdentity(password, user.email, user.username)) {
-      return res.status(400).json({ message: 'Password must not contain your email or username' });
+    if (passwordMatchesIdentity(password, user.email, '')) {
+      return res.status(400).json({ message: 'Password must not contain your email' });
     }
 
     user.password = password;
@@ -572,8 +581,8 @@ exports.changePassword = async (req, res, next) => {
       return res.status(400).json({ message: 'This password is too common. Please choose a stronger password.' });
     }
 
-    if (passwordMatchesIdentity(newPassword, user.email, user.username)) {
-      return res.status(400).json({ message: 'Password must not contain your email or username' });
+    if (passwordMatchesIdentity(newPassword, user.email, '')) {
+      return res.status(400).json({ message: 'Password must not contain your email' });
     }
 
     user.password = newPassword;
@@ -664,9 +673,10 @@ exports.googleAuth = async (req, res, next) => {
       }
     } else {
       try {
+        const suggestedUsername = await deriveUniqueUsername(normalizedEmail.split('@')[0]);
         user = await User.create({
           name: name || normalizedEmail.split('@')[0],
-          username: await deriveUniqueUsername(normalizedEmail.split('@')[0]),
+          ...(suggestedUsername && { username: suggestedUsername }),
           email: normalizedEmail,
           authProvider: 'google',
           googleId,
@@ -789,9 +799,10 @@ exports.auth0Auth = async (req, res, next) => {
       }
     } else {
       try {
+        const suggestedUsername = await deriveUniqueUsername(name || normalizedEmail.split('@')[0]);
         user = await User.create({
           name: name || normalizedEmail.split('@')[0],
-          username: await deriveUniqueUsername(name || normalizedEmail.split('@')[0]),
+          ...(suggestedUsername && { username: suggestedUsername }),
           email: normalizedEmail,
           authProvider: 'auth0',
           auth0Id: sub,
@@ -894,26 +905,6 @@ const sanitizeUsername = (raw) =>
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 30);
-
-/**
- * Pick the first candidate that sanitizes to a free username, else append a
- * random suffix. Without this an OAuth signup whose derived handle is taken
- * fails with a raw duplicate-key error.
- */
-const deriveUniqueUsername = async (...candidates) => {
-  for (const candidate of candidates) {
-    const base = sanitizeUsername(candidate);
-    if (base.length < 3) continue;
-    if (!(await User.exists({ username: base }))) return base;
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const suffix = String(crypto.randomInt(1000, 10000));
-      const withSuffix = `${base.slice(0, 29 - suffix.length)}_${suffix}`;
-      if (!(await User.exists({ username: withSuffix }))) return withSuffix;
-    }
-  }
-  return `user_${crypto.randomBytes(6).toString('hex')}`;
-};
 
 const githubFetch = async (url, accessToken) => {
   const response = await fetch(url, {
@@ -1094,9 +1085,10 @@ exports.githubCallback = async (req, res) => {
         user.avatar = profile.avatar_url;
       }
     } else {
+      const suggestedUsername = await deriveUniqueUsername(profile.login, normalizedEmail.split('@')[0]);
       user = new User({
         name: profile.name || profile.login || normalizedEmail.split('@')[0],
-        username: await deriveUniqueUsername(profile.login, normalizedEmail.split('@')[0]),
+        ...(suggestedUsername && { username: suggestedUsername }),
         email: normalizedEmail,
         authProvider: 'github',
         githubId,

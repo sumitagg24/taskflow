@@ -6,14 +6,13 @@ import { cn } from '@/lib/utils';
 import { authAPI } from '@/api/tasks';
 import { getReferralCode } from '@/lib/referral';
 import PasswordStrengthBar from '@/components/ui/PasswordStrengthBar';
-import { Input, UsernameInput } from '@/components/ui/Input';
+import { Input } from '@/components/ui/Input';
 import AuthShell from './auth/AuthShell';
 import SocialAuth from './auth/SocialAuth';
 import { PASSWORD_RULE_HINT, isStrongPassword } from './auth/password';
 import { AuthAlert, AuthHeading, AuthSubmit, RevealToggle } from './auth/primitives';
 
 type AuthMode = 'login' | 'register';
-type UsernameStatus = 'idle' | 'available' | 'taken' | 'typing';
 
 const COPY: Record<AuthMode, { title: string; sub: string; cta: string; busy: string; headline: string }> = {
   login: {
@@ -44,7 +43,6 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
   const referralCode = useMemo(() => getReferralCode(), []);
   const [mode, setMode] = useState<AuthMode>(referralCode ? 'register' : 'login');
   const [name, setName] = useState('');
-  const [username, setUsername] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -54,21 +52,15 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
   const [error, setError] = useState('');
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
-  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
-  const [usernameError, setUsernameError] = useState('');
 
   const { login, register } = useAuth();
   const nameRef = useRef<HTMLInputElement>(null);
-  const usernameRef = useRef<HTMLInputElement>(null);
   const identifierRef = useRef<HTMLInputElement>(null);
-  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const copy = COPY[mode];
 
   useEffect(() => {
     setError('');
-    setUsernameStatus('idle');
-    setUsernameError('');
 
     const id = window.setTimeout(() => {
       (mode === 'register' ? nameRef : identifierRef).current?.focus();
@@ -76,12 +68,6 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
     return () => window.clearTimeout(id);
   }, [mode]);
 
-  useEffect(
-    () => () => {
-      if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
-    },
-    []
-  );
   const allPass = useMemo(
     () => (mode === 'register' ? isStrongPassword(password) : true),
     [password, mode]
@@ -92,32 +78,6 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
     return confirmPassword === password || confirmPassword.length === 0;
   }, [confirmPassword, password, mode]);
 
-  const handleUsernameChange = (value: string) => {
-    setUsername(value);
-    setUsernameStatus('idle');
-    setUsernameError('');
-
-    if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
-
-    const trimmed = value.trim();
-    if (trimmed.length < 3) return;
-
-    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) {
-      setUsernameError('Letters, numbers and underscores only.');
-      return;
-    }
-
-    usernameDebounceRef.current = setTimeout(async () => {
-      setUsernameStatus('typing');
-      try {
-        const { data } = await authAPI.checkUsername(trimmed);
-        setUsernameStatus(data.available ? 'available' : 'taken');
-        if (!data.available) setUsernameError('That username is taken.');
-      } catch {
-        setUsernameStatus('idle');
-      }
-    }, 500);
-  };
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -126,21 +86,6 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
       if (!name.trim()) {
         setError('Your name is required.');
         nameRef.current?.focus();
-        return;
-      }
-      if (!username.trim()) {
-        setError('Pick a username.');
-        usernameRef.current?.focus();
-        return;
-      }
-      if (!/^[a-zA-Z0-9_]+$/.test(username.trim())) {
-        setError('Usernames can only contain letters, numbers and underscores.');
-        usernameRef.current?.focus();
-        return;
-      }
-      if (usernameStatus === 'taken') {
-        setError('That username is taken — try another.');
-        usernameRef.current?.focus();
         return;
       }
       if (!allPass) {
@@ -154,7 +99,7 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
     }
 
     if (!identifier.trim()) {
-      setError(mode === 'login' ? 'Enter your email or username.' : 'Enter your email address.');
+      setError(mode === 'login' ? 'Enter your email address.' : 'Enter your email address.');
       identifierRef.current?.focus();
       return;
     }
@@ -167,7 +112,7 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
       if (mode === 'login') {
         await login(identifier, password);
       } else {
-        await register(name, username, identifier, password);
+        await register(name, identifier, password);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
@@ -183,8 +128,6 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
     if (next === mode) return;
     setMode(next);
     setError('');
-    setUsernameStatus('idle');
-    setUsernameError('');
     setConfirmPassword('');
     setShowPassword(false);
     setShowConfirmPassword(false);
@@ -261,45 +204,23 @@ export default function AuthPage({ onForgotPassword, onVerificationNeeded }: Aut
               <Input
                 ref={nameRef}
                 label="Your name"
-                placeholder="Ada Lovelace"
+                placeholder="Your name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 icon={<User size={16} />}
                 autoComplete="name"
                 required
               />
-              <UsernameInput
-                ref={usernameRef}
-                label="Username"
-                placeholder="ada"
-                value={username}
-                onChange={(e) => handleUsernameChange(e.target.value)}
-                minLength={3}
-                maxLength={30}
-                autoComplete="username"
-                autoCapitalize="none"
-                spellCheck={false}
-                status={usernameStatus}
-                required
-                error={usernameError || undefined}
-                helperText={
-                  usernameStatus === 'available'
-                    ? 'That one is free.'
-                    : usernameStatus === 'typing'
-                      ? 'Checking…'
-                      : undefined
-                }
-              />
             </>
           )}
           <Input
             ref={identifierRef}
-            label={mode === 'login' ? 'Email or username' : 'Email'}
+            label={mode === 'login' ? 'Email' : 'Email'}
             type={mode === 'login' ? 'text' : 'email'}
-            placeholder={mode === 'login' ? 'you@example.com or ada' : 'you@example.com'}
+            placeholder={mode === 'login' ? 'you@example.com' : 'you@example.com'}
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
-            icon={mode === 'login' ? <AtSign size={16} /> : <Mail size={16} />}
+            icon={<Mail size={16} />}
             autoComplete={mode === 'login' ? 'username' : 'email'}
             inputMode={mode === 'login' ? 'text' : 'email'}
             autoCapitalize="none"

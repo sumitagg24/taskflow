@@ -1,0 +1,64 @@
+- generic [ref=f10e2]:
+  - generic [ref=f10e17]:
+    - complementary [ref=f10e18]:
+      - generic [ref=f10e20]:
+        - img "TaskFlow" [ref=f10e21]
+        - generic [ref=f10e29]: TaskFlow
+      - generic [ref=f10e31]:
+        - heading "Plan the work, then work the plan." [level=1] [ref=f10e32]
+        - separator [ref=f10e33]
+        - list [ref=f10e34]:
+          - listitem [ref=f10e35]:
+            - generic [aria-hidden] [ref=f10e36]: ▸
+            - text: Kanban board and calendar in one place
+          - listitem [ref=f10e37]:
+            - generic [aria-hidden] [ref=f10e38]: ▸
+            - text: Focus timer that logs the hours for you
+          - listitem [ref=f10e39]:
+            - generic [aria-hidden] [ref=f10e40]: ▸
+            - text: An AI assistant that drafts the busywork
+      - paragraph [ref=f10e41]: Your workspace, your data. Nothing shared without you asking.
+    - main [ref=f10e42]:
+      - radiogroup "Color theme" [ref=f10e44]:
+        - radio "Light theme" [checked] [ref=f10e45]
+        - radio "Dark theme" [ref=f10e52]
+        - radio "System theme" [ref=f10e55]
+      - generic [ref=f10e58]:
+        - tablist "Sign in or create an account" [ref=f10e59]:
+          - tab "Sign in" [selected] [ref=f10e60]
+          - tab "Sign up" [ref=f10e62]
+        - generic [ref=f10e63]:
+          - generic [ref=f10e64]:
+            - heading "Welcome back." [level=2] [ref=f10e65]
+            - paragraph [ref=f10e66]: Sign in and pick up exactly where you left off.
+          - generic [ref=f10e67]:
+            - generic [ref=f10e68]:
+              - generic [ref=f10e69]: Email or username*
+              - textbox "Email or username" [active] [ref=f10e71]:
+                - /placeholder: you@example.com or ada
+            - generic [ref=f10e73]:
+              - generic [ref=f10e74]: Password*
+              - generic [ref=f10e75]:
+                - textbox "Password" [ref=f10e76]:
+                  - /placeholder: ••••••••
+                - button "Show password" [ref=f10e78]
+            - button "Forgot your password?" [ref=f10e83]
+            - button "Sign in" [ref=f10e85]
+          - generic [ref=f10e87]:
+            - generic [aria-hidden] [ref=f10e88]:
+              - separator [ref=f10e89]
+              - generic [ref=f10e90]: or
+              - separator [ref=f10e91]
+            - button "Continue with Google" [ref=f10e92]
+          - paragraph [ref=f10e100]:
+            - text: Don't have an account?
+            - button "Create one" [ref=f10e101]
+          - paragraph [ref=f10e102]:
+            - text: By continuing you agree to our
+            - link "Terms of Service" [ref=f10e103] [cursor=pointer]:
+              - /url: /terms
+            - text: and
+            - link "Privacy Policy" [ref=f10e104] [cursor=pointer]:
+              - /url: /privacy
+            - text: .
+  - region "Notifications alt+T"

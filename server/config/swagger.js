@@ -59,7 +59,6 @@ const options = {
           properties: {
             _id: { type: 'string' },
             name: { type: 'string' },
-            username: { type: 'string' },
             email: { type: 'string', format: 'email' },
             bio: { type: 'string' },
             streak: { type: 'number' },
@@ -93,10 +92,9 @@ const options = {
               'application/json': {
                 schema: {
                   type: 'object',
-                  required: ['name', 'username', 'email', 'password'],
+                  required: ['name', 'email', 'password'],
                   properties: {
                     name: { type: 'string' },
-                    username: { type: 'string', minLength: 3, maxLength: 30, pattern: '^[a-zA-Z0-9_]+$' },
                     email: { type: 'string', format: 'email' },
                     password: { type: 'string', minLength: 8 },
                   },
@@ -113,7 +111,7 @@ const options = {
       '/api/auth/login': {
         post: {
           tags: ['Auth'],
-          summary: 'Login with email/username and password',
+          summary: 'Login with email and password',
           requestBody: {
             required: true,
             content: {
@@ -132,29 +130,6 @@ const options = {
           responses: {
             200: { description: 'Login successful' },
             401: { description: 'Invalid credentials' },
-          },
-        },
-      },
-      '/api/auth/check-username': {
-        post: {
-          tags: ['Auth'],
-          summary: 'Check if a username is available',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['username'],
-                  properties: {
-                    username: { type: 'string', minLength: 3, maxLength: 30 },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            200: { description: 'Username availability result' },
           },
         },
       },

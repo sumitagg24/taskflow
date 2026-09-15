@@ -1,0 +1,21 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - heading "dev-g4w68c5tpeyhxh3d" [level=3] [ref=f1e9]
+    - heading "Oops!, something went wrong" [level=3] [ref=f1e10]
+  - paragraph [ref=f1e12]: There could be a misconfiguration in the system or a service outage. We track these errors automatically, but if the problem persists feel free to contact us.Please try again.
+  - generic [ref=f1e13]:
+    - generic [ref=f1e14]:
+      - generic [ref=f1e15]:
+        - heading "TECHNICAL DETAILS" [level=4] [ref=f1e16]
+        - link "Hide details for this error" [active] [ref=f1e21] [cursor=pointer]:
+          - /url: "#"
+      - generic [ref=f1e18]:
+        - heading "SUPPORT" [level=4] [ref=f1e19]
+        - paragraph [ref=f1e20]: Please contact the systems administrator.
+    - generic [ref=f1e22]:
+      - paragraph [ref=f1e23]:
+        - strong [ref=f1e24]: invalid_request
+        - text: ": Unknown client: 305860554683-8ucid794aamnjic0d7so4uq136kb9htb.apps.googleusercontent.com"
+      - link "VIEW LOG" [ref=f1e25] [cursor=pointer]:
+        - /url: https://manage.auth0.com/#/logs/
+      - generic [ref=f1e26]: "TRACKING ID: da77896d2b7d15d7ebb0"

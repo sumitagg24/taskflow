@@ -28,7 +28,7 @@ const emailRule = body('email')
 const identifierRule = body('identifier')
   .trim()
   .notEmpty()
-  .withMessage('Email or Username is required');
+  .withMessage('Email is required');
 
 // Sign-in only checks that *something* was submitted. Re-running the signup
 // complexity rules here would (a) leak the password policy to anyone probing
@@ -41,15 +41,6 @@ const loginPasswordRule = body('password')
   .isLength({ max: 200 })
   .withMessage('Invalid credentials');
 
-const usernameRule = body('username')
-  .trim()
-  .notEmpty()
-  .withMessage('Username is required')
-  .isLength({ min: 3, max: 30 })
-  .withMessage('Username must be between 3 and 30 characters')
-  .matches(/^[a-zA-Z0-9_]+$/)
-  .withMessage('Username can only contain letters, numbers, and underscores');
-
 const registerValidator = [
   body('name')
     .trim()
@@ -57,7 +48,6 @@ const registerValidator = [
     .withMessage('Name is required')
     .isLength({ min: 2, max: 100 })
     .withMessage('Name must be between 2 and 100 characters'),
-  usernameRule,
   emailRule,
   passwordRule,
 ];
@@ -134,17 +124,6 @@ const refreshTokenValidator = [
     .withMessage('Refresh token is required'),
 ];
 
-const usernameCheckValidator = [
-  body('username')
-    .trim()
-    .notEmpty()
-    .withMessage('Username is required')
-    .isLength({ min: 3, max: 30 })
-    .withMessage('Username must be between 3 and 30 characters')
-    .matches(/^[a-zA-Z0-9_]+$/)
-    .withMessage('Username can only contain letters, numbers, and underscores'),
-];
-
 const oauthExchangeValidator = [
   body('code')
     .trim()
@@ -167,6 +146,5 @@ module.exports = {
   googleAuthValidator,
   auth0Validator,
   refreshTokenValidator,
-  usernameCheckValidator,
   oauthExchangeValidator,
 };

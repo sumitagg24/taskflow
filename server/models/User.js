@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
     },
     username: {
       type: String,
-      required: [true, 'Username is required'],
+      required: false,
       trim: true,
       lowercase: true,
       minlength: [3, 'Username must be at least 3 characters'],
@@ -184,7 +184,7 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 userSchema.index({ oauthExchangeToken: 1 }, { sparse: true });
-userSchema.index({ username: 1 }, { unique: true });
+userSchema.index({ username: 1 }, { unique: true, sparse: true });
 
 // Shared with the profile-update path so API validation rejects exactly what
 // the schema would reject (with a 400 instead of a 500).

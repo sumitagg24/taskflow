@@ -1,0 +1,82 @@
+- generic [ref=e2]:
+  - generic [ref=e17]:
+    - complementary [ref=e18]:
+      - generic [ref=e20]:
+        - img "TaskFlow" [ref=e21]
+        - generic [ref=e29]: TaskFlow
+      - generic [ref=e31]:
+        - heading "A calm place for work that actually ships." [level=1] [ref=e106]
+        - separator [ref=e33]
+        - list [ref=e34]:
+          - listitem [ref=e35]:
+            - generic [aria-hidden] [ref=e36]: ▸
+            - text: Kanban board and calendar in one place
+          - listitem [ref=e37]:
+            - generic [aria-hidden] [ref=e38]: ▸
+            - text: Focus timer that logs the hours for you
+          - listitem [ref=e39]:
+            - generic [aria-hidden] [ref=e40]: ▸
+            - text: An AI assistant that drafts the busywork
+      - paragraph [ref=e41]: Your workspace, your data. Nothing shared without you asking.
+    - main [ref=e42]:
+      - radiogroup "Color theme" [ref=e44]:
+        - radio "Light theme" [checked] [ref=e45]
+        - radio "Dark theme" [ref=e52]
+        - radio "System theme" [ref=e55]
+      - generic [ref=e58]:
+        - tablist "Sign in or create an account" [ref=e59]:
+          - tab "Sign in" [ref=e60]
+          - tab "Sign up" [selected] [ref=e62]
+        - generic [ref=e108]:
+          - generic [ref=e109]:
+            - heading "Start your workspace." [level=2] [ref=e110]
+            - paragraph [ref=e111]: A minute to set up, and the busywork starts writing itself.
+          - alert [ref=e166]:
+            - generic [ref=e171]: Google sign-in was cancelled before completing.
+          - generic [ref=e112]:
+            - generic [ref=e113]:
+              - generic [ref=e114]: Your name*
+              - textbox "Your name" [active] [ref=e116]:
+                - /placeholder: Ada Lovelace
+                - text: sumit
+            - generic [ref=e117]:
+              - generic [ref=e118]: Username*
+              - textbox "Username" [ref=e120]:
+                - /placeholder: ada
+                - text: sumitagg3213
+            - generic [ref=e121]:
+              - generic [ref=e122]: Email*
+              - textbox "Email" [ref=e124]:
+                - /placeholder: you@example.com
+            - generic [ref=e126]:
+              - generic [ref=e127]: Password*
+              - generic [ref=e128]:
+                - textbox "Password" [ref=e129]:
+                  - /placeholder: At least 8 characters
+                - button "Show password" [ref=e131]
+            - generic [ref=e135]:
+              - generic [ref=e136]: Confirm password*
+              - generic [ref=e137]:
+                - textbox "Confirm password" [ref=e138]:
+                  - /placeholder: Type it once more
+                - button "Show password" [ref=e140]
+            - button "Create account" [ref=e145]
+          - generic [ref=e147]:
+            - generic [aria-hidden] [ref=e148]:
+              - separator [ref=e149]
+              - generic [ref=e150]: or
+              - separator [ref=e151]
+            - button "Sign up with Google" [ref=e152]
+            - status [ref=e160]: Couldn’t reach the sign-in service to confirm options — if this fails, the service may be down. Try again shortly.
+          - paragraph [ref=e161]:
+            - text: Already have an account?
+            - button "Sign in" [ref=e162]
+          - paragraph [ref=e163]:
+            - text: By continuing you agree to our
+            - link "Terms of Service" [ref=e164] [cursor=pointer]:
+              - /url: /terms
+            - text: and
+            - link "Privacy Policy" [ref=e165] [cursor=pointer]:
+              - /url: /privacy
+            - text: .
+  - region "Notifications alt+T"

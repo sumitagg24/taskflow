@@ -1,0 +1,76 @@
+# Render Blueprint — TaskFlow API (persistent Node.js service)
+#
+# This file defines the Render web service for the API backend.
+# The frontend stays on Vercel (existing setup).
+#
+# One-click deploy: push this file to main, then in Render Dashboard
+# click "New" → "Blueprint" and select this repo.
+#
+# Required environment variables (set in Render Dashboard → Environment):
+#   MONGO_URI, JWT_SECRET, JWT_REFRESH_SECRET, CLIENT_URL, ALLOWED_ORIGINS
+#   + S3/R2 vars if using Cloudflare R2 for uploads
+#
+# The service runs server/server.js (persistent process with Socket.IO
+# and background intervals) — NOT the Vercel serverless adapter.
+
+services:
+  - type: web
+    name: taskflow-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install --prefix server && npm install --prefix client && npm run build --prefix client
+    startCommand: npm start --prefix server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: TRUST_PROXY
+        value: "true"
+      # ── Database (set manually) ──
+      - key: MONGO_URI
+        sync: false
+      # ── Auth secrets (set manually) ──
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: AI_KEY_SECRET
+        sync: false
+      # ── Origins ──
+      - key: CLIENT_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      # ── OAuth (set manually) ──
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      # ── Uploads — Cloudflare R2 (set manually after R2 bucket creation) ──
+      - key: STORAGE_MODE
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+      # ── Background jobs (in-process intervals, fine for single instance) ──
+      - key: DISABLE_INTERVAL_JOBS
+        value: "false"
+      # ── Logging ──
+      - key: LOG_LEVEL
+        value: info

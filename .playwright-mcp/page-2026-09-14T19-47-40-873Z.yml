@@ -1,0 +1,13 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - heading "dev-g4w68c5tpeyhxh3d" [level=3] [ref=f1e9]
+    - heading "Oops!, something went wrong" [level=3] [ref=f1e10]
+  - paragraph [ref=f1e12]: There could be a misconfiguration in the system or a service outage. We track these errors automatically, but if the problem persists feel free to contact us.Please try again.
+  - generic [ref=f1e14]:
+    - generic [ref=f1e15]:
+      - heading "TECHNICAL DETAILS" [level=4] [ref=f1e16]
+      - link "See details for this error" [ref=f1e17] [cursor=pointer]:
+        - /url: "#"
+    - generic [ref=f1e18]:
+      - heading "SUPPORT" [level=4] [ref=f1e19]
+      - paragraph [ref=f1e20]: Please contact the systems administrator.

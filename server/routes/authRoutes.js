@@ -3,14 +3,14 @@ const router = express.Router();
 const {
   register, login, getProfile, updateProfile, updateFocusTime,
   forgotPassword, resetPassword, verifyEmail, resendVerification,
-  refreshToken, changePassword, googleAuth, auth0Auth, logout, checkUsername,
+  refreshToken, changePassword, googleAuth, auth0Auth, logout,
   githubStart, githubCallback, exchangeOAuthCode, getAuthProviders,
 } = require('../controllers/authController');
 const {
   registerValidator, loginValidator, forgotPasswordValidator,
   resetPasswordValidator, verifyEmailValidator, resendVerificationValidator,
   changePasswordValidator, googleAuthValidator, auth0Validator, refreshTokenValidator,
-  usernameCheckValidator, oauthExchangeValidator,
+  oauthExchangeValidator,
 } = require('../validators/authValidators');
 const { protect } = require('../middleware/auth');
 const {
@@ -22,7 +22,6 @@ const {
 // Public routes
 router.post('/register', authLimiter, registerValidator, register);
 router.post('/login', authLimiter, loginValidator, login);
-router.post('/check-username', authLimiter, usernameCheckValidator, checkUsername);
 router.post('/forgot-password', passwordResetLimiter, forgotPasswordValidator, forgotPassword);
 router.post('/reset-password', passwordResetLimiter, resetPasswordValidator, resetPassword);
 router.post('/verify-email', verificationLimiter, verifyEmailValidator, verifyEmail);

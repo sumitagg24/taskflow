@@ -48,11 +48,10 @@ describe('Auth API', () => {
 
   it('authAPI.register sends POST to /auth/register', async () => {
     const { authAPI } = await import('./tasks');
-    await authAPI.register({ name: 'Test', username: 'testuser', email: 'test@test.com', password: '123456' });
+    await authAPI.register({ name: 'Test', email: 'test@test.com', password: '123456' });
 
     expect(mockedAxios.post).toHaveBeenCalledWith('/auth/register', {
       name: 'Test',
-      username: 'testuser',
       email: 'test@test.com',
       password: '123456',
     });

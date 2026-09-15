@@ -32,7 +32,21 @@ function csrfProtection(req, res, next) {
   // native/API clients) is not auto-sent by browsers, so skip the check.
   if (req.headers.authorization) return next();
 
-  // ---- Fetch Metadata defense (stronger than Origin/Referer) ----
+  // ---- First-party allowlist first (split-deploy topology) ----
+  // The SPA and API intentionally live on different origins in production
+  // (e.g. Vercel frontend + persistent API host). Browsers label those
+  // requests `Sec-Fetch-Site: cross-site` even though they are legitimate
+  // first-party traffic, so an explicitly allowlisted Origin must win over
+  // the Fetch Metadata site value — otherwise every cookie-authed mutation
+  // from the production frontend is rejected. Origins NOT on the allowlist
+  // still fall through to the strict checks below.
+  const origin = req.headers.origin;
+  const referer = req.headers.referer || req.headers.referrer;
+  const candidate = origin || (referer ? originFromReferer(referer) : undefined);
+
+  if (candidate && isOriginAllowed(candidate)) return next();
+
+  // ---- Fetch Metadata defense (no allowlisted Origin present) ----
   // Browsers attach Sec-Fetch-* headers to every request and attackers cannot
   // strip or forge them from cross-site contexts, so when present they take
   // precedence. `cross-site` is always hostile for a cookie-authed mutation.
@@ -46,10 +60,6 @@ function csrfProtection(req, res, next) {
     }
     // 'same-origin' and 'none' pass through to normal handling.
   }
-
-  const origin = req.headers.origin;
-  const referer = req.headers.referer || req.headers.referrer;
-  const candidate = origin || (referer ? originFromReferer(referer) : undefined);
 
   if (!isOriginAllowed(candidate)) {
     return res.status(403).json({ message: 'Cross-origin request forbidden' });

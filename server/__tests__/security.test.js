@@ -252,5 +252,35 @@ describe('Security fixes', () => {
       expect(body).not.toContain('/app/server/config.js');
       expect(body).not.toMatch(/mongodb\+srv:\/\//);
     });
+
+    it('exposes 4xx messages but masks 5xx messages in production', () => {
+      const prev = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const capture = (err) => {
+          let status;
+          let payload;
+          const res = {
+            status: (s) => { status = s; return res; },
+            json: (p) => { payload = p; return res; },
+            req: {},
+          };
+          errorHandler(err, { path: '/x' }, res, () => {});
+          return { status, payload };
+        };
+        const bad = new Error('Password must contain an uppercase letter');
+        bad.statusCode = 400;
+        const r400 = capture(bad);
+        expect(r400.status).toBe(400);
+        expect(r400.payload.message).toBe('Password must contain an uppercase letter');
+
+        const boom = new Error('knex blew up at /app/server/config.js');
+        const r500 = capture(boom);
+        expect(r500.status).toBe(500);
+        expect(r500.payload.message).toBe('Internal Server Error');
+      } finally {
+        process.env.NODE_ENV = prev;
+      }
+    });
   });
 });

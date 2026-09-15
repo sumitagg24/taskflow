@@ -43,7 +43,15 @@ const errorHandler = (err, req, res, next) => {
     // behaviour below is unchanged.
     reportError(err, { requestId, route: template || req.path, statusCode });
   }
-  response.error(res, process.env.NODE_ENV === 'production' ? 'Internal Server Error' : sanitizeErrorMessage(err.message), statusCode);
+  // 4xx errors are client mistakes with author-controlled messages (validator
+  // output, "not found", "invalid token") — safe to expose (sanitized) so the
+  // UI can show them. Without this, production auth forms display a useless
+  // "Internal Server Error" for e.g. a weak password. 5xx may contain
+  // internals: masked in production, sanitized elsewhere.
+  const message = statusCode < 500
+    ? (sanitizeErrorMessage(err.message) || 'Request failed')
+    : (process.env.NODE_ENV === 'production' ? 'Internal Server Error' : sanitizeErrorMessage(err.message));
+  response.error(res, message, statusCode);
 };
 
 module.exports = errorHandler;

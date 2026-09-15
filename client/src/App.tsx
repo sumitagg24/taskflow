@@ -15,6 +15,7 @@ import OAuthCallbackPage from '@/components/pages/auth/OAuthCallbackPage';
 import VerificationNoticePage from '@/components/pages/auth/VerificationNoticePage';
 import PrivacyPolicyPage from '@/components/pages/legal/PrivacyPolicyPage';
 import TermsOfServicePage from '@/components/pages/legal/TermsOfServicePage';
+import ContactPage from '@/components/pages/legal/ContactPage';
 import { LogoMark } from '@/components/ui';
 import { router, ShellContext, type TaskData } from '@/routes';
 import ErrorBoundary from '@/components/ErrorBoundary';
@@ -71,10 +72,11 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
   // Public legal pages: must render logged-out (consent-screen deep links
   // like /privacy land here with no session) and logged-in alike, so they are
   // handled before the auth gate — mirroring the /auth/callback approach.
-  const [legalRoute] = useState<'privacy' | 'terms' | null>(() => {
+  const [legalRoute] = useState<'privacy' | 'terms' | 'contact' | null>(() => {
     const path = window.location.pathname;
     if (path.includes('/privacy')) return 'privacy';
     if (path.includes('/terms')) return 'terms';
+    if (path.includes('/contact')) return 'contact';
     return null;
   });
 
@@ -240,6 +242,14 @@ function ShellContent({ isAuthenticated, resolvedTheme }: { isAuthenticated: boo
     return (
       <>
         <TermsOfServicePage />
+        <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
+      </>
+    );
+  }
+  if (legalRoute === 'contact') {
+    return (
+      <>
+        <ContactPage />
         <Toaster position="bottom-right" richColors closeButton theme={resolvedTheme} />
       </>
     );

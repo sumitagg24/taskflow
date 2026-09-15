@@ -1,4 +1,12 @@
-import { LegalLayout, LegalSection, LegalList, SUPPORT_EMAIL } from './LegalLayout';
+import { LegalLayout, LegalSection, LegalList } from './LegalLayout';
+
+function ContactSupportLink() {
+  return (
+    <a href="/contact" className="underline underline-offset-4">
+      Contact Support
+    </a>
+  );
+}
 
 export default function PrivacyPolicyPage() {
   return (
@@ -108,8 +116,8 @@ export default function PrivacyPolicyPage() {
         <LegalList>
           <li>Auth0 — identity and sign-in infrastructure.</li>
           <li>Google and GitHub — only to complete the social sign-in you choose.</li>
-          <li>Vercel — hosts the web application; Railway — hosts the API.</li>
-          <li>A managed MongoDB database and S3-compatible object storage for attachments.</li>
+          <li>Vercel — hosts the web application; Belmo — hosts the API.</li>
+          <li>MongoDB Atlas — the database; Backblaze B2 — object storage for attachments.</li>
           <li>Transactional email delivery (SMTP / Resend) for verification, reset, invitation, and notification emails.</li>
           <li>The AI provider you personally connect — and only content you submit to the assistant.</li>
         </LegalList>
@@ -167,12 +175,10 @@ export default function PrivacyPolicyPage() {
       <LegalSection index="8" heading="Your rights and choices">
         <LegalList>
           <li>
-            <strong>Access, correction, and deletion:</strong> email{' '}
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
-              {SUPPORT_EMAIL}
-            </a>{' '}
-            from your account email address and we will action your request within 30 days,
-            including permanently deleting your account and personal data.
+            <strong>Access, correction, and deletion:</strong> send us a message through our{' '}
+            <ContactSupportLink /> page from your account email address and we will action
+            your request within 30 days, including permanently deleting your account and
+            personal data.
           </li>
           <li>
             <strong>A copy of your data:</strong> request an export of the personal data we hold
@@ -239,11 +245,8 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection index="12" heading="Contact us">
         <p>
-          TaskFlow —{' '}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
-            {SUPPORT_EMAIL}
-          </a>
-          . We aim to answer privacy requests within 30 days.
+          TaskFlow — reach us through our <ContactSupportLink /> page. We aim to
+          answer privacy requests within 30 days.
         </p>
       </LegalSection>
     </LegalLayout>

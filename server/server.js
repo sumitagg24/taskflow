@@ -77,6 +77,22 @@ if (process.env.NODE_ENV === 'production') {
   if (!process.env.CLIENT_URL) {
     throw new Error('CLIENT_URL environment variable is required in production');
   }
+  // CLIENT_URL seeds every OAuth redirect target — reject non-http(s) values
+  // (open-redirect hardening) and refuse plain http for non-loopback hosts.
+  try {
+    const parsed = new URL(process.env.CLIENT_URL);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`CLIENT_URL must be an http(s) URL, got "${process.env.CLIENT_URL}"`);
+    }
+    const host = parsed.hostname.toLowerCase();
+    const loopback = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+    if (parsed.protocol !== 'https:' && !loopback) {
+      throw new Error('CLIENT_URL must use https:// in production (http is allowed only for loopback)');
+    }
+  } catch (err) {
+    if (err.message.startsWith('CLIENT_URL')) throw err;
+    throw new Error(`CLIENT_URL is not a valid URL: "${process.env.CLIENT_URL}"`);
+  }
   if (!process.env.ALLOWED_ORIGINS || !process.env.ALLOWED_ORIGINS.trim()) {
     logger.warn('WARNING: ALLOWED_ORIGINS is not set in production — all browser origins will be rejected (fail-closed). Set ALLOWED_ORIGINS to a comma-separated list of production browser origins.');
   }

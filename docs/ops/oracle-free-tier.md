@@ -1,6 +1,6 @@
 # TaskFlow on Oracle Cloud Always-Free
 
-TaskFlow's API host as of the Railway migration. One **always-free** Ampere A1
+An alternative persistent host for TaskFlow's API. One **always-free** Ampere A1
 VM runs a single Docker stack — the Node API (Express + Socket.IO + background
 jobs) behind a Caddy edge that terminates TLS — while the React SPA stays on
 Vercel and MongoDB stays on the existing free Atlas cluster.
@@ -85,7 +85,7 @@ After it reports live, continue with §4.
 
 ## 5. Continuous deployment
 
-`.github/workflows/deploy.yml` (replaced from the Railway version) SSHes into
+`.github/workflows/deploy.yml` SSHes into
 the VM after every successful CI run on main and runs `git pull` +
 `docker compose up -d --build`, then smoke-checks `/api/health` via
 `scripts/deploy-smoke.cjs`. It **self-skips with a notice** until these repo
@@ -110,18 +110,18 @@ ssh ubuntu@<VM_PUBLIC_IP> 'sudo docker compose -f /opt/taskflow/deploy/oracle/do
   re-run `docker compose -f deploy/oracle/docker-compose.yml up -d --build`.
   Procedure details: `docs/ops/rollback.md`.
 - **Backups** — data lives in Atlas (`docs/ops/backup-restore.md`); attachments
-  live in the `uploads` Docker volume (persist across redeploys — better than
-  Railway's ephemeral disk; still export periodically).
+   live in the `uploads` Docker volume (persist across redeploys — unlike an
+   ephemeral disk; still export periodically).
 - **Updates** — `sudo apt update && sudo apt upgrade` monthly + reboot for
   kernel updates; Oracle won't patch a free VM for you.
 
-## 7. Decommission Railway
+## 7. Decommission retired host — DONE
 
-1. Railway dashboard → project → **Delete** (stops any billing).
-2. Repo → Settings → Secrets → delete `RAILWAY_TOKEN`.
-3. `railway.json`, `scripts/railway-setup.cjs` and `docs/ops/railway.md`
-   stay in the repo as an archived reference (marked deprecated) — they are
-   inert without a linked project.
+The retired host is fully decommissioned: its service/domain is deleted and
+every trace has been removed from the repo (deploy config, setup script and
+runbook deleted, the setup npm script gone, docs re-pointed at Belmo).
+If any secret was ever stored on the old host, rotate it. Also delete any
+leftover host-token repo secret (Settings → Secrets).
 
 ## 8. Troubleshooting
 

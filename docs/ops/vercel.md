@@ -6,11 +6,10 @@
 > project MAY also run the API as stateless functions (`api/index.js`, no
 > realtime) — see §8.
 
-TaskFlow's primary deploy is **one Oracle Cloud Always-Free VM** serving the API
-with the SPA on Vercel — see [oracle-free-tier.md](oracle-free-tier.md). The
-Railway single-service model this page was written for is retired; below,
-`<api-host>` is the API's public hostname (previously a `*.up.railway.app`
-domain).
+TaskFlow's primary deploy is **the Belmo API host** serving the API
+(`https://taskflow-1c61.onbelmo.uk`, auto-deploys from `main`) with the SPA
+on Vercel. Below, `<api-host>` is the API's public hostname
+(currently `taskflow-1c61.onbelmo.uk`).
 
 This guide is for the **split deploy**: the React SPA is served as a
 static site by Vercel, while the Express + Socket.IO API keeps running on its
@@ -36,10 +35,10 @@ Browser
 | **Vercel** (project env) | `VITE_API_URL` | `https://<api-host>/api` |
 | **Vercel** | `VITE_SOCKET_URL` | `https://<api-host>` |
 | **Vercel** | `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID` | your Auth0 tenant + SPA client ID |
-| **Oracle VM** | `CLIENT_URL` | `https://<spa>.vercel.app` |
-| **Oracle VM** | `ALLOWED_ORIGINS` | `https://<spa>.vercel.app` (+ any custom domains, comma-separated) |
-| **Oracle VM** | `TRUST_PROXY` | `true` (Caddy terminates TLS on the VM) |
-| **Oracle VM** | `GITHUB_CALLBACK_URL` | `https://<api-host>/api/auth/github/callback` |
+| **API host (Belmo)** | `CLIENT_URL` | `https://<spa>.vercel.app` |
+| **API host (Belmo)** | `ALLOWED_ORIGINS` | `https://<spa>.vercel.app` (+ any custom domains, comma-separated) |
+| **API host (Belmo)** | `TRUST_PROXY` | `true` (Belmo terminates TLS at its edge proxy) |
+| **API host (Belmo)** | `GITHUB_CALLBACK_URL` | `https://<api-host>/api/auth/github/callback` |
 
 Everything else (`MONGO_URI`, `JWT_SECRET`, `JWT_REFRESH_SECRET`,
 `AI_KEY_SECRET`, ...) stays exactly as the single-service setup.
@@ -78,7 +77,7 @@ make it impossible to miss:
 
 ```bash
 # Fails when the live bundle lacks the apiConfig production guard, when any
-# baked-in absolute host is unreachable (e.g. a retired Railway URL), or when
+# baked-in absolute host is unreachable (e.g. a retired API URL), or when
 # the SPA origin answers /api/health as if it were the API.
 npm run smoke:spa-config -- --url https://<spa>.vercel.app --api-url https://<api-host>
 ```
@@ -93,11 +92,11 @@ In CI, add a step after the Vercel deploy:
   run: node scripts/spa-config-check.cjs
 ```
 
-The API-side health poll stays `scripts/deploy-smoke.cjs` (used by
-`.github/workflows/deploy.yml` after the Oracle deploy).
+The API-side health poll stays `scripts/deploy-smoke.cjs` (run after the API
+deploy).
 ---
 
-## 3. Oracle side (the API)
+## 3. API side (Belmo)
 
 1. Set **`CLIENT_URL=https://<spa>.vercel.app`** — this is the redirect target
    for OAuth callbacks and the origin used for password-reset / verification
@@ -105,8 +104,9 @@ The API-side health poll stays `scripts/deploy-smoke.cjs` (used by
 2. Set **`ALLOWED_ORIGINS=https://<spa>.vercel.app`**. This is a *fail-closed*
    allowlist: production CORS **and** the CSRF origin check both reject any
    browser origin not listed. Add custom domains as a comma-separated list.
-3. Keep `TRUST_PROXY=true` (Caddy terminates TLS on the VM).
-4. Redeploy the VM. Verify:
+3. Keep `TRUST_PROXY=true` (Belmo terminates TLS at its edge proxy).
+4. Push to `main` (Belmo auto-deploys) or redeploy from the Belmo dashboard.
+   Verify:
    ```bash
    curl -s https://<api-host>/api/health
    # {"status":"ok","db":"connected",...}

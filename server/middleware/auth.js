@@ -182,7 +182,18 @@ const protect = async (req, res, next) => {
   }
 
   if (!token) {
-    return res.status(401).json({ message: 'Not authorized, no token provided' });
+    // Browser sessions: the access cookie's maxAge equals the JWT lifetime
+    // (15m), so once it lapses the browser stops sending it while the 7d
+    // httpOnly refresh cookie survives. Such a request is mid-session, not a
+    // sign-out — tag the 401 so the SPA's single-flight refresh reacquires an
+    // access token instead of treating the plain 401 as a permanent logout on
+    // reload. No refresh cookie (or no cookie at all) → nothing to refresh,
+    // so the 401 stays code-less and the client goes straight to sign-in.
+    const refreshable = Boolean(getAuthCookie(req, 'refresh'));
+    return res.status(401).json({
+      message: 'Not authorized, no token provided',
+      ...(refreshable ? { code: 'TOKEN_EXPIRED' } : {}),
+    });
   }
 
   try {

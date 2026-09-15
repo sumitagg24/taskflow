@@ -357,7 +357,7 @@ describe('Calendar API', () => {
 });
 
 describe('Interceptor', () => {
-  it('attaches auth token from localStorage', async () => {
+  it('never attaches an Authorization header (cookie-only auth)', async () => {
     localStorage.setItem('accessToken', 'test-token-123');
 
     // Re-import to trigger interceptor setup
@@ -368,7 +368,7 @@ describe('Interceptor', () => {
     const config = { headers: {} };
     const result = interceptorMock.fn(config);
 
-    expect(result.headers.Authorization).toBe('Bearer test-token-123');
+    expect(result.headers.Authorization).toBeUndefined();
   });
 
   it('does not attach auth token when not in localStorage', async () => {

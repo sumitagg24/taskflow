@@ -1,7 +1,7 @@
 /**
  * Shared session-detection helpers (same-origin and cross-origin deploys).
  *
- * Same-origin deploy (default, Railway single-service): the server writes a
+ * Same-origin deploy (default, single-service): the server writes a
  * readable `tf_session` cookie next to the httpOnly access/refresh pair, so
  * the SPA can decide to skip the boot profile fetch entirely — zero requests,
  * straight to login on fresh visits.

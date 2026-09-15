@@ -8,6 +8,11 @@ let io = null;
 
 function initializeSocket(server) {
   io = new Server(server, {
+    // Don't serve the debug client bundle — the SPA ships its own
+    // socket.io-client. Cap inbound payload size (event payloads are tiny
+    // validated primitives; anything larger is abuse).
+    serveClient: false,
+    maxHttpBufferSize: 1e6,
     cors: {
       origin: (origin, callback) => {
         if (isOriginAllowed(origin)) {

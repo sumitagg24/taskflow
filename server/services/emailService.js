@@ -15,17 +15,21 @@ const SMTP_CONFIGURED = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER && p
 
 // Resend transport — keeps the same sendMail contract as nodemailer so the
 // rest of the service is transport-agnostic.
-async function sendViaResend({ to, subject, html }) {
+async function sendViaResend({ to, subject, html, replyTo }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
+    const payload = { from: FROM_EMAIL, to, subject, html };
+    // reply_to keeps the user's address out of the envelope while letting
+    // support answer with one click. Validated by the caller.
+    if (replyTo) payload.reply_to = replyTo;
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -130,7 +134,7 @@ const EMAIL_RE = /^\S+@\S+\.\S+$/;
 // CR/LF to a single space; subjects are additionally capped in length.
 const sanitizeHeader = (val) => String(val ?? '').replace(/[\r\n]+/g, ' ');
 
-const sendEmail = async (to, subject, html) => {
+const sendEmail = async (to, subject, html, options = {}) => {
   // Accept a single address or an array; every address must look like an email.
   const recipients = Array.isArray(to) ? to : [to];
   const cleanRecipients = recipients.map((r) => sanitizeHeader(r).trim());
@@ -141,6 +145,13 @@ const sendEmail = async (to, subject, html) => {
   }
   const cleanTo = Array.isArray(to) ? cleanRecipients : cleanRecipients[0];
   const cleanSubject = sanitizeHeader(subject).trim().slice(0, 200);
+  // Optional Reply-To (contact form): validated like a recipient, never
+  // trusted blindly — a malformed value is dropped, not sent.
+  let cleanReplyTo;
+  if (options.replyTo !== undefined) {
+    const candidate = sanitizeHeader(options.replyTo).trim();
+    if (EMAIL_RE.test(candidate)) cleanReplyTo = candidate;
+  }
 
   if (!emailConfigured) {
     try {
@@ -158,6 +169,7 @@ const sendEmail = async (to, subject, html) => {
       to: cleanTo,
       subject: cleanSubject,
       html,
+      ...(cleanReplyTo ? { replyTo: cleanReplyTo } : {}),
     });
 
     const previewUrl = nodemailer.getTestMessageUrl(info);
@@ -286,6 +298,40 @@ exports.sendNotificationEmail = async (email, userName, notification) => {
 
 exports.isConfigured = () =>
   emailConfigured || SMTP_CONFIGURED || Boolean(process.env.RESEND_API_KEY);
+
+/**
+ * True only when a REAL delivery transport exists (Resend or SMTP).
+ * Ethereal/test fallback does not count: contact messages must never be
+ * silently swallowed by a preview inbox in production.
+ */
+exports.canDeliver = () => Boolean(process.env.RESEND_API_KEY) || SMTP_CONFIGURED;
+
+/**
+ * Contact-support message. The destination address lives ONLY in the
+ * server environment (SUPPORT_EMAIL) — it is never exposed to the browser.
+ * All user content is HTML-escaped; the sender's address travels as
+ * Reply-To so support can answer with one click.
+ */
+exports.sendContactMessage = async ({ name, email, subject, message }) => {
+  const to = (process.env.SUPPORT_EMAIL || '').trim();
+  if (!to || !EMAIL_RE.test(to)) {
+    const err = new Error('Support contact is not configured');
+    err.statusCode = 503;
+    throw err;
+  }
+  const html = baseTemplate(
+    'New support message',
+    `
+    <p style="color: #6B7280; font-size: 14px; line-height: 1.6;">
+      <strong>From:</strong> ${escapeHtml(name)} &lt;${escapeHtml(email)}&gt;<br />
+      <strong>Subject:</strong> ${escapeHtml(subject)}
+    </p>
+    <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 16px 0;" />
+    <p style="color: #111827; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(message)}</p>
+    `
+  );
+  return sendEmail(to, `[TaskFlow Support] ${subject}`, html, { replyTo: email });
+};
 
 exports.getEmailStatus = () => {
   return {

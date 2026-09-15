@@ -13,8 +13,11 @@ const options = {
       },
     },
     servers: [
-      { url: 'http://localhost:5000', description: 'Development server' },
-      { url: 'http://localhost:5000', description: 'Production server' },
+      // Relative: docs are served from the API's own origin on every host
+      // (Belmo, Oracle VM, Vercel serverless) — no hardcoded backend URL
+      // that can go stale and leak dead infrastructure into the bundle/docs.
+      { url: '/', description: 'Current API origin' },
+      { url: 'http://localhost:5000', description: 'Local development server' },
     ],
     components: {
       securitySchemes: {

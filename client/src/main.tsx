@@ -70,7 +70,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           redirect_uri: window.location.origin,
           ...(AUTH0_AUDIENCE ? { audience: AUTH0_AUDIENCE } : {}),
         }}
-        cacheLocation="localstorage"
+        cacheLocation="memory"
         useRefreshTokens
       >
         {appNode}

@@ -24,8 +24,8 @@ services:
       - TRUST_PROXY=true     # Caddy terminates TLS and forwards X-Forwarded-*
       - PORT=5000
     volumes:
-      # Attachments persist across redeploys instead of vanishing (they did on
-      # Railway's ephemeral disk). Back it up with the data export runbook.
+      # Attachments persist across redeploys instead of vanishing (as they do on
+      # ephemeral disks). Back it up with the data export runbook.
       - uploads:/app/server/uploads
     expose:
       - "5000"

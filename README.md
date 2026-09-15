@@ -294,7 +294,7 @@ to `server/.env` and edit as needed.
 | `AI_KEY_SECRET`      | Prod*    | —                        | Encrypts per-user AI keys at rest (*required once any user saves an AI key) |
 | `CLIENT_URL`         | Prod     | `http://localhost:3000`  | Allowed CORS origin / app URL |
 | `ALLOWED_ORIGINS`    | Prod     | *(deny all)*             | Comma-separated browser origins; production CORS is fail-closed when unset |
-| `TRUST_PROXY`        | No       | `false`                  | `true` only behind a real reverse proxy (Railway, nginx) |
+| `TRUST_PROXY`        | No       | `false`                  | `true` only behind a real reverse proxy (Belmo, nginx) |
 | `PORT`               | No       | `5000`                   | API port (1–65535) |
 | `NODE_ENV`           | No       | `development`            | `development` or `production` |
 | `GOOGLE_CLIENT_ID`   | No       | —                        | Enables Google Sign-In |
@@ -509,11 +509,13 @@ Run server tests before opening a pull request.
 
 ## Deployment
 
-**Production: Oracle Cloud Always-Free VM ($0) + Vercel SPA + Atlas MongoDB.**
-One Ampere A1 VM runs the API in Docker (Node + Socket.IO + background jobs)
-behind a Caddy edge with automatic HTTPS; the React SPA ships from Vercel; the
-database stays on the existing free Atlas cluster. Setup, env vars, OAuth
-origin rewiring, CD via SSH, and operations: [docs/ops/oracle-free-tier.md](docs/ops/oracle-free-tier.md).
+**Production: Belmo API + Vercel SPA + Atlas MongoDB + Backblaze B2.**
+The Express + Socket.IO API runs on Belmo (`https://taskflow-1c61.onbelmo.uk`,
+auto-deploys from `main`); the React SPA ships from Vercel; the database stays
+on the existing Atlas cluster; uploads use Backblaze B2 via the S3-compatible
+API (`STORAGE_MODE=s3` + `S3_*`). An alternative persistent-host runbook
+(Oracle Cloud Always-Free VM) lives at
+[docs/ops/oracle-free-tier.md](docs/ops/oracle-free-tier.md).
 
 **Vercel (SPA):** the client builds from `client/` with `VITE_API_URL` /
 `VITE_SOCKET_URL` pointing at the API origin; see [docs/ops/vercel.md](docs/ops/vercel.md)
@@ -523,9 +525,6 @@ source of truth (`client/src/lib/apiConfig.ts`) with a runtime guard:
 a cross-origin production build without `VITE_API_URL` throws at startup
 rather than silently calling `/api` on the SPA's own origin. Verify every
 SPA deploy with `npm run smoke:spa-config -- --url <spa> --api-url <api>`.
-
-**Railway:** retired (deprecated runbook kept for reference:
-[docs/ops/railway.md](docs/ops/railway.md)).
 
 **Single-process (any host):** build the client, then start the server — it
 serves both the API and the SPA from one port.

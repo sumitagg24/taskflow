@@ -3,12 +3,12 @@
  * Post-deploy smoke check: poll /api/health on a deployed base URL until it
  * reports { status: "ok", db: "connected" } (or time out).
  *
- * Dependency-free (Node 18+ global fetch). Used by .github/workflows/deploy.yml
- * after `railway up --detach`, which returns before the deployment is live —
- * this script is what actually waits for the new release to serve traffic.
+ * Dependency-free (Node 18+ global fetch). Polls the deployed API until the
+ * new release serves traffic — deploy pipelines return before the release
+ * is live, and this script is what actually waits for it.
  *
  * Usage:
- *   node scripts/deploy-smoke.cjs --url https://taskflow.up.railway.app
+ *   node scripts/deploy-smoke.cjs --url https://taskflow-1c61.onbelmo.uk
  *   node scripts/deploy-smoke.cjs --url https://x --timeout-seconds 600
  *
  * Env fallback: SMOKE_BASE_URL (used when --url is absent).
@@ -77,8 +77,8 @@ async function main() {
   if (!base) {
     console.error(
       'deploy-smoke: no base URL given.\n' +
-      'Pass --url https://<app>.up.railway.app or set the SMOKE_BASE_URL env var\n' +
-      '(in GitHub Actions: set the RAILWAY_PUBLIC_DOMAIN repository variable).'
+      'Pass --url https://taskflow-1c61.onbelmo.uk or set the SMOKE_BASE_URL env var\n' +
+      '(in GitHub Actions: set the API_PUBLIC_DOMAIN repository variable).'
     );
     process.exit(2);
   }

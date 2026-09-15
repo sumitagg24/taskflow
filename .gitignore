@@ -40,6 +40,10 @@ server/uploads/*
 .claude/
 .opencode/
 .cursor/
+# OpenCode project config — may contain MCP secrets (e.g. B2_APPLICATION_KEY)
+opencode.json
+opencode.jsonc
+.opencode/opencode.json
 
 # Playwright / E2E local artifacts — never push
 client/e2e/.auth/

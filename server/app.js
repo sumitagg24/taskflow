@@ -65,9 +65,11 @@ function createApp(options = {}) {
         formAction: ["'self'", 'https://github.com', ...(auth0CSP ? [auth0CSP] : [])],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
+        frameAncestors: ["'none'"],
         upgradeInsecureRequests: [],
       },
     },
+    frameguard: { action: 'deny' },
     crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
     crossOriginResourcePolicy: { policy: 'same-origin' },
   }));
@@ -190,6 +192,11 @@ function createApp(options = {}) {
   // Authenticated callable jobs (CRON_SECRET bearer) — the serverless-safe
   // replacement for setInterval ticks.
   app.use('/api/cron', apiLimiter, cronRoutes);
+
+  // Public contact-support intake (rate limited, validated; no auth so
+  // logged-out visitors can reach support).
+  const contactRoutes = require('./routes/contactRoutes');
+  app.use('/api/contact', apiLimiter, contactRoutes);
 
   // File upload (protected + rate limited). Storage backend selected by
   // STORAGE_MODE inside the route module.

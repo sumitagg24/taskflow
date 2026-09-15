@@ -526,13 +526,18 @@ exports.refreshToken = async (req, res, next) => {
     const auth = await createAuthResponse(user);
 
     setAuthCookies(res, auth.accessToken, auth.refreshToken);
-    // Refresh keeps a token body for legacy header-based clients (the SPA and
-    // browsers never read it — httpOnly cookies carry the new pair). The user
-    // object is intentionally omitted; refresh never needs it.
-    res.json({
-      accessToken: auth.accessToken,
-      refreshToken: auth.refreshToken,
-    });
+    // Cookie-only for browsers: the httpOnly pair rides automatically, so the
+    // JSON body carries no raw tokens (XSS/devtools/log exfiltration surface).
+    // Non-browser clients that explicitly asked with `?tokenResponse=bearer`
+    // still receive the pair — a browser page can never opt into this (see
+    // sendAuthResponse/isBrowserRequest).
+    if (req.query?.tokenResponse === 'bearer' && !isBrowserRequest(req)) {
+      return res.json({
+        accessToken: auth.accessToken,
+        refreshToken: auth.refreshToken,
+      });
+    }
+    return res.json({});
   } catch (error) {
     next(error);
   }
@@ -840,7 +845,22 @@ const githubConfigured = () =>
 
 const trimSlashes = (value) => String(value || '').replace(/\/+$/, '');
 
-const clientOrigin = () => trimSlashes(process.env.CLIENT_URL) || 'http://localhost:3000';
+// Never trust the raw env string as a redirect base: reduce it to a bare
+// http(s) origin so a misconfigured CLIENT_URL (path, query, credentials,
+// or a non-http scheme) cannot turn the OAuth `res.redirect()` targets into
+// an open redirect. Falls back to the dev origin when unparseable.
+const clientOrigin = () => {
+  const raw = trimSlashes(process.env.CLIENT_URL) || 'http://localhost:3000';
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return 'http://localhost:3000';
+    }
+    return url.origin;
+  } catch {
+    return 'http://localhost:3000';
+  }
+};
 
 // Defaults through the client origin so the dev proxy (:3000 → :5000) and the
 // same-origin production build both work with one registered callback URL.

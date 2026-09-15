@@ -113,6 +113,7 @@ const LIMITER_SPECS = {
   changePasswordLimiter: [60 * 1000, 3, 'Too many password change attempts. Please try again later.'],
   refreshLimiter: [60 * 1000, 10, 'Too many refresh attempts. Please try again later.'],
   logoutLimiter: [60 * 1000, 10, 'Too many logout attempts. Please try again later.'],
+  contactLimiter: [60 * 60 * 1000, 5, 'Too many contact messages. Please try again later.'],
 };
 
 const limiters = {};
@@ -148,6 +149,7 @@ exports.oauthLimiter = makeLimiter('oauthLimiter');
 exports.changePasswordLimiter = makeLimiter('changePasswordLimiter');
 exports.refreshLimiter = makeLimiter('refreshLimiter');
 exports.logoutLimiter = makeLimiter('logoutLimiter');
+exports.contactLimiter = makeLimiter('contactLimiter');
 
 exports.initRateLimitStore = initRateLimitStore;
 exports.getRateLimitState = getRateLimitState;

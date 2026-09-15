@@ -48,7 +48,10 @@ export default function OAuthCallbackPage({ onDone }: OAuthCallbackPageProps) {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
     const errorCode = params.get('error');
-    const serverMessage = params.get('message');
+    // `message` is reflected into UI text (React-escaped, never HTML) — still,
+    // cap it so a crafted link cannot stuff arbitrary phishing copy into the
+    // sign-in screen. Known error codes always have first-party copy above.
+    const serverMessage = (params.get('message') || '').slice(0, 200);
 
     // Burn the query immediately: the code is single-use, and leaving it in the
     // address bar invites a reload that can only ever fail.
@@ -60,6 +63,13 @@ export default function OAuthCallbackPage({ onDone }: OAuthCallbackPageProps) {
           serverMessage ||
           ERROR_COPY.UNEXPECTED
       );
+      return;
+    }
+
+    // The exchange code is a server-minted opaque token — reject anything with
+    // an implausible shape before POSTing it.
+    if (code.length > 512) {
+      setFailure(ERROR_COPY.UNEXPECTED);
       return;
     }
 

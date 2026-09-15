@@ -265,6 +265,57 @@ describe('GET /api/auth/profile', () => {
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('TOKEN_EXPIRED');
   });
+
+  it('tags a missing access token as TOKEN_EXPIRED when the refresh cookie is still present', async () => {
+    // Production browser flow: the httpOnly access cookie's maxAge equals the
+    // JWT lifetime (15m), so after idle the browser stops sending it while the
+    // 7d refresh cookie survives. The boot GET /auth/profile then arrives with
+    // NO access token — the server must classify this as refreshable or the
+    // SPA treats the plain 401 as a permanent logout on reload.
+    const { refreshToken } = await createTestUserWithTokens({ email: 'refreshable@example.com' });
+    const res = await request(app)
+      .get('/api/auth/profile')
+      .set('Cookie', [`refreshToken=${refreshToken}`]);
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('TOKEN_EXPIRED');
+  });
+
+  it('still leaves a tokenless request without any cookies a plain 401 (nothing to refresh)', async () => {
+    const res = await request(app).get('/api/auth/profile');
+    expect(res.status).toBe(401);
+    expect(res.body.code).not.toBe('TOKEN_EXPIRED');
+  });
+
+  it('recovers a browser session via refresh when only the refresh cookie is left (login → idle → reload)', async () => {
+    const { refreshToken } = await createTestUserWithTokens({ email: 'idle-reload@example.com' });
+
+    // Boot profile with no access cookie → refreshable 401.
+    const boot = await request(app)
+      .get('/api/auth/profile')
+      .set('Cookie', [`refreshToken=${refreshToken}`]);
+    expect(boot.status).toBe(401);
+    expect(boot.body.code).toBe('TOKEN_EXPIRED');
+
+    // Client single-flight refresh using the httpOnly refresh cookie.
+    const refresh = await request(app)
+      .post('/api/auth/refresh-token')
+      .set('Cookie', [`refreshToken=${refreshToken}`])
+      .send({});
+    expect(refresh.status).toBe(200);
+
+    const nextAccess = refresh.headers['set-cookie']
+      .find((c) => c.startsWith('accessToken='))
+      ?.split(';')[0]
+      .split('=')[1];
+    expect(nextAccess).toBeTruthy();
+
+    // Retried request with the rotated access cookie succeeds.
+    const profile = await request(app)
+      .get('/api/auth/profile')
+      .set('Cookie', [`accessToken=${nextAccess}`]);
+    expect(profile.status).toBe(200);
+    expect(profile.body.user.email).toBe('idle-reload@example.com');
+  });
 });
 
 // ========================================================================
@@ -445,14 +496,25 @@ describe('POST /api/auth/reset-password', () => {
 // REFRESH TOKEN
 // ========================================================================
 describe('POST /api/auth/refresh-token', () => {
-  it('returns new token pair with valid refresh token', async () => {
+  it('returns new token pair with valid refresh token for non-browser clients', async () => {
     const { accessToken, refreshToken } = await createTestUserWithTokens({ email: 'refresh@example.com' });
-    const res = await request(app).post('/api/auth/refresh-token').send({ refreshToken });
+    const res = await request(app).post('/api/auth/refresh-token?tokenResponse=bearer').send({ refreshToken });
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('accessToken');
     expect(res.body).toHaveProperty('refreshToken');
     expect(res.body.accessToken).not.toBe(accessToken);
     expect(res.body.refreshToken).not.toBe(refreshToken);
+  });
+
+  it('withholds raw tokens from browser requests (cookie-only)', async () => {
+    const { refreshToken } = await createTestUserWithTokens({ email: 'refresh-browser@example.com' });
+    const res = await request(app)
+      .post('/api/auth/refresh-token')
+      .set('Sec-Fetch-Site', 'same-origin')
+      .send({ refreshToken });
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('accessToken');
+    expect(res.body).not.toHaveProperty('refreshToken');
   });
 
   it('rejects invalid refresh token', async () => {
@@ -463,7 +525,7 @@ describe('POST /api/auth/refresh-token', () => {
 
   it('detects token reuse (old token after rotation)', async () => {
     const { refreshToken } = await createTestUserWithTokens({ email: 'reuse@example.com' });
-    const first = await request(app).post('/api/auth/refresh-token').send({ refreshToken });
+    const first = await request(app).post('/api/auth/refresh-token?tokenResponse=bearer').send({ refreshToken });
     expect(first.status).toBe(200);
     const second = await request(app).post('/api/auth/refresh-token').send({ refreshToken });
     expect(second.status).toBe(401);
@@ -471,7 +533,7 @@ describe('POST /api/auth/refresh-token', () => {
 
   it('invalidates all sessions on reuse', async () => {
     const { refreshToken } = await createTestUserWithTokens({ email: 'reuse2@example.com' });
-    const first = await request(app).post('/api/auth/refresh-token').send({ refreshToken });
+    const first = await request(app).post('/api/auth/refresh-token?tokenResponse=bearer').send({ refreshToken });
     expect(first.status).toBe(200);
     const second = await request(app).post('/api/auth/refresh-token').send({ refreshToken });
     expect(second.status).toBe(401);
@@ -842,7 +904,7 @@ describe('POST /api/auth/logout', () => {
       .set('Authorization', `Bearer ${second.accessToken}`);
     expect(profile.status).toBe(200);
     const refreshRes = await request(app)
-      .post('/api/auth/refresh-token')
+      .post('/api/auth/refresh-token?tokenResponse=bearer')
       .send({ refreshToken: second.refreshToken });
     expect(refreshRes.status).toBe(200);
     expect(refreshRes.body).toHaveProperty('accessToken');

@@ -1,8 +1,8 @@
 # TaskFlow single-image build for the Oracle Cloud free-tier VM (API + SPA fallback).
 #
 # The production UI lives on Vercel; this image also bundles client/dist so the
-# API origin can serve the SPA as a same-origin fallback — mirroring the old
-# Railway single-service model. VITE_* defaults to same-origin '/api' here;
+# API origin can serve the SPA as a same-origin fallback — mirroring the
+# single-service model. VITE_* defaults to same-origin '/api' here;
 # Vercel sets its own VITE_API_URL/VITE_SOCKET_URL at its build time.
 
 # ── Stage 1: build the client (SPA) ─────────────────────────────────────

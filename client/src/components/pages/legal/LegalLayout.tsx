@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { Logo } from '@/components/ui';
 
-export const SUPPORT_EMAIL = 'sumitaggw2004@gmail.com';
 export const LAST_UPDATED = 'September 13, 2026';
 
 /** Shared chrome for the public legal pages (/privacy, /terms). */
@@ -49,7 +48,7 @@ export function LegalLayout({
             <a href="/terms" className="underline-offset-4 hover:underline">
               Terms of Service
             </a>
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline-offset-4 hover:underline">
+            <a href="/contact" className="underline-offset-4 hover:underline">
               Contact us
             </a>
           </span>

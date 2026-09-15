@@ -3,9 +3,9 @@
  * Deployed-SPA configuration check: verifies that a hosted frontend build is
  * actually wired to a real API before (or after) a release.
  *
- * Why this exists: the shipped Vercel bundle pointed every API call at
+ * Why this exists: a shipped Vercel bundle once pointed every API call at
  * `/api` on the SPA's own origin (no API lives there) and Socket.IO at a
- * RETIRED Railway host. The site looked fine and every auth request
+ * RETIRED host. The site looked fine and every auth request
  * silently got index.html back. This script makes that failure mode a
  * hard, automated error instead of a silent outage.
  *
@@ -204,7 +204,7 @@ async function main() {
         continue; // own origin / loopback (guard text) / doc examples
       }
       // Any real host baked into the bundle must be alive — this catches the
-      // retired-Railway-host class of outage.
+      // retired-host class of outage.
       try {
         await fetchText(`${host}/api/health`);
       } catch {
@@ -226,8 +226,8 @@ async function main() {
     // origin inside auth0-spa-js) live in other chunks. Documentation links
     // always carry a real path (/docs/…, /en/…, /login/…) and are never
     // candidates. A candidate host MUST answer /api/health with the TaskFlow
-    // healthy payload — anything else (Railway's JSON "Application not
-    // found", a hosting HTML 404 page, a non-ok status) means the deploy is
+    // healthy payload — anything else (a bare "Application not
+    // found" JSON, a hosting HTML 404 page, a non-ok status) means the deploy is
     // wired to a dead backend even though the domain still resolves.
     const apiHosts = new Set();
     const absRe = /https:\/\/[a-zA-Z0-9][a-zA-Z0-9.-]*(?::\d{1,5})?(?:\/[^\s"'`\\]*)?/g;

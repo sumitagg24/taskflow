@@ -1,4 +1,12 @@
-import { LegalLayout, LegalSection, LegalList, SUPPORT_EMAIL } from './LegalLayout';
+import { LegalLayout, LegalSection, LegalList } from './LegalLayout';
+
+function ContactSupportLink() {
+  return (
+    <a href="/contact" className="underline underline-offset-4">
+      Contact Support
+    </a>
+  );
+}
 
 export default function TermsOfServicePage() {
   return (
@@ -122,11 +130,8 @@ export default function TermsOfServicePage() {
         <LegalList>
           <li>
             <strong>By you:</strong> stop using TaskFlow anytime. To permanently delete your account
-            and personal data, email{' '}
-            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
-              {SUPPORT_EMAIL}
-            </a>{' '}
-            from your account address — we complete deletions within 30 days.
+            and personal data, send us a message through our <ContactSupportLink /> page
+            from your account email address — we complete deletions within 30 days.
           </li>
           <li>
             <strong>By us:</strong> we may suspend or terminate accounts that breach these Terms or
@@ -173,11 +178,9 @@ export default function TermsOfServicePage() {
 
       <LegalSection index="13" heading="Governing law and disputes">
         <p>
-          If something goes wrong, talk to us first: email{' '}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
-            {SUPPORT_EMAIL}
-          </a>{' '}
-          describing the issue, and we will attempt to resolve it in good faith within 30 days.
+          If something goes wrong, talk to us first: send us a message through our{' '}
+          <ContactSupportLink /> page describing the issue, and we will attempt to resolve
+          it in good faith within 30 days.
           These Terms are otherwise governed by the laws of India, and subject to that first step,
           disputes fall under the jurisdiction of the competent courts of India. If any provision is
           found unenforceable, the remainder continues in full effect.
@@ -186,10 +189,7 @@ export default function TermsOfServicePage() {
 
       <LegalSection index="14" heading="Contact">
         <p>
-          TaskFlow —{' '}
-          <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-4">
-            {SUPPORT_EMAIL}
-          </a>
+          TaskFlow — reach us anytime through our <ContactSupportLink /> page.
         </p>
       </LegalSection>
     </LegalLayout>

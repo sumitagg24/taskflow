@@ -138,7 +138,10 @@ export default function SocialAuth({ mode = 'login', onError, busy = false, clas
         authorizationParams: {
           redirect_uri: window.location.origin,
         },
-        cacheLocation: 'localstorage',
+        // Memory-only token cache: never persist Auth0 tokens to localStorage,
+        // where any XSS payload could exfiltrate them. The TaskFlow session
+        // itself lives in httpOnly cookies minted by /api/auth/auth0.
+        cacheLocation: 'memory',
         useRefreshTokens: true,
       });
       // `connection` skips Auth0's Universal Login page and jumps straight to

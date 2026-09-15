@@ -22,7 +22,6 @@
     "smoke:spa-config": "node scripts/spa-config-check.cjs",
     "check:vercel": "node scripts/vercel-config-check.cjs",
     "migrate": "npm run migrate --prefix server",
-    "railway:setup": "node scripts/railway-setup.cjs",
     "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {

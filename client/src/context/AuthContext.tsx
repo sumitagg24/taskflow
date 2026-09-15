@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
 import api from '../api/tasks';
+import { apiConfig } from '@/lib/apiConfig';
 import { useTheme } from './ThemeContext';
 import { clearReferralCode, getReferralCode } from '@/lib/referral';
 import { hasSessionFlag } from '@/lib/session';
@@ -140,23 +142,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
+      // Boot transport is a BARE axios instance (same baseURL + cookies), NOT
+      // the shared `api` client: a refresh failure for a genuinely logged-out
+      // visitor must stay silent. Going through the interceptor would dispatch
+      // `taskflow:session-expired` and toast "session expired" on the login
+      // screen for people who were never logged in.
+      const bootApi = axios.create({
+        baseURL: apiConfig.apiBaseUrl,
+        headers: { 'Content-Type': 'application/json' },
+        withCredentials: true,
+      });
       // Cookie-only boot: the httpOnly session cookie rides automatically
       // via withCredentials — no token lookup, always validate with the server.
       const controller = new AbortController();
       fetchUserRef.current = controller;
 
+      const isCanceled = (err: any) =>
+        err?.name === 'CanceledError' || err?.name === 'AbortError' || controller.signal.aborted;
+
       try {
-        const { data } = await api.get('/auth/profile', { signal: controller.signal });
+        let profile;
+        try {
+          ({ data: profile } = await bootApi.get('/auth/profile', { signal: controller.signal }));
+        } catch (profileErr: any) {
+          // The access cookie is gone (15-minute lifetime) but the 7-day
+          // refresh cookie may still be valid: renew once and retry the
+          // profile before concluding the session is dead. Without this, every
+          // reload after ~15 idle minutes logged the user out. Only 401s are
+          // refreshable — network errors and other statuses fail fast.
+          if (profileErr?.response?.status !== 401 || isCanceled(profileErr)) throw profileErr;
+          await bootApi.post('/auth/refresh-token', {}, { withCredentials: true });
+          ({ data: profile } = await bootApi.get('/auth/profile', { signal: controller.signal }));
+        }
         // Only apply side-effects from the latest effect pass.
         if (pass === passRef.current && mountedRef.current) {
-          setUser(data.user);
-          setCachedUser(data.user);
-          if (syncThemeFromUser) syncThemeFromUser(data.user?.preferences);
+          setUser(profile.user);
+          setCachedUser(profile.user);
+          if (syncThemeFromUser) syncThemeFromUser(profile.user?.preferences);
         }
       } catch (err: any) {
         // Genuine error (not AbortError from StrictMode cleanup).
-        if (pass === passRef.current && mountedRef.current &&
-            err.name !== 'CanceledError' && err.name !== 'AbortError') {
+        if (pass === passRef.current && mountedRef.current && !isCanceled(err)) {
           clearAllTokens();
           setUser(null);
         }

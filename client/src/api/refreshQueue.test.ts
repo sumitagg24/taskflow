@@ -92,10 +92,40 @@ describe('401 refresh single-flight queue', () => {
     window.removeEventListener('taskflow:session-expired', listener);
   });
 
-  it('never refreshes for 401s without the TOKEN_EXPIRED code', async () => {
+  it('refreshes a codeless 401 on session endpoints (access cookie gone, refresh alive)', async () => {
     await import('./tasks');
-    const plain401 = { config: { _retry: false, headers: {} }, response: { status: 401, data: {} } };
-    await expect(handler()(plain401)).rejects.toBeTruthy();
+    // The server answers 401 with NO code when no access token rides along —
+    // the normal state after the 15-minute access cookie expires. With a valid
+    // 7-day refresh cookie this must recover, not log out.
+    const noCode = (url: string) => ({
+      config: { url, _retry: false, headers: {} },
+      response: { status: 401, data: {} },
+    });
+    const p = handler()(noCode('/tasks')).catch(() => 'rejected');
+    await expect(p).resolves.not.toBe('rejected');
+    expect(refreshPost()).toHaveBeenCalledTimes(1);
+    expect(refreshPost().mock.calls[0][0]).toContain('/auth/refresh-token');
+  });
+
+  it('never refreshes pre-session/public endpoints, coded non-expiry 401s, or non-401s', async () => {
+    await import('./tasks');
+    const run = handler();
+    const cases = [
+      // Bad credentials / bad signup input — 401 is the expected answer.
+      { config: { url: '/auth/login', _retry: false }, response: { status: 401, data: {} } },
+      { config: { url: '/auth/register', _retry: false }, response: { status: 401, data: {} } },
+      { config: { url: '/auth/verify-email', _retry: false }, response: { status: 401, data: {} } },
+      // The refresh endpoint itself — retrying it would loop.
+      { config: { url: '/auth/refresh-token', _retry: false }, response: { status: 401, data: { code: 'REFRESH_INVALID' } } },
+      // Genuinely unrecoverable coded 401 on a session endpoint.
+      { config: { url: '/tasks', _retry: false }, response: { status: 401, data: { code: 'REFRESH_INVALID' } } },
+      // Not a 401 at all.
+      { config: { url: '/tasks', _retry: false }, response: { status: 403, data: {} } },
+      { config: { url: '/tasks', _retry: false }, response: { status: 500, data: {} } },
+    ];
+    for (const err of cases) {
+      await expect(run(err)).rejects.toBeTruthy();
+    }
     expect(refreshPost()).not.toHaveBeenCalled();
   });
 
@@ -110,5 +140,42 @@ describe('401 refresh single-flight queue', () => {
     // refresh happened once for the original failure; the second 401 (on the
     // retry path) must NOT trigger another.
     expect(refreshPost()).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('shouldAttemptRefresh decision matrix', () => {
+  it('classifies status/code/url combinations', async () => {
+    const { shouldAttemptRefresh } = await import('./tasks');
+    const err = (status: number, data: any, url: string) => ({
+      config: { url, _retry: false },
+      response: { status, data },
+    });
+    // TOKEN_EXPIRED always refreshes, anywhere.
+    expect(shouldAttemptRefresh(err(401, { code: 'TOKEN_EXPIRED' }, '/auth/login'))).toBe(true);
+    // Codeless 401 refreshes on session endpoints…
+    expect(shouldAttemptRefresh(err(401, {}, '/tasks'))).toBe(true);
+    expect(shouldAttemptRefresh(err(401, {}, '/auth/profile'))).toBe(true);
+    expect(shouldAttemptRefresh(err(401, {}, '/notifications?limit=3'))).toBe(true);
+    // …including absolute-URL configs.
+    expect(shouldAttemptRefresh(err(401, {}, 'https://api.example.com/api/tasks'))).toBe(true);
+    // …but never on pre-session/public endpoints.
+    for (const url of [
+      '/auth/login', '/auth/register', '/auth/check-username', '/auth/forgot-password',
+      '/auth/reset-password', '/auth/verify-email', '/auth/resend-verification',
+      '/auth/google', '/auth/auth0', '/auth/oauth/exchange', '/auth/github',
+      '/auth/github/callback', '/auth/refresh-token', '/auth/logout', '/auth/providers',
+      '/contact',
+    ]) {
+      expect(shouldAttemptRefresh(err(401, {}, url))).toBe(false);
+    }
+    // Coded non-expiry 401s never refresh.
+    expect(shouldAttemptRefresh(err(401, { code: 'REFRESH_INVALID' }, '/tasks'))).toBe(false);
+    expect(shouldAttemptRefresh(err(401, { code: 'EMAIL_NOT_VERIFIED' }, '/tasks'))).toBe(false);
+    // Non-401s never refresh.
+    expect(shouldAttemptRefresh(err(403, {}, '/tasks'))).toBe(false);
+    expect(shouldAttemptRefresh(err(500, {}, '/tasks'))).toBe(false);
+    // Missing config/url can never be classified as refreshable.
+    expect(shouldAttemptRefresh({ response: { status: 401, data: {} } })).toBe(false);
+    expect(shouldAttemptRefresh(null)).toBe(false);
   });
 });

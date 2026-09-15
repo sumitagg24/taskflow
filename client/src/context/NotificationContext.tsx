@@ -72,7 +72,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     socket.on('connect_error', (err: any) => {
       const msg = String(err?.message || '');
-      if (!/invalid token|authentication required/i.test(msg) || authRetryRef.current) return;
+      // Every auth-rejection message the server can send on the handshake
+      // ('Authentication required', 'Invalid token…', 'Session expired, please
+      // sign in again', …). Missing one strands the socket on dead cookies
+      // until some API call happens to refresh.
+      if (!/invalid token|authentication required|session expired|not authorized/i.test(msg) || authRetryRef.current) return;
       authRetryRef.current = true;
       // NB: no leading `/api` — the axios instance already has that base.
       api.post('/auth/refresh-token').catch(() => {

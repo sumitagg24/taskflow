@@ -74,6 +74,61 @@ const api: AxiosInstance = axios.create({
 
 const REFRESH_URL = `${apiConfig.apiBaseUrl}/auth/refresh-token`;
 
+/**
+ * Whether a failed request is worth a cookie-refresh attempt.
+ *
+ * Background: the access cookie lives 15 minutes while the refresh cookie
+ * lives 7 days. Once the access cookie is gone the server answers 401 WITHOUT
+ * a `code` (`Not authorized, no token provided`) — the old check
+ * (`code === 'TOKEN_EXPIRED'`, sent only for a present-but-cryptographically-
+ * expired JWT) therefore missed the common post-expiry state and every reload
+ * after ~15 idle minutes logged the user out despite a valid refresh session.
+ *
+ * Codeless 401s are refreshable EXCEPT on pre-session/public endpoints, where
+ * a 401 is the expected answer (bad credentials, missing signup fields) and a
+ * refresh attempt would be wrong. Coded 401s other than TOKEN_EXPIRED
+ * (e.g. REFRESH_INVALID) are genuinely unrecoverable here — never retry those.
+ */
+const NO_REFRESH_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/check-username',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+  '/auth/verify-email',
+  '/auth/resend-verification',
+  '/auth/google',
+  '/auth/auth0',
+  '/auth/oauth',
+  '/auth/github',
+  '/auth/refresh-token',
+  '/auth/logout',
+  '/auth/providers',
+  '/contact',
+  '/cron',
+  '/docs',
+];
+
+function requestPath(url: unknown): string {
+  const raw = String(url || '').split('?')[0];
+  try {
+    return new URL(raw, 'http://local').pathname;
+  } catch {
+    return raw;
+  }
+}
+
+export function shouldAttemptRefresh(error: any): boolean {
+  if (error?.response?.status !== 401) return false;
+  const code = error?.response?.data?.code;
+  if (code === 'TOKEN_EXPIRED') return true;
+  if (code) return false;
+  // No URL to classify (malformed error) — never guess.
+  if (!error?.config?.url) return false;
+  const path = requestPath(error.config.url);
+  return !NO_REFRESH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
 let isRefreshing = false;
 let failedQueue: Array<{ resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
 
@@ -89,22 +144,12 @@ const processQueue = (error: any) => {
 };
 
 api.interceptors.request.use((config) => {
-  // Cookie-first: httpOnly cookies ride via withCredentials and are what the
-  // server actually reads. The Bearer header is a legacy fallback ONLY for
-  // same-origin/local harnesses that still hold a token in storage —
-  // explicitly NOT sent in cross-origin production deploys, where (a) the
-  // header would disable the server's CSRF origin check for cookie sessions
-  // (middleware/csrf.js skips it when Authorization is present) and (b) a
-  // stale localStorage token could shadow the valid cookie pair.
-  if (apiConfig.crossOrigin) return config;
-  try {
-    const token = localStorage.getItem('accessToken');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    // storage unavailable (private mode) — cookies still ride.
-  }
+  // Cookie-only: the httpOnly access/refresh pair rides via withCredentials
+  // and is what the server reads first. The SPA never attaches an
+  // Authorization header — keeping tokens out of localStorage AND out of
+  // JS-reachable request construction closes the token-theft path where any
+  // XSS payload could exfiltrate a Bearer token. Native/API consumers use
+  // their own clients with explicit `?tokenResponse=bearer` issuance.
   return config;
 });
 
@@ -113,12 +158,9 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (
-      !originalRequest ||
-      originalRequest._isRefresh ||
-      error.response?.status !== 401 ||
-      error.response?.data?.code !== 'TOKEN_EXPIRED'
-    ) {
+    // Refreshable 401s (see shouldAttemptRefresh): an expired access token
+    // with a still-valid 7-day refresh cookie must recover, not log out.
+    if (!originalRequest || originalRequest._isRefresh || !shouldAttemptRefresh(error)) {
       return Promise.reject(error);
     }
 
@@ -422,6 +464,13 @@ export const uploadFile = (file: File): Promise<AxiosResponse> => {
   return api.post('/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
+};
+
+// ── Contact support — public intake, no auth. The inbox address is
+// server-side only (SUPPORT_EMAIL); the browser never sees it.
+export const contactAPI = {
+  submit: (data: { name: string; email: string; subject: string; message: string }): Promise<AxiosResponse> =>
+    api.post('/contact', data),
 };
 
 export default api;

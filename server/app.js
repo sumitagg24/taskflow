@@ -57,6 +57,10 @@ function createApp(options = {}) {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", 'https://accounts.google.com', "'sha256-GV3MzgrEm/WOEDkhHKYcrl36TKzqNh3EhZo4thC6H7k='", ...(auth0CSP ? [auth0CSP] : [])],
+        // Auth0's SDK mints its token-refresh Web Worker from a blob: URL —
+        // without an explicit worker-src the worker falls back to script-src
+        // and is blocked, breaking the SDK's background renewal.
+        workerSrc: ["'self'", 'blob:'],
         frameSrc: ["'self'", 'https://accounts.google.com', ...(auth0CSP ? [auth0CSP] : [])],
         connectSrc: ["'self'", 'https://accounts.google.com', ...(auth0CSP ? [auth0CSP] : [])],
         imgSrc: ["'self'", 'data:', 'https:'],

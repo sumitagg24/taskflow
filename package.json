@@ -25,7 +25,7 @@
     "verify": "npm run typecheck && npm test"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.7"
   },
   "dependencies": {
     "task-tracker": "file:"
